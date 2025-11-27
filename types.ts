@@ -1,0 +1,35 @@
+
+import { LucideIcon } from 'lucide-react';
+
+// Structure pour les boutons de navigation (Sidebar)
+export interface NavItem {
+  label: string;
+  icon: LucideIcon;
+  id: string;
+}
+
+// (Non utilisé actuellement) Structure pour un profil utilisateur
+export interface UserProfile {
+  initials: string;
+  status: 'online' | 'offline';
+  region: string;
+  latency: number;
+}
+
+// Types possibles pour un élément dans l'explorateur
+// category/genre/series = Dossiers | file = Fichiers (PDF/CBZ)
+export type NodeType = 'category' | 'genre' | 'series' | 'topic' | 'file';
+
+// Structure principale de l'arbre de données VK
+export interface VkNode {
+  id: string;           // Identifiant unique
+  title: string;        // Titre affiché
+  url?: string;         // Lien vers VK ou lien de téléchargement direct
+  type: NodeType;       // Type de noeud (Dossier ou Fichier)
+  children?: VkNode[];  // Sous-dossiers (si c'est un dossier)
+  count?: number; 
+  extension?: string;   // Extension du fichier (PDF, CBZ, etc.) pour l'affichage
+  isLoaded?: boolean;   // Indique si on a déjà chargé le contenu de ce dossier
+  vkGroupId?: string;   // ID du groupe VK (nécessaire pour l'API)
+  vkTopicId?: string;   // ID du topic VK (nécessaire pour l'API)
+}

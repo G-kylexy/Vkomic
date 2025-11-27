@@ -1,0 +1,5 @@
+{
+  "name": "VKomic Clone",
+  "description": "A frontend reproduction of the VKomic desktop application interface featuring a dark theme and sidebar navigation.",
+  "requestFramePermissions": []
+}

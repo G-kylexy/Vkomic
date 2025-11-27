@@ -1,0 +1,16 @@
+/* Reset and base styles */
+body,
+#root {
+  margin: 0;
+  padding: 0;
+}
+
+/* Ensure full height */
+#root {
+  min-height: 100vh;
+}
+
+/* No extra padding needed - TopBar handles everything */
+.content-wrapper {
+  padding-top: 0;
+}
