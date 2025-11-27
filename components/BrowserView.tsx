@@ -17,6 +17,15 @@ const BrowserView: React.FC<BrowserViewProps> = ({ vkToken, syncedData, setSynce
   
   // Fil d'Ariane (Breadcrumbs) : Historique de navigation (ex: Accueil > Manga > Naruto)
   const [navPath, setNavPath] = useState<VkNode[]>([]);
+
+  const openNodeUrl = (url: string) => {
+    if (!url) return;
+    if (window.shell?.openExternal) {
+      window.shell.openExternal(url);
+    } else {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  };
   
   // --- SYNCHRONISATION INITIALE ---
   // Appelle l'API VK pour charger la racine de l'index
@@ -44,7 +53,7 @@ const BrowserView: React.FC<BrowserViewProps> = ({ vkToken, syncedData, setSynce
   const navigateTo = async (node: VkNode) => {
     // CAS 1 : C'est un FICHIER -> On lance le téléchargement (ouvre dans le navigateur)
     if (node.type === 'file' && node.url) {
-        window.open(node.url, '_blank');
+        openNodeUrl(node.url);
         return;
     }
 

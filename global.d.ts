@@ -7,5 +7,8 @@ declare global {
       maximize: () => void;
       close: () => void;
     };
+    shell?: {
+      openExternal: (url: string) => void;
+    };
   }
 }
