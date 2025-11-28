@@ -1,9 +1,8 @@
-
 import React, { useEffect, useState } from 'react';
 import Sidebar from './components/Sidebar';
 import TopBar from './components/TopBar';
 import MainView from './components/MainView';
-import { VkNode, VkConnectionStatus } from './types';
+import { VkNode, VkConnectionStatus, DownloadItem } from './types';
 import { TranslationProvider } from './i18n';
 import { DEFAULT_DOWNLOAD_PATH } from './utils/constants';
 
@@ -22,9 +21,11 @@ const App: React.FC = () => {
 
   // Données synchronisées : L'arbre des dossiers/fichiers récupéré depuis VK
   const [syncedData, setSyncedData] = useState<VkNode[] | null>(null);
+  // Chemin de téléchargement local choisi par l'utilisateur
   const [downloadPath, setDownloadPath] = useState(() => {
     return localStorage.getItem('vk_download_path') || DEFAULT_DOWNLOAD_PATH;
   });
+  // Statut VK global (latence, dernière synchro, région)
   const [vkStatus, setVkStatus] = useState<VkConnectionStatus>({
     connected: false,
     latencyMs: null,
@@ -32,6 +33,39 @@ const App: React.FC = () => {
     region: null,
     regionAggregate: null,
   });
+
+  // Gestion des téléchargements
+  const [downloads, setDownloads] = useState<DownloadItem[]>([]);
+
+  const addDownload = (node: VkNode) => {
+    if (!node.url) return;
+    const newDownload: DownloadItem = {
+      id: node.id || Math.random().toString(36).substr(2, 9),
+      title: node.title,
+      url: node.url,
+      progress: 0,
+      status: 'pending',
+      extension: node.extension,
+    };
+    setDownloads(prev => [newDownload, ...prev]);
+
+    // Simulation de téléchargement pour l'instant
+    setTimeout(() => {
+      setDownloads(prev => prev.map(d => d.id === newDownload.id ? { ...d, status: 'downloading', progress: 10 } : d));
+    }, 1000);
+  };
+
+  const pauseDownload = (id: string) => {
+    setDownloads(prev => prev.map(d => d.id === id ? { ...d, status: 'paused' } : d));
+  };
+
+  const resumeDownload = (id: string) => {
+    setDownloads(prev => prev.map(d => d.id === id ? { ...d, status: 'downloading' } : d));
+  };
+
+  const cancelDownload = (id: string) => {
+    setDownloads(prev => prev.map(d => d.id === id ? { ...d, status: 'canceled' } : d));
+  };
 
   // --- FONCTIONS UTILITAIRES ---
 
@@ -59,6 +93,7 @@ const App: React.FC = () => {
   }, [vkToken]);
 
   useEffect(() => {
+    // Déduit une région agrégée à partir de la timezone/locale
     const rawRegion =
       Intl?.DateTimeFormat?.().resolvedOptions().timeZone ||
       (typeof navigator !== 'undefined' ? navigator.language : null) ||
@@ -81,11 +116,20 @@ const App: React.FC = () => {
 
     const regionAggregate = mapRegion(rawRegion);
 
+    // Mesure la latence vers VK toutes les secondes (via IPC pour éviter CORB côté renderer)
     const measurePing = async () => {
       try {
-        const start = performance.now();
-        await fetch('https://api.vk.com/', { mode: 'no-cors', cache: 'no-store' });
-        const latency = Math.round(performance.now() - start);
+        let latency = null;
+
+        if (window.vk?.ping) {
+          const res = await window.vk.ping(vkToken || undefined);
+          latency = res.latency !== null ? res.latency : null;
+        } else {
+          const start = performance.now();
+          await fetch('https://vk.com/favicon.ico', { mode: 'no-cors', cache: 'no-store', method: 'HEAD' });
+          latency = Math.round(performance.now() - start);
+        }
+
         setVkStatus((prev) => ({
           ...prev,
           connected: true,
@@ -136,6 +180,11 @@ const App: React.FC = () => {
             downloadPath={downloadPath}
             setDownloadPath={handleSetDownloadPath}
             onVkStatusChange={setVkStatus}
+            downloads={downloads}
+            addDownload={addDownload}
+            pauseDownload={pauseDownload}
+            resumeDownload={resumeDownload}
+            cancelDownload={cancelDownload}
           />
         </div>
       </div>

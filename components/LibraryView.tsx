@@ -87,6 +87,7 @@ const computeParentWithinBase = (current: string, base: string) => {
   return target;
 };
 
+// Parcourt le dossier de téléchargement local via l'IPC exposé par Electron
 const LibraryView: React.FC<LibraryViewProps> = ({ downloadPath }) => {
   const { t } = useTranslation();
   const [currentPath, setCurrentPath] = useState<string | null>(null);
@@ -247,9 +248,13 @@ const LibraryView: React.FC<LibraryViewProps> = ({ downloadPath }) => {
                 className="bg-[#111827] rounded-xl border border-slate-800 p-5 flex flex-col justify-between hover:border-blue-500/40 transition-all duration-200 cursor-pointer"
               >
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="p-3 rounded-xl bg-slate-800 text-blue-400">
+                  <button
+                    type="button"
+                    onClick={() => handleEntryClick(entry)}
+                    className="p-3 rounded-xl bg-slate-800 text-blue-400 hover:bg-slate-700 transition-colors"
+                  >
                     {isFolder ? <Folder size={24} /> : <FileText size={24} />}
-                  </div>
+                  </button>
                   <div className="flex-1 min-w-0">
                     <h3 className="text-white font-semibold truncate" title={entry.name}>
                       {entry.name}

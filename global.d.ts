@@ -26,5 +26,8 @@ declare global {
       }>;
       openPath: (path: string) => Promise<void>;
     };
+    vk?: {
+      ping: (token?: string) => Promise<{ ok: boolean; latency: number | null }>;
+    };
   }
 }

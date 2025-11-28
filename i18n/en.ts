@@ -73,6 +73,8 @@ export const en: Translations = {
         modified: 'Modified',
         openFolder: 'Open folder',
         openFile: 'Open file',
+        downloadFile: 'Download',
+        downloadAll: 'Download All',
         emptyFolder: 'This folder is empty.',
     },
 
@@ -95,7 +97,7 @@ export const en: Translations = {
 
     // Languages
     languages: {
-        fr: 'French',
+        fr: 'Français',
         en: 'English',
     },
 };

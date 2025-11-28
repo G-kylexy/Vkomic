@@ -18,3 +18,7 @@ contextBridge.exposeInMainWorld('fs', {
     listDirectory: (path) => ipcRenderer.invoke('fs:listDirectory', path),
     openPath: (path) => ipcRenderer.invoke('fs:openPath', path)
 });
+
+contextBridge.exposeInMainWorld('vk', {
+    ping: (token) => ipcRenderer.invoke('vk:ping', token)
+});

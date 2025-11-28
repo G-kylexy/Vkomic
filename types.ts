@@ -27,7 +27,7 @@ export interface VkNode {
   url?: string;         // Lien vers VK ou lien de téléchargement direct
   type: NodeType;       // Type de noeud (Dossier ou Fichier)
   children?: VkNode[];  // Sous-dossiers (si c'est un dossier)
-  count?: number; 
+  count?: number;
   extension?: string;   // Extension du fichier (PDF, CBZ, etc.) pour l'affichage
   isLoaded?: boolean;   // Indique si on a déjà chargé le contenu de ce dossier
   vkGroupId?: string;   // ID du groupe VK (nécessaire pour l'API)
@@ -40,4 +40,16 @@ export interface VkConnectionStatus {
   lastSync: string | null;
   region?: string | null;
   regionAggregate?: string | null;
+}
+
+export interface DownloadItem {
+  id: string;
+  title: string;
+  progress: number; // 0-100
+  status: 'pending' | 'downloading' | 'paused' | 'completed' | 'canceled' | 'error';
+  size?: string;
+  speed?: string;
+  url: string;
+  path?: string; // Local save path
+  extension?: string;
 }

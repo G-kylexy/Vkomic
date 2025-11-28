@@ -48,6 +48,7 @@ app.whenReady().then(() => {
         shell.openExternal(url);
     });
 
+    // Sélecteur natif pour choisir un dossier de téléchargement
     ipcMain.handle('dialog:selectFolder', async () => {
         const result = await dialog.showOpenDialog(mainWindow, {
             properties: ['openDirectory', 'createDirectory']
@@ -58,6 +59,7 @@ app.whenReady().then(() => {
         return result.filePaths[0];
     });
 
+    // Lecture d'un dossier local (Bibliothèque)
     ipcMain.handle('fs:listDirectory', async (_, targetPath) => {
         if (!targetPath || typeof targetPath !== 'string') {
             throw new Error('Invalid path');
@@ -94,11 +96,26 @@ app.whenReady().then(() => {
         return { path: targetPath, entries };
     });
 
+    // Ouvre un fichier/dossier dans le système
     ipcMain.handle('fs:openPath', async (_, targetPath) => {
         if (!targetPath || typeof targetPath !== 'string') {
             return;
         }
         await shell.openPath(targetPath);
+    });
+
+    // Ping VK depuis le processus principal (évite les erreurs CORB côté renderer)
+    ipcMain.handle('vk:ping', async (_, token) => {
+        const start = Date.now();
+        try {
+            const url = token
+                ? `https://api.vk.com/method/utils.getServerTime?access_token=${token}&v=5.131`
+                : 'https://vk.com/favicon.ico';
+            await fetch(url, { method: 'HEAD', cache: 'no-store' });
+            return { ok: true, latency: Date.now() - start };
+        } catch (err) {
+            return { ok: false, latency: null };
+        }
     });
 
     app.on('activate', () => {

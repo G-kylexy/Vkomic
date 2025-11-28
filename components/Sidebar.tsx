@@ -18,6 +18,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, vkStatus }) 
     { id: 'settings', label: t.nav.settings, icon: Settings },
   ];
 
+  // Traduit l'agrégat de région en français si besoin
   const formatRegion = (region?: string | null) => {
     if (!region) return '--';
     if (language === 'fr') {

@@ -37,16 +37,18 @@ const SettingsView: React.FC<SettingsViewProps> = ({ vkToken, setVkToken, downlo
   };
 
   const handleDownloadPathChange = (value: string) => {
+    // Sauvegarde auto du chemin de téléchargement sans passer par le bouton
     setLocalDownloadPath(value);
-    setIsSaved(false);
+    setDownloadPath(value);
   };
 
+  // Ouvre le sélecteur natif (si dispo) pour définir le dossier de téléchargement
   const handleBrowseFolder = async () => {
     if (window.dialog?.selectFolder) {
       const folder = await window.dialog.selectFolder();
       if (folder) {
         setLocalDownloadPath(folder);
-        setIsSaved(false);
+        setDownloadPath(folder);
       }
     } else {
       window.alert(t.settings.folderDialogWarning);
@@ -54,8 +56,8 @@ const SettingsView: React.FC<SettingsViewProps> = ({ vkToken, setVkToken, downlo
   };
 
   const handleLanguageChange = (value: Language) => {
+    // Sauvegarde auto de la langue (le provider écrit déjà dans le localStorage)
     setLanguage(value);
-    setIsSaved(false);
   };
 
   const openAuthLink = () => {
