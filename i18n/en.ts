@@ -16,8 +16,11 @@ export const en: Translations = {
 
     // Sidebar status
     sidebar: {
-        connectedToVK: 'Connected to VK',
+        connected: 'Connected',
+        disconnected: 'Disconnected',
         latency: 'Latency',
+        lastSync: 'Last sync',
+        connectedToVK: 'Connected to VK',
         region: 'Region',
     },
 
@@ -41,6 +44,7 @@ export const en: Translations = {
         language: 'Interface Language',
         downloadFolder: 'Download Folder',
         browse: 'Browse',
+        folderDialogWarning: 'Folder selection is only available in the desktop app. Please enter the path manually.',
 
         // Save button
         saveAll: 'Save',
@@ -52,13 +56,41 @@ export const en: Translations = {
         empty: 'Empty Library',
         emptyDescription: 'Sync the app with VK index to access comics.',
         syncButton: 'Sync from VK',
+        syncing: 'Syncing...',
+        searching: 'Searching inside this folder...',
+        noResults: 'This folder is empty or nothing matches your search.',
+        localTitle: 'Local Library',
+        noDownloadPath: 'Choose a download folder in Settings to browse your files here.',
+        desktopOnly: 'Local browsing is only available inside the desktop application.',
+        readError: 'Unable to read this folder. Please verify the selected path.',
+        loading: 'Loading your library...',
+        back: 'Parent folder',
+        refresh: 'Refresh',
+        rootLabel: 'Downloads',
+        folderLabel: 'Folder',
+        fileLabel: 'File',
+        size: 'Size',
+        modified: 'Modified',
+        openFolder: 'Open folder',
+        openFile: 'Open file',
+        emptyFolder: 'This folder is empty.',
     },
 
     // Downloads
     downloads: {
         title: 'Downloads',
-        noDownloads: 'No downloads in progress',
-        noDownloadsDescription: 'Your downloads will appear here.',
+        overviewTitle: 'Overview',
+        statsIndexed: 'INDEXED SERIES',
+        statsDownloaded: 'VOLUMES DOWNLOADED',
+        statsInProgress: 'IN PROGRESS',
+        tableSeries: 'Series',
+        tableVolume: 'Volume',
+        tableStatus: 'Status',
+        tableSize: 'Size',
+        tableActions: 'Actions',
+        completed: 'Downloaded',
+        noDownloads: 'No downloads yet',
+        noDownloadsDescription: 'Your download history will appear here.',
     },
 
     // Languages

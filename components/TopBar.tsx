@@ -1,5 +1,6 @@
 import React from 'react';
 import { Search, Minus, Square, X } from './Icons';
+import { useTranslation } from '../i18n';
 
 interface TopBarProps {
   searchQuery: string;
@@ -7,6 +8,7 @@ interface TopBarProps {
 }
 
 const TopBar: React.FC<TopBarProps> = ({ searchQuery, setSearchQuery }) => {
+  const { t } = useTranslation();
   return (
     <header
       className="h-12 flex items-center justify-between pl-6 pr-0 relative bg-[#050B14]"
@@ -21,7 +23,7 @@ const TopBar: React.FC<TopBarProps> = ({ searchQuery, setSearchQuery }) => {
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Rechercher..."
+          placeholder={t.topbar.searchPlaceholder}
           className="w-full bg-[#1e293b] text-slate-200 text-sm rounded-lg pl-10 pr-4 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500 border border-slate-700/50 placeholder-slate-500"
         />
       </div>

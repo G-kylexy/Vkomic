@@ -14,15 +14,18 @@ export const fr = {
 
     // Sidebar status
     sidebar: {
-        connectedToVK: 'Connecté à VK',
+        connected: 'Connecté',
+        disconnected: 'Déconnecté',
         latency: 'Latence',
+        lastSync: 'Dernière synchro',
+        connectedToVK: 'Connecté à VK',
         region: 'Région',
     },
 
     // Settings
     settings: {
         title: 'Paramètres',
-        subtitle: 'Configuration de l\'application et de la connexion VK',
+        subtitle: "Configuration de l'application et de la connexion VK",
 
         // VK Connection
         vkConnection: 'Connexion VK',
@@ -36,9 +39,10 @@ export const fr = {
 
         // General Preferences
         generalPreferences: 'Préférences Générales',
-        language: 'Langue de l\'interface',
+        language: "Langue de l'interface",
         downloadFolder: 'Dossier de téléchargement',
         browse: 'Parcourir',
+        folderDialogWarning: "La sélection de dossier est disponible uniquement dans la version bureau. Veuillez saisir le chemin manuellement.",
 
         // Save button
         saveAll: 'Sauvegarder',
@@ -48,15 +52,43 @@ export const fr = {
     // Library
     library: {
         empty: 'Bibliothèque vide',
-        emptyDescription: 'Synchronisez l\'application avec l\'index VK pour accéder aux BDs.',
+        emptyDescription: "Synchronisez l'application avec l'index VK pour accéder aux BDs.",
         syncButton: 'Synchroniser depuis VK',
+        syncing: 'Synchronisation...',
+        searching: 'Recherche dans le dossier actuel...',
+        noResults: 'Ce dossier est vide ou aucun résultat trouvé.',
+        localTitle: 'Bibliothèque locale',
+        noDownloadPath: 'Choisissez un dossier de téléchargement dans Paramètres pour afficher vos fichiers ici.',
+        desktopOnly: "La bibliothèque locale est disponible uniquement dans l'application desktop.",
+        readError: 'Impossible de lire ce dossier. Vérifiez que le chemin est valide.',
+        loading: 'Chargement de votre bibliothèque...',
+        back: 'Dossier parent',
+        refresh: 'Rafraîchir',
+        rootLabel: 'Téléchargements',
+        folderLabel: 'Dossier',
+        fileLabel: 'Fichier',
+        size: 'Taille',
+        modified: 'Modifié',
+        openFolder: 'Ouvrir le dossier',
+        openFile: 'Ouvrir le fichier',
+        emptyFolder: 'Ce dossier est vide.',
     },
 
     // Downloads
     downloads: {
         title: 'Téléchargements',
-        noDownloads: 'Aucun téléchargement en cours',
-        noDownloadsDescription: 'Vos téléchargements apparaîtront ici.',
+        overviewTitle: "Vue d'ensemble",
+        statsIndexed: 'SERIES INDEXEES',
+        statsDownloaded: 'TOMES TÉLÉCHARGÉS',
+        statsInProgress: 'EN COURS',
+        tableSeries: 'Série',
+        tableVolume: 'Tome',
+        tableStatus: 'Statut',
+        tableSize: 'Taille',
+        tableActions: 'Actions',
+        completed: 'Téléchargé',
+        noDownloads: 'Aucun téléchargement effectué',
+        noDownloadsDescription: "L'historique des téléchargements apparaîtra ici",
     },
 
     // Languages

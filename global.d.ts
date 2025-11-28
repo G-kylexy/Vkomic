@@ -10,5 +10,21 @@ declare global {
     shell?: {
       openExternal: (url: string) => void;
     };
+    dialog?: {
+      selectFolder: () => Promise<string | null>;
+    };
+    fs?: {
+      listDirectory: (path: string) => Promise<{
+        path: string;
+        entries: {
+          name: string;
+          path: string;
+          isDirectory: boolean;
+          size: number | null;
+          modifiedAt: number;
+        }[];
+      }>;
+      openPath: (path: string) => Promise<void>;
+    };
   }
 }

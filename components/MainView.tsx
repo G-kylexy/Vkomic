@@ -3,7 +3,8 @@ import React from 'react';
 import BrowserView from './BrowserView';
 import SettingsView from './SettingsView';
 import DownloadsView from './DownloadsView';
-import { VkNode } from '../types';
+import LibraryView from './LibraryView';
+import { VkNode, VkConnectionStatus } from '../types';
 
 interface MainViewProps {
   searchQuery: string;
@@ -12,6 +13,9 @@ interface MainViewProps {
   setVkToken: (t: string) => void;
   syncedData: VkNode[] | null;
   setSyncedData: (data: VkNode[]) => void;
+  downloadPath: string;
+  setDownloadPath: (path: string) => void;
+  onVkStatusChange: (status: VkConnectionStatus) => void;
 }
 
 // Ce composant agit comme un "Routeur".
@@ -22,13 +26,23 @@ const MainView: React.FC<MainViewProps> = ({
   vkToken, 
   setVkToken, 
   syncedData, 
-  setSyncedData 
+  setSyncedData,
+  downloadPath,
+  setDownloadPath,
+  onVkStatusChange
 }) => {
   
   const renderContent = () => {
     switch (activeTab) {
       case 'settings':
-        return <SettingsView vkToken={vkToken} setVkToken={setVkToken} />;
+        return (
+          <SettingsView
+            vkToken={vkToken}
+            setVkToken={setVkToken}
+            downloadPath={downloadPath}
+            setDownloadPath={setDownloadPath}
+          />
+        );
       case 'home':
         // BrowserView a besoin des données synchronisées et de la recherche
         return (
@@ -37,16 +51,13 @@ const MainView: React.FC<MainViewProps> = ({
             syncedData={syncedData} 
             setSyncedData={setSyncedData}
             searchQuery={searchQuery}
+            onVkStatusChange={onVkStatusChange}
           />
         );
       case 'downloads':
         return <DownloadsView />;
       case 'library':
-        return (
-           <div className="flex-1 flex items-center justify-center text-slate-500">
-             Page Bibliothèque (Bientôt)
-           </div>
-        );
+        return <LibraryView downloadPath={downloadPath} />;
       default:
         return null;
     }

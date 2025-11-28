@@ -1,5 +1,6 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -45,6 +46,59 @@ app.whenReady().then(() => {
     // IPC handler for opening external links
     ipcMain.on('open-external', (event, url) => {
         shell.openExternal(url);
+    });
+
+    ipcMain.handle('dialog:selectFolder', async () => {
+        const result = await dialog.showOpenDialog(mainWindow, {
+            properties: ['openDirectory', 'createDirectory']
+        });
+        if (result.canceled || result.filePaths.length === 0) {
+            return null;
+        }
+        return result.filePaths[0];
+    });
+
+    ipcMain.handle('fs:listDirectory', async (_, targetPath) => {
+        if (!targetPath || typeof targetPath !== 'string') {
+            throw new Error('Invalid path');
+        }
+
+        const stats = await fs.promises.stat(targetPath);
+        if (!stats.isDirectory()) {
+            throw new Error('Path is not a directory');
+        }
+
+        const dirEntries = await fs.promises.readdir(targetPath, { withFileTypes: true });
+
+        const entries = await Promise.all(
+            dirEntries.map(async (entry) => {
+                const entryPath = path.join(targetPath, entry.name);
+                const entryStats = await fs.promises.stat(entryPath);
+
+                return {
+                    name: entry.name,
+                    path: entryPath,
+                    isDirectory: entryStats.isDirectory(),
+                    size: entryStats.isDirectory() ? null : entryStats.size,
+                    modifiedAt: entryStats.mtimeMs
+                };
+            })
+        );
+
+        entries.sort((a, b) => {
+            if (a.isDirectory && !b.isDirectory) return -1;
+            if (!a.isDirectory && b.isDirectory) return 1;
+            return a.name.localeCompare(b.name);
+        });
+
+        return { path: targetPath, entries };
+    });
+
+    ipcMain.handle('fs:openPath', async (_, targetPath) => {
+        if (!targetPath || typeof targetPath !== 'string') {
+            return;
+        }
+        await shell.openPath(targetPath);
     });
 
     app.on('activate', () => {

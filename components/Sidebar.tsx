@@ -1,20 +1,43 @@
 import React from 'react';
-import { NavItem } from '../types';
+import { NavItem, VkConnectionStatus } from '../types';
 import { Zap, Globe, Download, Library, Settings } from './Icons';
+import { useTranslation } from '../i18n';
 
 interface SidebarProps {
   activeTab: string;
   setActiveTab: (id: string) => void;
+  vkStatus: VkConnectionStatus;
 }
 
-const navItems: NavItem[] = [
-  { id: 'home', label: 'Accueil', icon: Globe },
-  { id: 'downloads', label: 'Téléchargements', icon: Download },
-  { id: 'library', label: 'Bibliothèque', icon: Library },
-  { id: 'settings', label: 'Paramètres', icon: Settings },
-];
+const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, vkStatus }) => {
+  const { t, language } = useTranslation();
+  const navItems: NavItem[] = [
+    { id: 'home', label: t.nav.home, icon: Globe },
+    { id: 'downloads', label: t.nav.downloads, icon: Download },
+    { id: 'library', label: t.nav.library, icon: Library },
+    { id: 'settings', label: t.nav.settings, icon: Settings },
+  ];
 
-const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
+  const formatRegion = (region?: string | null) => {
+    if (!region) return '--';
+    if (language === 'fr') {
+      const map: Record<string, string> = {
+        'Europe West': "Europe de l'Ouest",
+        'North America': 'Amérique du Nord',
+        'South America': 'Amérique du Sud',
+        'Asia': 'Asie',
+        'Africa': 'Afrique',
+        'Oceania': 'Océanie',
+        'Pacific': 'Pacifique',
+        'Global': 'Global',
+      };
+      return map[region] || region;
+    }
+    return region;
+  };
+
+  const displayRegion = formatRegion(vkStatus.regionAggregate);
+
   return (
     <div className="w-64 bg-[#0B1221] flex flex-col h-screen border-r border-slate-800 flex-shrink-0">
       {/* Logo Area */}
@@ -51,24 +74,17 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
       {/* Footer / Status */}
       <div className="pb-6">
         <div className="mx-6 h-px bg-slate-800/50 mb-6"></div>
-        <div className="px-6 flex flex-col gap-1 text-xs">
+        <div className="px-6 flex flex-col gap-2 text-xs">
           <div className="flex items-center gap-2 text-emerald-400 font-medium">
             <span className="relative flex h-2 w-2">
               <span className="animate-ping-slow absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500 shadow-[0_0_8px_rgba(52,211,153,0.8)]"></span>
             </span>
-            Connecté à VK
+            {t.sidebar.connectedToVK}
           </div>
           <div className="text-slate-500 mt-1 pl-4">
-            <p>Latence: 106ms</p>
-            <p>Région: EU-West</p>
-          </div>
-        </div>
-        
-        {/* Debug/Console Line from screenshot */}
-        <div className="px-6 mt-4">
-          <div className="pt-2 border-t border-slate-800/50 text-[10px] text-slate-600 font-mono truncate">
-             [0] process_gpu_BROWSER...
+            <p>{t.sidebar.latency}: {vkStatus.latencyMs !== null ? `${vkStatus.latencyMs}ms` : '--'}</p>
+            <p>{t.sidebar.region}: {displayRegion}</p>
           </div>
         </div>
       </div>

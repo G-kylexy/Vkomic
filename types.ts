@@ -33,3 +33,11 @@ export interface VkNode {
   vkGroupId?: string;   // ID du groupe VK (nécessaire pour l'API)
   vkTopicId?: string;   // ID du topic VK (nécessaire pour l'API)
 }
+
+export interface VkConnectionStatus {
+  connected: boolean;
+  latencyMs: number | null;
+  lastSync: string | null;
+  region?: string | null;
+  regionAggregate?: string | null;
+}
