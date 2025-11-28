@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import Sidebar from './components/Sidebar';
 import TopBar from './components/TopBar';
 import MainView from './components/MainView';
-import { VkNode, VkConnectionStatus, DownloadItem } from './types';
+import {VkNode, VkConnectionStatus, DownloadItem} from './types';
 import { TranslationProvider } from './i18n';
 import { DEFAULT_DOWNLOAD_PATH } from './utils/constants';
 
@@ -36,9 +36,23 @@ const App: React.FC = () => {
 
   // Gestion des téléchargements
   const [downloads, setDownloads] = useState<DownloadItem[]>([]);
+  const downloadIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const addDownload = (node: VkNode) => {
     if (!node.url) return;
+    
+    // Vérifier si le téléchargement existe déjà
+    const existingIndex = downloads.findIndex(d => d.id === node.id);
+    const existing = downloads[existingIndex];
+
+    // Si déjà en cours ou terminé, on ne fait rien
+    if (existing && ['pending', 'downloading', 'paused', 'completed'].includes(existing.status)) {
+      return;
+    }
+
+    // On génère une taille fixe ici pour éviter qu'elle ne change à chaque rendu
+    const simulatedSize = `${(Math.random() * 50 + 10).toFixed(1)} MB`;
+
     const newDownload: DownloadItem = {
       id: node.id || Math.random().toString(36).substr(2, 9),
       title: node.title,
@@ -46,17 +60,85 @@ const App: React.FC = () => {
       progress: 0,
       status: 'pending',
       extension: node.extension,
+      speed: '0 MB/s',
+      size: existing ? existing.size : simulatedSize // Garder la taille si existait déjà
     };
-    setDownloads(prev => [newDownload, ...prev]);
+    
+    // Mise à jour de la liste
+    if (existing) {
+      // Si existait (ex: annulé), on le remplace et on le remet en haut
+      const newList = [...downloads];
+      newList.splice(existingIndex, 1);
+      setDownloads([newDownload, ...newList]);
+    } else {
+      // Nouveau téléchargement
+      setDownloads(prev => [newDownload, ...prev]);
+    }
 
-    // Simulation de téléchargement pour l'instant
+    // Démarre le téléchargement après un court délai
     setTimeout(() => {
-      setDownloads(prev => prev.map(d => d.id === newDownload.id ? { ...d, status: 'downloading', progress: 10 } : d));
-    }, 1000);
+       startDownloadSimulation(newDownload.id);
+    }, 500);
   };
 
+  const startDownloadSimulation = (id: string) => {
+      setDownloads(prev => prev.map(d => {
+        // IMPORTANT: Ne pas redémarrer si le téléchargement a été annulé entre temps
+        if (d.id === id && d.status !== 'canceled') {
+           return { ...d, status: 'downloading', progress: 0 };
+        }
+        return d;
+      }));
+  };
+
+  const retryDownload = (id: string) => {
+      setDownloads(prev => prev.map(d => {
+          if (d.id === id) {
+              return { ...d, status: 'pending', progress: 0, speed: '0 MB/s' };
+          }
+          return d;
+      }));
+      setTimeout(() => {
+          startDownloadSimulation(id);
+      }, 500);
+  };
+
+  // Boucle de simulation de progression
+  useEffect(() => {
+    const interval = setInterval(() => {
+       setDownloads(prev => {
+         let hasChanges = false;
+         const updated = prev.map(d => {
+            // Seuls les téléchargements avec le statut 'downloading' progressent
+            if (d.status === 'downloading' && d.progress < 100) {
+               hasChanges = true;
+               const increment = Math.random() * 5 + 1; // 1% to 6%
+               const nextProgress = Math.min(d.progress + increment, 100);
+               const newProgress = parseFloat(nextProgress.toFixed(1));
+               const isComplete = newProgress >= 100;
+               const speed =HzSpeed(isComplete);
+               
+               const updatedItem: DownloadItem = {
+                  ...d,
+                  progress: newProgress,
+                  status: (isComplete ? 'completed' : 'downloading') as DownloadItem['status'],
+                  speed: speed
+               };
+               return updatedItem;
+            }
+            return d;
+         });
+         return hasChanges ? updated : prev;
+       });
+    }, 800);
+
+    return () => clearInterval(interval);
+  }, []);
+  
+  const HzSpeed = (isComplete: boolean) => isComplete ? '0 MB/s' : `${(Math.random() * 2 + 1).toFixed(1)} MB/s`;
+
   const pauseDownload = (id: string) => {
-    setDownloads(prev => prev.map(d => d.id === id ? { ...d, status: 'paused' } : d));
+    setDownloads(prev => prev.map(d => d.id === id ? { ...d, status: 'paused', speed: '0 MB/s' } : d));
   };
 
   const resumeDownload = (id: string) => {
@@ -64,7 +146,8 @@ const App: React.FC = () => {
   };
 
   const cancelDownload = (id: string) => {
-    setDownloads(prev => prev.map(d => d.id === id ? { ...d, status: 'canceled' } : d));
+    // Annulation : on garde l'élément mais on change son statut
+    setDownloads(prev => prev.map(d => d.id === id ? { ...d, status: 'canceled', speed: '0 MB/s', progress: d.progress } : d));
   };
 
   // --- FONCTIONS UTILITAIRES ---
@@ -185,6 +268,7 @@ const App: React.FC = () => {
             pauseDownload={pauseDownload}
             resumeDownload={resumeDownload}
             cancelDownload={cancelDownload}
+            retryDownload={retryDownload}
           />
         </div>
       </div>

@@ -73,6 +73,7 @@ export const fr = {
         openFile: 'Ouvrir le fichier',
         downloadFile: 'Télécharger',
         downloadAll: 'Tout télécharger',
+        cancelAll: 'Tout annuler',
         emptyFolder: 'Ce dossier est vide.',
     },
 
@@ -89,6 +90,8 @@ export const fr = {
         tableSize: 'Taille',
         tableActions: 'Actions',
         completed: 'Téléchargé',
+        canceled: 'Annulé',
+        redownload: 'Retélécharger',
         noDownloads: 'Aucun téléchargement effectué',
         noDownloadsDescription: "L'historique des téléchargements apparaîtra ici",
     },

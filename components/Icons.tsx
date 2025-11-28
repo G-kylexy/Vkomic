@@ -27,7 +27,10 @@ import {
   FileText,
   BarChart,
   Check,
-  Clock
+  Clock,
+  FileArchive,
+  Pause,
+  Play
 } from 'lucide-react';
 
 export {
@@ -57,5 +60,8 @@ export {
   FileText,
   BarChart,
   Check,
-  Clock
+  Clock,
+  FileArchive,
+  Pause,
+  Play
 };

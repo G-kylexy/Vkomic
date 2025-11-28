@@ -75,6 +75,7 @@ export const en: Translations = {
         openFile: 'Open file',
         downloadFile: 'Download',
         downloadAll: 'Download All',
+        cancelAll: 'Cancel All',
         emptyFolder: 'This folder is empty.',
     },
 
@@ -91,6 +92,8 @@ export const en: Translations = {
         tableSize: 'Size',
         tableActions: 'Actions',
         completed: 'Downloaded',
+        canceled: 'Canceled',
+        redownload: 'Redownload',
         noDownloads: 'No downloads yet',
         noDownloadsDescription: 'Your download history will appear here.',
     },

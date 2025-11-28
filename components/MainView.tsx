@@ -3,7 +3,7 @@ import BrowserView from './BrowserView';
 import SettingsView from './SettingsView';
 import DownloadsView from './DownloadsView';
 import LibraryView from './LibraryView';
-import { VkNode, VkConnectionStatus, DownloadItem } from '../types';
+import {VkNode, VkConnectionStatus, DownloadItem} from '../types';
 
 interface MainViewProps {
   searchQuery: string;
@@ -20,6 +20,7 @@ interface MainViewProps {
   pauseDownload: (id: string) => void;
   resumeDownload: (id: string) => void;
   cancelDownload: (id: string) => void;
+  retryDownload: (id: string) => void;
 }
 
 // Ce composant agit comme un "Routeur".
@@ -38,7 +39,8 @@ const MainView: React.FC<MainViewProps> = ({
   addDownload,
   pauseDownload,
   resumeDownload,
-  cancelDownload
+  cancelDownload,
+  retryDownload
 }) => {
 
   const renderContent = () => {
@@ -62,6 +64,10 @@ const MainView: React.FC<MainViewProps> = ({
             searchQuery={searchQuery}
             onVkStatusChange={onVkStatusChange}
             addDownload={addDownload}
+            downloads={downloads}
+            pauseDownload={pauseDownload}
+            resumeDownload={resumeDownload}
+            cancelDownload={cancelDownload}
           />
         );
       case 'downloads':
@@ -71,6 +77,8 @@ const MainView: React.FC<MainViewProps> = ({
             pauseDownload={pauseDownload}
             resumeDownload={resumeDownload}
             cancelDownload={cancelDownload}
+            retryDownload={retryDownload}
+            syncedData={syncedData}
           />
         );
       case 'library':

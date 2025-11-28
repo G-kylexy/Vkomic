@@ -40,32 +40,32 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, vkStatus }) 
   const displayRegion = formatRegion(vkStatus.regionAggregate);
 
   return (
-    <div className="w-64 bg-[#0B1221] flex flex-col h-screen border-r border-slate-800 flex-shrink-0">
+    <div className="w-64 bg-[#050B14] flex flex-col h-screen border-r border-[#1e293b] flex-shrink-0 pt-2">
       {/* Logo Area */}
-      <div className="h-20 flex items-center px-6">
-        <div className="flex items-center gap-2 text-white font-bold text-xl">
+      <div className="h-16 flex items-center px-6 mb-4">
+        <div className="flex items-center gap-3 text-white font-bold text-xl tracking-tight">
           <Zap className="text-blue-500 fill-blue-500" size={24} />
           <span>VKomic</span>
         </div>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-4 py-4 space-y-2">
+      <nav className="flex-1 px-4 space-y-1.5">
         {navItems.map((item) => {
           const isActive = activeTab === item.id;
           return (
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id)}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors text-sm font-medium
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all text-sm font-medium border relative group
                 ${
                   isActive
-                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                    ? 'bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-900/40'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/50 border-transparent'
                 }
               `}
             >
-              <item.icon size={20} />
+              <item.icon size={18} className={isActive ? 'text-white' : 'text-slate-500 group-hover:text-white'} />
               {item.label}
             </button>
           );
@@ -73,7 +73,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, vkStatus }) 
       </nav>
 
       {/* Footer / Status */}
-      <div className="pb-6">
+      <div className="pb-6 mt-4">
         <div className="mx-6 h-px bg-slate-800/50 mb-6"></div>
         <div className="px-6 flex flex-col gap-2 text-xs">
           <div className="flex items-center gap-2 text-emerald-400 font-medium">
@@ -83,7 +83,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, vkStatus }) 
             </span>
             {t.sidebar.connectedToVK}
           </div>
-          <div className="text-slate-500 mt-1 pl-4">
+          <div className="text-slate-500 mt-1 pl-4 space-y-1">
             <p>{t.sidebar.latency}: {vkStatus.latencyMs !== null ? `${vkStatus.latencyMs}ms` : '--'}</p>
             <p>{t.sidebar.region}: {displayRegion}</p>
           </div>
