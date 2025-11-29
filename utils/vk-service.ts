@@ -165,6 +165,7 @@ const extractDocuments = (items: any[]): VkNode[] => {
             type: 'file',
             extension: doc.ext.toUpperCase(), // ex: PDF
             url: url,
+            sizeBytes: typeof doc.size === 'number' ? doc.size : undefined,
             isLoaded: true
           });
         }

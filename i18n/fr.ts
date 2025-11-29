@@ -87,6 +87,7 @@ export const fr = {
         tableSeries: 'Série',
         tableVolume: 'Tome',
         tableStatus: 'Statut',
+        tableDate: 'Date',
         tableSize: 'Taille',
         tableActions: 'Actions',
         completed: 'Téléchargé',

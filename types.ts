@@ -32,6 +32,7 @@ export interface VkNode {
   isLoaded?: boolean;   // Indique si on a déjà chargé le contenu de ce dossier
   vkGroupId?: string;   // ID du groupe VK (nécessaire pour l'API)
   vkTopicId?: string;   // ID du topic VK (nécessaire pour l'API)
+  sizeBytes?: number;   // Taille du fichier (en octets) pour les noeuds de type "file"
 }
 
 export interface VkConnectionStatus {
@@ -47,6 +48,7 @@ export interface DownloadItem {
   title: string;
   progress: number; // 0-100
   status: 'pending' | 'downloading' | 'paused' | 'completed' | 'canceled' | 'error';
+  createdAt?: string; // ISO date de la derni��re tentative
   size?: string;
   speed?: string;
   url: string;
