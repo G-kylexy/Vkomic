@@ -10,9 +10,18 @@ interface DownloadsViewProps {
   cancelDownload: (id: string) => void;
   retryDownload: (id: string) => void;
   syncedData?: VkNode[] | null;
+  downloadPath?: string;
 }
 
-const DownloadsView: React.FC<DownloadsViewProps> = ({ downloads, pauseDownload, resumeDownload, cancelDownload, retryDownload, syncedData }) => {
+const DownloadsView: React.FC<DownloadsViewProps> = ({
+  downloads,
+  pauseDownload,
+  resumeDownload,
+  cancelDownload,
+  retryDownload,
+  syncedData,
+  downloadPath,
+}) => {
   const { t } = useTranslation();
 
   // Statistiques calculées
@@ -47,6 +56,14 @@ const DownloadsView: React.FC<DownloadsViewProps> = ({ downloads, pauseDownload,
     const date = new Date(iso);
     if (isNaN(date.getTime())) return '--';
     return date.toLocaleString();
+  };
+
+  const getFolderFromPath = (p?: string) => {
+    if (!p) return undefined;
+    const normalized = p.replace(/\\/g, '/');
+    const idx = normalized.lastIndexOf('/');
+    if (idx <= 0) return p;
+    return p.slice(0, idx);
   };
 
   return (
@@ -202,7 +219,18 @@ const DownloadsView: React.FC<DownloadsViewProps> = ({ downloads, pauseDownload,
 
                             {/* Bouton Dossier pour les téléchargements terminés */}
                             {isCompleted && (
-                              <button className="p-1.5 hover:bg-slate-700 rounded text-slate-300" title="Ouvrir le dossier">
+                              <button
+                                className="p-1.5 hover:bg-slate-700 rounded text-slate-300"
+                                title="Ouvrir le dossier"
+                                onClick={() => {
+                                  if (typeof window !== 'undefined' && window.fs?.openPath) {
+                                    const folder = getFolderFromPath(d.path) || downloadPath;
+                                    if (folder) {
+                                      window.fs.openPath(folder);
+                                    }
+                                  }
+                                }}
+                              >
                                 <Folder size={16} />
                               </button>
                             )}

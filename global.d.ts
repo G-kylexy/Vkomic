@@ -25,6 +25,21 @@ declare global {
         }[];
       }>;
       openPath: (path: string) => Promise<void>;
+      downloadFile: (
+        id: string,
+        url: string,
+        directory: string,
+        fileName?: string
+      ) => Promise<{ ok: boolean; path: string; size?: number | null }>;
+      onDownloadProgress?: (
+        callback: (payload: {
+          id: string;
+          receivedBytes: number;
+          totalBytes: number | null;
+          progress: number | null;
+          speedBytes: number | null;
+        }) => void,
+      ) => () => void;
     };
     vk?: {
       ping: (token?: string) => Promise<{ ok: boolean; latency: number | null }>;

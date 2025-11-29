@@ -79,6 +79,7 @@ const MainView: React.FC<MainViewProps> = ({
             cancelDownload={cancelDownload}
             retryDownload={retryDownload}
             syncedData={syncedData}
+            downloadPath={downloadPath}
           />
         );
       case 'library':

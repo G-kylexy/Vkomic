@@ -6,6 +6,8 @@ import { VkNode, VkConnectionStatus, DownloadItem } from './types';
 import { TranslationProvider } from './i18n';
 import { DEFAULT_DOWNLOAD_PATH } from './utils/constants';
 
+const MAX_CONCURRENT_DOWNLOADS = 5;
+
 const formatBytes = (bytes?: number): string | undefined => {
   if (bytes === undefined || bytes === null || isNaN(bytes)) return undefined;
   if (bytes < 1024) return `${bytes} B`;
@@ -15,6 +17,19 @@ const formatBytes = (bytes?: number): string | undefined => {
   if (mb < 1024) return `${mb.toFixed(1)} MB`;
   const gb = mb / 1024;
   return `${gb.toFixed(1)} GB`;
+};
+
+const formatSpeed = (bytesPerSecond?: number | null): string => {
+  if (!bytesPerSecond || !Number.isFinite(bytesPerSecond) || bytesPerSecond <= 0) {
+    return '0 MB/s';
+  }
+  if (bytesPerSecond >= 1024 * 1024) {
+    return `${(bytesPerSecond / (1024 * 1024)).toFixed(1)} MB/s`;
+  }
+  if (bytesPerSecond >= 1024) {
+    return `${(bytesPerSecond / 1024).toFixed(0)} KB/s`;
+  }
+  return `${bytesPerSecond.toFixed(0)} B/s`;
 };
 
 const App: React.FC = () => {
@@ -180,7 +195,7 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // Persistance de l'historique de tǸlǸchargement
+  // Persistance de l'historique de téléchargement
   useEffect(() => {
     try {
       localStorage.setItem('vk_downloads', JSON.stringify(downloads));

@@ -16,7 +16,15 @@ contextBridge.exposeInMainWorld('dialog', {
 
 contextBridge.exposeInMainWorld('fs', {
     listDirectory: (path) => ipcRenderer.invoke('fs:listDirectory', path),
-    openPath: (path) => ipcRenderer.invoke('fs:openPath', path)
+    openPath: (path) => ipcRenderer.invoke('fs:openPath', path),
+    downloadFile: (id, url, directory, fileName) =>
+        ipcRenderer.invoke('fs:downloadFile', { id, url, directory, fileName }),
+    onDownloadProgress: (callback) => {
+        if (typeof callback !== 'function') return () => {};
+        const listener = (_event, payload) => callback(payload);
+        ipcRenderer.on('fs:downloadProgress', listener);
+        return () => ipcRenderer.removeListener('fs:downloadProgress', listener);
+    }
 });
 
 contextBridge.exposeInMainWorld('vk', {

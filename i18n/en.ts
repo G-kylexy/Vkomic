@@ -89,6 +89,7 @@ export const en: Translations = {
         tableSeries: 'Series',
         tableVolume: 'Volume',
         tableStatus: 'Status',
+        tableDate: 'Date',
         tableSize: 'Size',
         tableActions: 'Actions',
         completed: 'Downloaded',
