@@ -9,10 +9,26 @@ interface SettingsViewProps {
   setDownloadPath: (path: string) => void;
 }
 
-const SettingsView: React.FC<SettingsViewProps> = ({ vkToken, setVkToken, downloadPath, setDownloadPath }) => {
+const SettingsView: React.FC<SettingsViewProps & {
+  vkGroupId: string;
+  setVkGroupId: (groupId: string) => void;
+  vkTopicId: string;
+  setVkTopicId: (topicId: string) => void;
+}> = ({
+  vkToken,
+  setVkToken,
+  downloadPath,
+  setDownloadPath,
+  vkGroupId,
+  setVkGroupId,
+  vkTopicId,
+  setVkTopicId,
+}) => {
   const { t, language, setLanguage } = useTranslation();
 
   const [localToken, setLocalToken] = useState(vkToken);
+  const [localGroupId, setLocalGroupId] = useState(vkGroupId);
+  const [localTopicId, setLocalTopicId] = useState(vkTopicId);
   const [localDownloadPath, setLocalDownloadPath] = useState(downloadPath);
   const [isSaved, setIsSaved] = useState(false);
 
@@ -24,8 +40,18 @@ const SettingsView: React.FC<SettingsViewProps> = ({ vkToken, setVkToken, downlo
     setLocalDownloadPath(downloadPath);
   }, [downloadPath]);
 
+  useEffect(() => {
+    setLocalGroupId(vkGroupId);
+  }, [vkGroupId]);
+
+  useEffect(() => {
+    setLocalTopicId(vkTopicId);
+  }, [vkTopicId]);
+
   const handleSave = () => {
     setVkToken(localToken);
+    setVkGroupId(localGroupId.trim());
+    setVkTopicId(localTopicId.trim());
     setDownloadPath(localDownloadPath);
     setIsSaved(true);
     setTimeout(() => setIsSaved(false), 2000);
@@ -33,6 +59,22 @@ const SettingsView: React.FC<SettingsViewProps> = ({ vkToken, setVkToken, downlo
 
   const handleTokenChange = (value: string) => {
     setLocalToken(value);
+    setIsSaved(false);
+  };
+
+  const handleGroupIdChange = (value: string) => {
+    setLocalGroupId(value);
+    setIsSaved(false);
+  };
+
+  const handleTopicIdChange = (value: string) => {
+    setLocalTopicId(value);
+    setIsSaved(false);
+  };
+
+  const resetGroupAndTopic = () => {
+    setLocalGroupId('203785966');
+    setLocalTopicId('47515406');
     setIsSaved(false);
   };
 
@@ -115,7 +157,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ vkToken, setVkToken, downlo
               </p>
             </div>
 
-            {/* Champs ID (Lecture seule) */}
+            {/* Champs ID (Groupe / Topic) */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-sm font-medium text-slate-400 mb-2.5">
@@ -123,9 +165,9 @@ const SettingsView: React.FC<SettingsViewProps> = ({ vkToken, setVkToken, downlo
                 </label>
                 <input
                   type="text"
-                  value="203785966"
-                  readOnly
-                  className="w-full bg-[#161f32] text-slate-200 text-sm rounded-lg px-4 py-3 border border-slate-700/50 cursor-default opacity-80 focus:outline-none font-mono"
+                  value={localGroupId}
+                  onChange={(e) => handleGroupIdChange(e.target.value)}
+                  className="w-full bg-[#161f32] text-slate-200 text-sm rounded-lg px-4 py-3 border border-slate-700/50 focus:outline-none font-mono"
                 />
               </div>
               <div>
@@ -134,12 +176,20 @@ const SettingsView: React.FC<SettingsViewProps> = ({ vkToken, setVkToken, downlo
                 </label>
                 <input
                   type="text"
-                  value="47515406"
-                  readOnly
-                  className="w-full bg-[#161f32] text-slate-200 text-sm rounded-lg px-4 py-3 border border-slate-700/50 cursor-default opacity-80 focus:outline-none font-mono"
+                  value={localTopicId}
+                  onChange={(e) => handleTopicIdChange(e.target.value)}
+                  className="w-full bg-[#161f32] text-slate-200 text-sm rounded-lg px-4 py-3 border border-slate-700/50 focus:outline-none font-mono"
                 />
               </div>
             </div>
+
+            <button
+              type="button"
+              onClick={resetGroupAndTopic}
+              className="mt-3 inline-flex items-center gap-2 text-xs text-slate-300 hover:text-white px-3 py-1.5 rounded-md border border-slate-700/70 hover:border-blue-500/70 bg-[#161f32] hover:bg-[#1e293b] transition-colors"
+            >
+              {t.settings.resetGroupDefaults}
+            </button>
           </div>
         </div>
 

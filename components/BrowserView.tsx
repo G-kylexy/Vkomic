@@ -22,6 +22,8 @@ import { useTranslation } from '../i18n';
 
 interface BrowserViewProps {
   vkToken: string;
+  vkGroupId: string;
+  vkTopicId: string;
   syncedData: VkNode[] | null;
   setSyncedData: (data: VkNode[]) => void;
   searchQuery: string;
@@ -35,6 +37,8 @@ interface BrowserViewProps {
 
 const BrowserView: React.FC<BrowserViewProps> = ({
   vkToken,
+  vkGroupId,
+  vkTopicId,
   syncedData,
   setSyncedData,
   searchQuery,
@@ -81,7 +85,7 @@ const BrowserView: React.FC<BrowserViewProps> = ({
     setNavPath([]);
     try {
       const start = performance.now();
-      const data = await fetchRootIndex(vkToken);
+      const data = await fetchRootIndex(vkToken, vkGroupId, vkTopicId);
       setSyncedData(data);
       const latency = Math.round(performance.now() - start);
       onVkStatusChange({
