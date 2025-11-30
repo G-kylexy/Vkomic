@@ -169,7 +169,10 @@ const App: React.FC = () => {
       prev.map((d) => {
         if (d.id === id) {
           // Si on reprend, on garde la progression actuelle
-          const keepProgress = d.status === 'paused' || d.status === 'canceled' || d.status === 'error';
+          // y compris pour les éléments repassés en "pending" mais ayant déjà une progression > 0
+          const hasProgress = typeof d.progress === 'number' && d.progress > 0;
+          const keepProgress =
+            d.status === 'paused' || d.status === 'canceled' || d.status === 'error' || hasProgress;
           return {
             ...d,
             status: 'downloading',

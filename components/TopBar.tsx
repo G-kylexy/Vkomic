@@ -30,12 +30,24 @@ const TopBar: React.FC<TopBarProps> = ({ searchQuery, setSearchQuery }) => {
 
       {/* Right Controls (User Profile + Window Controls) */}
       <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as any}>
-        {/* User Profile */}
-        <div className="relative p-[2px] rounded-full animate-rainbow">
+        {/* User Profile / GitHub link */}
+        <button
+          type="button"
+          title="Kylexy"
+          onClick={() => {
+            const url = 'https://github.com/G-kylexy';
+            if (window.shell?.openExternal) {
+              window.shell.openExternal(url);
+            } else {
+              window.open(url, '_blank');
+            }
+          }}
+          className="relative p-[2px] rounded-full animate-rainbow cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/70 focus:ring-offset-2 focus:ring-offset-[#050B14]"
+        >
           <div className="w-7 h-7 rounded-full bg-slate-800 flex items-center justify-center text-xs text-slate-300 font-bold border-2 border-[#050B14]">
             KY
           </div>
-        </div>
+        </button>
 
         {/* Window Controls */}
         <div className="flex items-center">
