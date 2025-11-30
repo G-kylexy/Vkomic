@@ -54,4 +54,5 @@ export interface DownloadItem {
   url: string;
   path?: string; // Local save path
   extension?: string;
+  subFolder?: string;
 }

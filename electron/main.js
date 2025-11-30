@@ -94,6 +94,22 @@ app.whenReady().then(() => {
     return { path: targetPath, entries };
   });
 
+  const activeDownloads = new Map();
+
+  // Annule un téléchargement en cours
+  ipcMain.handle('fs:cancelDownload', async (_, id) => {
+    if (activeDownloads.has(id)) {
+      try {
+        activeDownloads.get(id).abort();
+      } catch (e) {
+        console.error('Error cancelling download:', e);
+      }
+      activeDownloads.delete(id);
+      return true;
+    }
+    return false;
+  });
+
   // Télécharge un fichier dans le dossier choisi
   ipcMain.handle('fs:downloadFile', async (event, args) => {
     const { id, url, directory, fileName } = args || {};
@@ -128,80 +144,156 @@ app.whenReady().then(() => {
     const sanitizedName = finalName.replace(/[<>:"/\\|?*]+/g, '').trim() || 'download';
     const targetPath = path.join(safeDirectory, sanitizedName);
 
-    const res = await fetch(url);
-    if (!res.ok) {
-      throw new Error(`Failed to download file (HTTP ${res.status})`);
+    // Vérifier si le fichier existe déjà pour reprise
+    let startByte = 0;
+    try {
+      const stats = await fs.promises.stat(targetPath);
+      startByte = stats.size;
+    } catch (e) {
+      // Le fichier n'existe pas, on commence à 0
+      startByte = 0;
     }
 
-    await fs.promises.mkdir(safeDirectory, { recursive: true });
-    let receivedBytes = 0;
-    const totalBytesHeader = res.headers.get('content-length');
-    const totalBytes = totalBytesHeader ? parseInt(totalBytesHeader, 10) : null;
-    const startedAt = Date.now();
-    const emitProgress = (forceComplete = false) => {
-      const elapsedSeconds = Math.max((Date.now() - startedAt) / 1000, 0.001);
-      const speedBytes = receivedBytes / elapsedSeconds;
-      const progressValue =
-        forceComplete || totalBytes === 0
-          ? 100
-          : totalBytes
-          ? Math.min(100, (receivedBytes / totalBytes) * 100)
-          : null;
-      event.sender.send('fs:downloadProgress', {
-        id,
-        receivedBytes,
-        totalBytes,
-        progress: progressValue,
-        speedBytes,
-      });
-    };
-
-    const reader =
-      typeof res.body?.getReader === 'function' ? res.body.getReader() : null;
-
-    if (!reader) {
-      const arrayBuffer = await res.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
-      receivedBytes = buffer.length;
-      await fs.promises.writeFile(targetPath, buffer);
-      emitProgress(true);
-      return { ok: true, path: targetPath, size: receivedBytes };
-    }
-
-    const fileStream = fs.createWriteStream(targetPath);
-    let lastEmit = Date.now();
+    const controller = new AbortController();
+    activeDownloads.set(id, controller);
 
     try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (value) {
-          const chunk = Buffer.from(value);
-          receivedBytes += chunk.length;
-          if (!fileStream.write(chunk)) {
-            await new Promise((resolve) => fileStream.once('drain', resolve));
-          }
-          const now = Date.now();
-          if (now - lastEmit >= 250) {
-            emitProgress();
-            lastEmit = now;
-          }
-        }
+      const headers = {};
+      if (startByte > 0) {
+        headers['Range'] = `bytes=${startByte}-`;
       }
 
-      fileStream.end();
-      await new Promise((resolve, reject) => {
-        fileStream.on('finish', resolve);
-        fileStream.on('error', reject);
+      const res = await fetch(url, {
+        signal: controller.signal,
+        headers: headers
       });
-      emitProgress(true);
-    } catch (error) {
-      fileStream.destroy();
-      await fs.promises.rm(targetPath, { force: true }).catch(() => {});
-      throw error;
-    }
 
-    return { ok: true, path: targetPath, size: receivedBytes };
+      if (!res.ok && res.status !== 206) {
+        throw new Error(`Failed to download file (HTTP ${res.status})`);
+      }
+
+      // Si le serveur ne supporte pas le Range (200 OK au lieu de 206), on repart de 0
+      if (res.status === 200) {
+        startByte = 0;
+      }
+
+      await fs.promises.mkdir(safeDirectory, { recursive: true });
+
+      let receivedBytes = 0; // Octets reçus dans CETTE session
+      const contentLengthHeader = res.headers.get('content-length');
+      const chunkLength = contentLengthHeader ? parseInt(contentLengthHeader, 10) : null;
+
+      // La taille totale est la taille déjà téléchargée + la taille restante (chunk)
+      // Si status 200, startByte est 0, donc totalBytes = chunkLength
+      const totalBytes = chunkLength ? startByte + chunkLength : null;
+
+      const startedAt = Date.now();
+
+      const emitProgress = (forceComplete = false) => {
+        const elapsedSeconds = Math.max((Date.now() - startedAt) / 1000, 0.001);
+        const speedBytes = receivedBytes / elapsedSeconds;
+
+        const currentTotalBytes = startByte + receivedBytes;
+
+        const progressValue =
+          forceComplete || (totalBytes && currentTotalBytes >= totalBytes)
+            ? 100
+            : totalBytes
+              ? Math.min(100, (currentTotalBytes / totalBytes) * 100)
+              : null;
+
+        event.sender.send('fs:downloadProgress', {
+          id,
+          receivedBytes: currentTotalBytes, // On envoie le total cumulé
+          totalBytes,
+          progress: progressValue,
+          speedBytes,
+        });
+      };
+
+      // Émettre immédiatement la progression initiale pour éviter d'afficher 0%
+      // lors de la reprise d'un téléchargement
+      if (startByte > 0) {
+        emitProgress();
+      }
+
+      const reader =
+        typeof res.body?.getReader === 'function' ? res.body.getReader() : null;
+
+      if (!reader) {
+        const arrayBuffer = await res.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        receivedBytes = buffer.length;
+        // Si pas de stream, on écrit tout (mode 'w' si startByte=0, sinon 'a' mais fetch sans stream c'est rare pour des gros fichiers)
+        // Pour simplifier, si pas de reader, on écrase tout (cas rare ici)
+        await fs.promises.writeFile(targetPath, buffer);
+        emitProgress(true);
+        return { ok: true, path: targetPath, size: receivedBytes };
+      }
+
+      // Mode 'a' (append) si on reprend (206), sinon 'w' (write)
+      const flags = startByte > 0 && res.status === 206 ? 'a' : 'w';
+      const fileStream = fs.createWriteStream(targetPath, { flags });
+
+      let lastEmit = Date.now();
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value) {
+            const chunk = Buffer.from(value);
+            receivedBytes += chunk.length;
+            if (!fileStream.write(chunk)) {
+              await new Promise((resolve) => fileStream.once('drain', resolve));
+            }
+            const now = Date.now();
+            if (now - lastEmit >= 250) {
+              emitProgress();
+              lastEmit = now;
+            }
+          }
+        }
+
+        fileStream.end();
+        await new Promise((resolve, reject) => {
+          fileStream.on('finish', resolve);
+          fileStream.on('error', reject);
+        });
+        emitProgress(true);
+      } catch (error) {
+        fileStream.destroy();
+        // IMPORTANT: On ne supprime PAS le fichier si c'est une annulation (AbortError)
+        // Cela permet de reprendre le téléchargement plus tard
+        if (error.name === 'AbortError') {
+          return { ok: false, status: 'aborted', path: targetPath, size: startByte + receivedBytes };
+        }
+
+        await fs.promises.rm(targetPath, { force: true }).catch(() => { });
+        throw error;
+      }
+
+      return { ok: true, path: targetPath, size: startByte + receivedBytes };
+    } catch (error) {
+      // Gestion de l'annulation (AbortError) au niveau global
+      // Vérifier plusieurs propriétés car l'erreur peut avoir différents formats
+      const isAbortError = error.name === 'AbortError' ||
+        error.code === 'ABORT_ERR' ||
+        error.message?.includes('aborted');
+
+      if (isAbortError) {
+        try {
+          const stats = await fs.promises.stat(targetPath);
+          return { ok: false, status: 'aborted', path: targetPath, size: stats.size };
+        } catch {
+          return { ok: false, status: 'aborted', path: targetPath, size: startByte };
+        }
+      }
+      // Pour toute autre erreur, on la propage
+      throw error;
+    } finally {
+      activeDownloads.delete(id);
+    }
   });
 
   // Ouvre un fichier/dossier dans le système

@@ -1,4 +1,4 @@
-export {};
+export { };
 
 declare global {
   interface Window {
@@ -30,7 +30,7 @@ declare global {
         url: string,
         directory: string,
         fileName?: string
-      ) => Promise<{ ok: boolean; path: string; size?: number | null }>;
+      ) => Promise<{ ok: boolean; path: string; size?: number | null; status?: string }>;
       onDownloadProgress?: (
         callback: (payload: {
           id: string;
@@ -40,6 +40,7 @@ declare global {
           speedBytes: number | null;
         }) => void,
       ) => () => void;
+      cancelDownload?: (id: string) => Promise<boolean>;
     };
     vk?: {
       ping: (token?: string) => Promise<{ ok: boolean; latency: number | null }>;

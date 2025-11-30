@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Download, Pause, Play, X, Check, BarChart, Folder, RefreshCw } from 'lucide-react';
+import { Download, Pause, Play, X, Check, BarChart, Folder, RefreshCw, Trash2 } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { DownloadItem, VkNode } from '../types';
 
@@ -11,6 +11,7 @@ interface DownloadsViewProps {
   retryDownload: (id: string) => void;
   syncedData?: VkNode[] | null;
   downloadPath?: string;
+  clearDownloads: () => void;
 }
 
 const DownloadsView: React.FC<DownloadsViewProps> = ({
@@ -21,6 +22,7 @@ const DownloadsView: React.FC<DownloadsViewProps> = ({
   retryDownload,
   syncedData,
   downloadPath,
+  clearDownloads,
 }) => {
   const { t } = useTranslation();
 
@@ -99,12 +101,24 @@ const DownloadsView: React.FC<DownloadsViewProps> = ({
         </div>
 
         {/* Section 2: Table des téléchargements */}
-        <div className="flex items-center gap-3 mb-6">
-          <Download className="text-slate-200" size={24} />
-          <h2 className="text-2xl font-bold text-white tracking-tight">{t.downloads.title}</h2>
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <Download className="text-slate-200" size={24} />
+            <h2 className="text-2xl font-bold text-white tracking-tight">{t.downloads.title}</h2>
+          </div>
+          {downloads.length > 0 && (
+            <button
+              onClick={clearDownloads}
+              className="flex items-center gap-2 px-4 py-2 bg-rose-900/20 hover:bg-rose-900/40 text-rose-400 rounded-lg transition-colors text-sm font-medium"
+              title="Nettoyer"
+            >
+              <Trash2 size={18} />
+              <span>Nettoyer</span>
+            </button>
+          )}
         </div>
 
-          <div className="bg-[#131926] border border-[#1e293b] rounded-xl overflow-hidden shadow-xl flex flex-col min-h-[400px]">
+        <div className="bg-[#131926] border border-[#1e293b] rounded-xl overflow-hidden shadow-xl flex flex-col min-h-[400px]">
           {downloads.length === 0 ? (
             <div className="flex-1 flex flex-col items-center justify-center text-slate-500 py-20">
               <div className="w-16 h-16 rounded-full bg-slate-800/50 flex items-center justify-center mb-4">
@@ -139,9 +153,9 @@ const DownloadsView: React.FC<DownloadsViewProps> = ({
                   {downloads.map((d) => {
                     const isCompleted = d.status === 'completed';
                     const isDownloading = d.status === 'downloading';
-                     const isPaused = d.status === 'paused';
-                     const isCanceled = d.status === 'canceled';
-                     const dateLabel = formatDate(d.createdAt);
+                    const isPaused = d.status === 'paused';
+                    const isCanceled = d.status === 'canceled';
+                    const dateLabel = formatDate(d.createdAt);
                     const volumeLabel = getVolumeLabel(d.title);
                     const displaySize = d.size || '--';
 

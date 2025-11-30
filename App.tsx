@@ -46,7 +46,30 @@ const App: React.FC = () => {
   });
 
   // Données synchronisées : L'arbre des dossiers/fichiers récupéré depuis VK
-  const [syncedData, setSyncedData] = useState<VkNode[] | null>(null);
+  const [syncedData, setSyncedData] = useState<VkNode[] | null>(() => {
+    try {
+      const raw = localStorage.getItem('vk_synced_data');
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return null;
+      return parsed as VkNode[];
+    } catch {
+      return null;
+    }
+  });
+
+  // Persistance des données synchronisées
+  useEffect(() => {
+    try {
+      if (syncedData) {
+        localStorage.setItem('vk_synced_data', JSON.stringify(syncedData));
+      } else {
+        localStorage.removeItem('vk_synced_data');
+      }
+    } catch (e) {
+      console.error("Failed to save synced data", e);
+    }
+  }, [syncedData]);
   // Chemin de téléchargement local choisi par l'utilisateur
   const [downloadPath, setDownloadPath] = useState(() => {
     return localStorage.getItem('vk_download_path') || DEFAULT_DOWNLOAD_PATH;
@@ -67,14 +90,20 @@ const App: React.FC = () => {
       if (!raw) return [];
       const parsed = JSON.parse(raw);
       if (!Array.isArray(parsed)) return [];
-      return parsed as DownloadItem[];
+
+      // On remet les téléchargements "en cours" en pause au démarrage
+      // car le processus de téléchargement est perdu au rechargement
+      return (parsed as DownloadItem[]).map(d =>
+        d.status === 'downloading' ? { ...d, status: 'paused' } : d
+      );
     } catch {
       return [];
     }
   });
   const downloadIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  const addDownload = (node: VkNode) => {
+  const addDownload = (node: VkNode, subFolder?: string) => {
+    console.log("addDownload called for:", node.title, "subFolder:", subFolder);
     if (!node.url) return;
 
     const id = node.id || Math.random().toString(36).substr(2, 9);
@@ -99,6 +128,7 @@ const App: React.FC = () => {
 
       // Si déjà en cours (file d'attente / pause / déjà terminé), on ne recrée pas un doublon
       if (existing && ['pending', 'downloading', 'paused', 'completed'].includes(existing.status)) {
+        console.log("Download already exists:", existing.status);
         return prev;
       }
 
@@ -123,28 +153,87 @@ const App: React.FC = () => {
       }
 
       // Nouveau téléchargement
-      return [newDownload, ...prev];
+      const itemWithSubFolder = { ...newDownload, subFolder };
+      console.log("Adding new download to queue:", itemWithSubFolder);
+      return [itemWithSubFolder, ...prev];
     });
 
-    // Démarre le téléchargement après un court délai
-    setTimeout(() => {
-      startDownloadSimulation(id);
-    }, 500);
+    // On ne démarre plus le téléchargement immédiatement, le useEffect de gestion de file d'attente s'en chargera
   };
 
-  const startDownloadSimulation = (id: string) => {
+  const startRealDownload = async (id: string, url: string, title: string, extension?: string, subFolder?: string) => {
+    console.log("Starting real download:", title);
+    // Mise à jour du statut en "downloading"
+    // On ne reset PAS la progression si on reprend un téléchargement
     setDownloads((prev) =>
       prev.map((d) => {
-        // IMPORTANT: Ne pas redémarrer si le téléchargement a été annulé entre temps
-        if (d.id === id && d.status !== 'canceled') {
-          return { ...d, status: 'downloading', progress: 0 };
+        if (d.id === id) {
+          // Si on reprend, on garde la progression actuelle
+          const keepProgress = d.status === 'paused' || d.status === 'canceled' || d.status === 'error';
+          return {
+            ...d,
+            status: 'downloading',
+            progress: keepProgress ? d.progress : 0,
+            speed: '0 MB/s'
+          };
         }
         return d;
-      }),
+      })
     );
+
+    try {
+      let fileName = title;
+      if (extension) {
+        const ext = extension.toLowerCase();
+        if (!fileName.toLowerCase().endsWith(`.${ext}`)) {
+          fileName = `${fileName}.${ext}`;
+        }
+      }
+
+      // Appel au processus principal pour télécharger
+      if (window.fs && window.fs.downloadFile) {
+        let targetPath = downloadPath;
+        if (subFolder) {
+          // Nettoyage du nom de dossier (suppression des caractères interdits sous Windows)
+          const safeSubFolder = subFolder.replace(/[<>:"/\\|?*]+/g, '').trim();
+
+          // Détection basique du séparateur
+          const separator = downloadPath.includes('\\') ? '\\' : '/';
+          // On évite les doubles séparateurs
+          const cleanPath = downloadPath.endsWith(separator) ? downloadPath.slice(0, -1) : downloadPath;
+          targetPath = `${cleanPath}${separator}${safeSubFolder}`;
+        }
+        const result = await window.fs.downloadFile(id, url, targetPath, fileName);
+
+        // Si le téléchargement a été avorté (pause/cancel), ce n'est pas une erreur
+        if (result && !result.ok && result.status === 'aborted') {
+          // Le statut a déjà été mis à jour par pauseDownload ou cancelDownload
+          return;
+        }
+
+        // La progression est gérée par l'événement onDownloadProgress dans useEffect
+      } else {
+        throw new Error("Download capability not available");
+      }
+    } catch (error) {
+      console.error("Download failed", error);
+      setDownloads((prev) =>
+        prev.map((d) => {
+          if (d.id === id) {
+            // Si le téléchargement a été mis en pause manuellement, on ne le marque pas comme annulé/erreur
+            if (d.status === 'paused') return d;
+            return { ...d, status: 'canceled', speed: 'Error' };
+          }
+          return d;
+        })
+      );
+    }
   };
 
   const retryDownload = (id: string) => {
+    const download = downloads.find((d) => d.id === id);
+    if (!download) return;
+
     setDownloads((prev) =>
       prev.map((d) => {
         if (d.id === id) {
@@ -157,42 +246,61 @@ const App: React.FC = () => {
           };
         }
         return d;
-      }),
+      })
     );
-    setTimeout(() => {
-      startDownloadSimulation(id);
-    }, 500);
   };
 
-  // Boucle de simulation de progression
+  // GESTION DE LA FILE D'ATTENTE (QUEUE)
   useEffect(() => {
-    const interval = setInterval(() => {
-      setDownloads((prev) => {
-        let hasChanges = false;
-        const updated = prev.map((d) => {
-          // Seuls les téléchargements avec le statut 'downloading' progressent
-          if (d.status === 'downloading' && d.progress < 100) {
-            hasChanges = true;
-            const increment = Math.random() * 5 + 1; // 1% to 6%
-            const nextProgress = Math.min(d.progress + increment, 100);
-            const newProgress = parseFloat(nextProgress.toFixed(1));
-            const isComplete = newProgress >= 100;
-            const speed = HzSpeed(isComplete);
+    // Compte les téléchargements actifs (en cours)
+    // Les téléchargements en pause ne comptent pas dans la limite
+    const activeCount = downloads.filter(d => d.status === 'downloading').length;
+    const pendingItems = downloads.filter(d => d.status === 'pending');
+
+    // Si on a moins de 5 téléchargements actifs et qu'il y a des éléments en attente
+    if (activeCount < 5 && pendingItems.length > 0) {
+      console.log(`Queue processing: Active=${activeCount}, Pending=${pendingItems.length}. Starting next batch...`);
+      // On lance les prochains éléments pour atteindre la limite de 5
+      const slotsAvailable = 5 - activeCount;
+      const toStart = pendingItems.slice(0, slotsAvailable);
+
+      toStart.forEach(item => {
+        startRealDownload(item.id, item.url, item.title, item.extension, item.subFolder);
+      });
+    }
+  }, [downloads]);
+
+  // Écoute de la progression réelle des téléchargements depuis le processus principal
+  useEffect(() => {
+    if (!window.fs || !window.fs.onDownloadProgress) return;
+
+    const removeListener = window.fs.onDownloadProgress((payload: any) => {
+      const { id, progress, speedBytes } = payload;
+
+      setDownloads((prev) =>
+        prev.map((d) => {
+          if (d.id === id) {
+            const isComplete = progress >= 100;
+            const newProgress = typeof progress === 'number' ? parseFloat(progress.toFixed(1)) : 0;
+
+            // Ne jamais réduire la progression - cela évite le flottement à 0% lors de la reprise
+            const safeProgress = Math.max(d.progress || 0, newProgress);
 
             return {
               ...d,
-              progress: newProgress,
-              status: (isComplete ? 'completed' : 'downloading') as DownloadItem['status'],
-              speed,
+              progress: safeProgress,
+              status: isComplete ? 'completed' : 'downloading',
+              speed: formatSpeed(speedBytes)
             };
           }
           return d;
-        });
-        return hasChanges ? updated : prev;
-      });
-    }, 800);
+        })
+      );
+    });
 
-    return () => clearInterval(interval);
+    return () => {
+      if (removeListener) removeListener();
+    };
   }, []);
 
   // Persistance de l'historique de téléchargement
@@ -204,10 +312,12 @@ const App: React.FC = () => {
     }
   }, [downloads]);
 
-  const HzSpeed = (isComplete: boolean) =>
-    isComplete ? '0 MB/s' : `${(Math.random() * 2 + 1).toFixed(1)} MB/s`;
-
   const pauseDownload = (id: string) => {
+    // On annule le téléchargement côté Electron mais on garde le statut "paused" côté UI
+    if (window.fs && window.fs.cancelDownload) {
+      window.fs.cancelDownload(id);
+    }
+
     setDownloads((prev) =>
       prev.map((d) =>
         d.id === id ? { ...d, status: 'paused', speed: '0 MB/s' } : d,
@@ -216,13 +326,24 @@ const App: React.FC = () => {
   };
 
   const resumeDownload = (id: string) => {
-    setDownloads((prev) =>
-      prev.map((d) => (d.id === id ? { ...d, status: 'downloading' } : d)),
-    );
+    // Relance le téléchargement
+    const download = downloads.find(d => d.id === id);
+    if (download) {
+      // On remet en pending pour que la queue le prenne en charge
+      setDownloads((prev) =>
+        prev.map((d) =>
+          d.id === id ? { ...d, status: 'pending', speed: '0 MB/s' } : d,
+        ),
+      );
+    }
   };
 
   const cancelDownload = (id: string) => {
-    // Annulation : on garde l'élément mais on change son statut
+    // Annulation réelle côté Electron
+    if (window.fs && window.fs.cancelDownload) {
+      window.fs.cancelDownload(id);
+    }
+
     setDownloads((prev) =>
       prev.map((d) =>
         d.id === id
@@ -360,6 +481,7 @@ const App: React.FC = () => {
             resumeDownload={resumeDownload}
             cancelDownload={cancelDownload}
             retryDownload={retryDownload}
+            clearDownloads={() => setDownloads([])}
           />
         </div>
       </div>

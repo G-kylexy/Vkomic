@@ -46,7 +46,7 @@ const jsonp = (url: string): Promise<any> => {
   return new Promise((resolve, reject) => {
     const callbackName = 'vk_cb_' + Math.round(100000 * Math.random());
     const script = document.createElement('script');
-    
+
     (window as any)[callbackName] = (data: any) => {
       delete (window as any)[callbackName];
       document.body.removeChild(script);
@@ -72,32 +72,70 @@ export const fetchVkTopic = async (token: string, groupId: string, topicId: stri
   return jsonp(url);
 };
 
+// Recherche globale dans les topics du groupe
+export const searchVkBoard = async (token: string, query: string): Promise<VkNode[]> => {
+  if (!token) return [];
+  const groupId = '203785966';
+  // On récupère un max de topics (100 est le max par défaut pour un appel)
+  // Idéalement il faudrait paginer, mais pour l'instant on prend les 100 plus récents
+  const url = `https://api.vk.com/method/board.getTopics?access_token=${token}&group_id=${groupId}&count=100&order=1&preview=1&v=${API_VERSION}`;
+
+  try {
+    const data = await jsonp(url);
+    if (data.response && data.response.items) {
+      const items = data.response.items;
+      const lowerQuery = query.toLowerCase();
+
+      return items
+        .filter((item: any) => item.title.toLowerCase().includes(lowerQuery))
+        .map((item: any) => ({
+          id: `topic_${item.id}`,
+          title: item.title,
+          type: 'genre', // Un topic est un conteneur
+          vkGroupId: groupId,
+          vkTopicId: item.id.toString(),
+          url: `https://vk.com/topic-${groupId}_${item.id}`,
+          children: [],
+          isLoaded: false
+        }));
+    }
+    return [];
+  } catch (e) {
+    console.error("Search Error", e);
+    return [];
+  }
+};
+
 // --- LOGIQUE DE PARSING (ANALYSE DE TEXTE) ---
 
 const cleanTitle = (text: string) => {
-    return text
-        .replace(/[:\-]+$/, '') 
-        .replace(/^►+\s*/, '') 
-        .replace(/\s*◄+$/, '') 
-        .replace(/\(lien\)/gi, '')
-        .trim();
+  return text
+    .replace(/[:\-]+$/, '')
+    .replace(/^►+\s*/, '')
+    .replace(/\s*◄+$/, '')
+    .replace(/\(lien\)/gi, '')
+    .trim();
 };
 
 // Analyse le texte brut des messages pour trouver "Titre de la BD -> Lien VK"
-const parseTopicBody = (text: string): VkNode[] => {
+const parseTopicBody = (text: string, excludeTopicId?: string): VkNode[] => {
   const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
   const nodes: VkNode[] = [];
   const seenIds = new Set<string>(); // Set pour éviter les doublons
-  
+
   const linkRegex = /vk\.com\/topic-(\d+)_(\d+)/;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    
+
     if (line.includes('vk.com/topic-')) {
       const match = line.match(linkRegex);
       if (match) {
         const topicId = match[2];
+
+        // ANTI-BOUCLE : On exclut le topic actuel s'il est cité
+        if (excludeTopicId && topicId === excludeTopicId) continue;
+
         const uniqueId = `topic_${topicId}`;
 
         // ANTI-DOUBLON : Si on a déjà traité cet ID, on passe
@@ -108,27 +146,30 @@ const parseTopicBody = (text: string): VkNode[] => {
         const parts = line.split(/http|vk\.com/);
         // Cas 1: "Naruto : http://vk.com..." (Sur la même ligne)
         if (parts[0].trim().length > 3) {
-            title = parts[0];
-        } 
+          title = parts[0];
+        }
         // Cas 2: "Naruto" (Ligne précédente)
         // http://vk.com... (Ligne actuelle)
         else if (i > 0) {
-            const prevLine = lines[i - 1];
-            if (!prevLine.includes('vk.com') && prevLine.length > 2) {
-                title = prevLine;
-            }
+          const prevLine = lines[i - 1];
+          // On utilise la ligne précédente SEULEMENT si elle ne ressemble pas à un lien
+          if (!prevLine.includes('vk.com') && prevLine.length > 2) {
+            title = prevLine;
+          }
         }
 
         title = cleanTitle(title);
-        
+
+        // Si pas de titre trouvé, on utilise un nom générique ou on saute ?
+        // Pour l'instant on saute pour éviter les liens "morts" ou de navigation
         if (!title) continue;
 
-        if (title.length < 100) { 
+        if (title.length < 100) {
           seenIds.add(uniqueId);
           nodes.push({
             id: uniqueId,
             title: title,
-            type: 'genre', 
+            type: 'genre',
             url: `https://vk.com/topic-${match[1]}_${match[2]}`,
             vkGroupId: match[1],
             vkTopicId: match[2],
@@ -155,7 +196,7 @@ const extractDocuments = (items: any[]): VkNode[] => {
         if (att.type === 'doc') {
           const doc = att.doc;
           const url = doc.url;
-          
+
           if (seenUrls.has(url)) return;
           seenUrls.add(url);
 
@@ -180,77 +221,75 @@ const extractDocuments = (items: any[]): VkNode[] => {
 // Fonction appelée par le bouton "Synchroniser"
 export const fetchRootIndex = async (token: string): Promise<VkNode[]> => {
   try {
-      // ID fixe du topic racine "INDEX"
-      const response = await fetchVkTopic(token, '203785966', '47515406');
-      
-      if (!response.response || !response.response.items) {
-        return MOCK_ROOT_NODES; // Fallback si l'API échoue
-      }
+    // ID fixe du topic racine "INDEX"
+    const response = await fetchVkTopic(token, '203785966', '47515406');
 
-      const fullText = response.response.items.map((i: any) => i.text).join('\n');
-      const nodes = parseTopicBody(fullText);
-      
-      if (nodes.length === 0) {
-          return MOCK_ROOT_NODES; // Fallback si parsing vide
-      }
-      
-      return nodes.map(n => ({...n, type: 'category'}));
+    if (!response.response || !response.response.items) {
+      return MOCK_ROOT_NODES; // Fallback si l'API échoue
+    }
+
+    const fullText = response.response.items.map((i: any) => i.text).join('\n');
+    const nodes = parseTopicBody(fullText);
+
+    if (nodes.length === 0) {
+      return MOCK_ROOT_NODES; // Fallback si parsing vide
+    }
+
+    return nodes.map(n => ({ ...n, type: 'category' }));
   } catch (error) {
-      console.error("VK API Error (Root):", error);
-      return MOCK_ROOT_NODES; // Fallback final
+    console.error("VK API Error (Root):", error);
+    return MOCK_ROOT_NODES; // Fallback final
   }
 };
 
 // Fonction appelée pour charger le contenu d'un dossier
 export const fetchNodeContent = async (token: string, node: VkNode): Promise<VkNode> => {
   if (!node.vkGroupId || !node.vkTopicId) {
-       return { ...node, isLoaded: true, children: [] };
+    return { ...node, isLoaded: true, children: [] };
   }
 
   try {
-      const response = await fetchVkTopic(token, node.vkGroupId, node.vkTopicId);
-      
-      if (!response.response || !response.response.items) {
-        throw new Error("Failed to fetch node content");
-      }
+    const response = await fetchVkTopic(token, node.vkGroupId, node.vkTopicId);
 
-      const items = response.response.items;
-      
-      // ÉTAPE 1 : Chercher des sous-dossiers (Autres Topics cités)
-      const fullText = items.map((i: any) => i.text).join('\n');
-      const children = parseTopicBody(fullText);
+    if (!response.response || !response.response.items) {
+      throw new Error("Failed to fetch node content");
+    }
 
-      if (children.length > 0) {
-        return {
-          ...node,
-          children: children,
-          isLoaded: true,
-          type: 'genre'
-        };
-      } 
-      
-      // ÉTAPE 2 : Si pas de sous-dossier, chercher des FICHIERS (Documents)
-      const documents = extractDocuments(items);
-      if (documents.length > 0) {
-        return {
-          ...node,
-          children: documents,
-          isLoaded: true,
-          type: 'series' // C'est un dossier final qui contient des fichiers
-        };
-      }
+    const items = response.response.items;
 
-      // Rien trouvé (Dossier vide)
-      return { ...node, isLoaded: true, children: [] };
+    // ÉTAPE 1 : Chercher des sous-dossiers (Autres Topics cités)
+    // On passe l'ID du topic actuel pour éviter les auto-références (boucles)
+    const fullText = items.map((i: any) => i.text).join('\n');
+    const subTopics = parseTopicBody(fullText, node.vkTopicId);
+
+    // ÉTAPE 2 : Chercher des FICHIERS (Documents)
+    const documents = extractDocuments(items);
+
+    // ÉTAPE 3 : Fusionner les résultats
+    // On affiche tout : sous-dossiers ET fichiers
+    const allChildren = [...subTopics, ...documents];
+
+    if (allChildren.length > 0) {
+      return {
+        ...node,
+        children: allChildren,
+        isLoaded: true,
+        // Si on a des fichiers, c'est une "série" (ou un dossier mixte), sinon une catégorie
+        type: documents.length > 0 ? 'series' : 'genre'
+      };
+    }
+
+    // Rien trouvé (Dossier vide)
+    return { ...node, isLoaded: true, children: [] };
 
   } catch (error) {
-      console.error("VK API Error (Node):", error);
-      return { 
-          ...node, 
-          isLoaded: true, 
-          children: [
-              { id: 'err1', title: 'Erreur (API)', type: 'category', isLoaded: true }
-          ] 
-      };
+    console.error("VK API Error (Node):", error);
+    return {
+      ...node,
+      isLoaded: true,
+      children: [
+        { id: 'err1', title: 'Erreur (API)', type: 'category', isLoaded: true }
+      ]
+    };
   }
 };

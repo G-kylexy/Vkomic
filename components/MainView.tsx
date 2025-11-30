@@ -3,7 +3,7 @@ import BrowserView from './BrowserView';
 import SettingsView from './SettingsView';
 import DownloadsView from './DownloadsView';
 import LibraryView from './LibraryView';
-import {VkNode, VkConnectionStatus, DownloadItem} from '../types';
+import { VkNode, VkConnectionStatus, DownloadItem } from '../types';
 
 interface MainViewProps {
   searchQuery: string;
@@ -16,11 +16,12 @@ interface MainViewProps {
   setDownloadPath: (path: string) => void;
   onVkStatusChange: (status: VkConnectionStatus) => void;
   downloads: DownloadItem[];
-  addDownload: (node: VkNode) => void;
+  addDownload: (node: VkNode, subFolder?: string) => void;
   pauseDownload: (id: string) => void;
   resumeDownload: (id: string) => void;
   cancelDownload: (id: string) => void;
   retryDownload: (id: string) => void;
+  clearDownloads: () => void;
 }
 
 // Ce composant agit comme un "Routeur".
@@ -40,7 +41,8 @@ const MainView: React.FC<MainViewProps> = ({
   pauseDownload,
   resumeDownload,
   cancelDownload,
-  retryDownload
+  retryDownload,
+  clearDownloads
 }) => {
 
   const renderContent = () => {
@@ -80,6 +82,7 @@ const MainView: React.FC<MainViewProps> = ({
             retryDownload={retryDownload}
             syncedData={syncedData}
             downloadPath={downloadPath}
+            clearDownloads={clearDownloads}
           />
         );
       case 'library':
