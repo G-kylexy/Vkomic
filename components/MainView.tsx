@@ -10,6 +10,10 @@ interface MainViewProps {
   activeTab: string;
   vkToken: string;
   setVkToken: (t: string) => void;
+  vkGroupId: string;
+  setVkGroupId: (groupId: string) => void;
+  vkTopicId: string;
+  setVkTopicId: (topicId: string) => void;
   syncedData: VkNode[] | null;
   setSyncedData: (data: VkNode[]) => void;
   downloadPath: string;
@@ -31,6 +35,10 @@ const MainView: React.FC<MainViewProps> = ({
   activeTab,
   vkToken,
   setVkToken,
+  vkGroupId,
+  setVkGroupId,
+  vkTopicId,
+  setVkTopicId,
   syncedData,
   setSyncedData,
   downloadPath,
@@ -52,6 +60,10 @@ const MainView: React.FC<MainViewProps> = ({
           <SettingsView
             vkToken={vkToken}
             setVkToken={setVkToken}
+            vkGroupId={vkGroupId}
+            setVkGroupId={setVkGroupId}
+            vkTopicId={vkTopicId}
+            setVkTopicId={setVkTopicId}
             downloadPath={downloadPath}
             setDownloadPath={setDownloadPath}
           />
@@ -61,6 +73,8 @@ const MainView: React.FC<MainViewProps> = ({
         return (
           <BrowserView
             vkToken={vkToken}
+            vkGroupId={vkGroupId}
+            vkTopicId={vkTopicId}
             syncedData={syncedData}
             setSyncedData={setSyncedData}
             searchQuery={searchQuery}

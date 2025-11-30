@@ -38,7 +38,7 @@ export const en: Translations = {
         and: 'and',
         groupId: 'Group ID',
         topicId: 'Topic ID',
-        resetGroupDefaults: 'Reset to default group/topic',
+        resetGroupDefaults: 'Reset',
 
         // General Preferences
         generalPreferences: 'General Preferences',

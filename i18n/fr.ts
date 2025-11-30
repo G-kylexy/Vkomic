@@ -36,7 +36,7 @@ export const fr = {
         and: 'et',
         groupId: 'ID du Groupe',
         topicId: 'ID du Topic',
-        resetGroupDefaults: 'Réinitialiser sur le groupe par défaut',
+        resetGroupDefaults: 'Par défaut',
 
         // General Preferences
         generalPreferences: 'Préférences Générales',

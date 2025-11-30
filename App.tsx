@@ -44,6 +44,12 @@ const App: React.FC = () => {
   const [vkToken, setVkToken] = useState(() => {
     return localStorage.getItem('vk_token') || '';
   });
+  const [vkGroupId, setVkGroupId] = useState(() => {
+    return localStorage.getItem('vk_group_id') || '203785966';
+  });
+  const [vkTopicId, setVkTopicId] = useState(() => {
+    return localStorage.getItem('vk_topic_id') || '47515406';
+  });
 
   // Données synchronisées : L'arbre des dossiers/fichiers récupéré depuis VK
   const [syncedData, setSyncedData] = useState<VkNode[] | null>(() => {
@@ -103,7 +109,6 @@ const App: React.FC = () => {
   const downloadIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const addDownload = (node: VkNode, subFolder?: string) => {
-    console.log("addDownload called for:", node.title, "subFolder:", subFolder);
     if (!node.url) return;
 
     const id = node.id || Math.random().toString(36).substr(2, 9);
@@ -128,7 +133,7 @@ const App: React.FC = () => {
 
       // Si déjà en cours (file d'attente / pause / déjà terminé), on ne recrée pas un doublon
       if (existing && ['pending', 'downloading', 'paused', 'completed'].includes(existing.status)) {
-        console.log("Download already exists:", existing.status);
+        
         return prev;
       }
 
@@ -154,7 +159,7 @@ const App: React.FC = () => {
 
       // Nouveau téléchargement
       const itemWithSubFolder = { ...newDownload, subFolder };
-      console.log("Adding new download to queue:", itemWithSubFolder);
+      
       return [itemWithSubFolder, ...prev];
     });
 
@@ -162,7 +167,7 @@ const App: React.FC = () => {
   };
 
   const startRealDownload = async (id: string, url: string, title: string, extension?: string, subFolder?: string) => {
-    console.log("Starting real download:", title);
+    
     // Mise à jour du statut en "downloading"
     // On ne reset PAS la progression si on reprend un téléchargement
     setDownloads((prev) =>
@@ -262,7 +267,7 @@ const App: React.FC = () => {
 
     // Si on a moins de 5 téléchargements actifs et qu'il y a des éléments en attente
     if (activeCount < 5 && pendingItems.length > 0) {
-      console.log(`Queue processing: Active=${activeCount}, Pending=${pendingItems.length}. Starting next batch...`);
+      
       // On lance les prochains éléments pour atteindre la limite de 5
       const slotsAvailable = 5 - activeCount;
       const toStart = pendingItems.slice(0, slotsAvailable);
@@ -362,6 +367,16 @@ const App: React.FC = () => {
   const handleSetVkToken = (token: string) => {
     setVkToken(token);
     localStorage.setItem('vk_token', token);
+  };
+
+  const handleSetVkGroupId = (groupId: string) => {
+    setVkGroupId(groupId);
+    localStorage.setItem('vk_group_id', groupId);
+  };
+
+  const handleSetVkTopicId = (topicId: string) => {
+    setVkTopicId(topicId);
+    localStorage.setItem('vk_topic_id', topicId);
   };
 
   const handleSetDownloadPath = (path: string) => {
@@ -473,6 +488,10 @@ const App: React.FC = () => {
             activeTab={activeTab}
             vkToken={vkToken}
             setVkToken={handleSetVkToken}
+            vkGroupId={vkGroupId}
+            setVkGroupId={handleSetVkGroupId}
+            vkTopicId={vkTopicId}
+            setVkTopicId={handleSetVkTopicId}
             syncedData={syncedData}
             setSyncedData={setSyncedData}
             downloadPath={downloadPath}

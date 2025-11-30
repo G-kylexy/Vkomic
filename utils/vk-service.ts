@@ -73,12 +73,12 @@ export const fetchVkTopic = async (token: string, groupId: string, topicId: stri
 };
 
 // Recherche globale dans les topics du groupe
-export const searchVkBoard = async (token: string, query: string): Promise<VkNode[]> => {
+export const searchVkBoard = async (token: string, query: string, groupId?: string): Promise<VkNode[]> => {
   if (!token) return [];
-  const groupId = '203785966';
+  const effectiveGroupId = groupId && groupId.trim().length > 0 ? groupId.trim() : '203785966';
   // On récupère un max de topics (100 est le max par défaut pour un appel)
   // Idéalement il faudrait paginer, mais pour l'instant on prend les 100 plus récents
-  const url = `https://api.vk.com/method/board.getTopics?access_token=${token}&group_id=${groupId}&count=100&order=1&preview=1&v=${API_VERSION}`;
+  const url = `https://api.vk.com/method/board.getTopics?access_token=${token}&group_id=${effectiveGroupId}&count=100&order=1&preview=1&v=${API_VERSION}`;
 
   try {
     const data = await jsonp(url);
@@ -92,9 +92,9 @@ export const searchVkBoard = async (token: string, query: string): Promise<VkNod
           id: `topic_${item.id}`,
           title: item.title,
           type: 'genre', // Un topic est un conteneur
-          vkGroupId: groupId,
+          vkGroupId: effectiveGroupId,
           vkTopicId: item.id.toString(),
-          url: `https://vk.com/topic-${groupId}_${item.id}`,
+          url: `https://vk.com/topic-${effectiveGroupId}_${item.id}`,
           children: [],
           isLoaded: false
         }));
@@ -219,10 +219,11 @@ const extractDocuments = (items: any[]): VkNode[] => {
 // --- SERVICES PRINCIPAUX ---
 
 // Fonction appelée par le bouton "Synchroniser"
-export const fetchRootIndex = async (token: string): Promise<VkNode[]> => {
+export const fetchRootIndex = async (token: string, groupId?: string, topicId?: string): Promise<VkNode[]> => {
   try {
-    // ID fixe du topic racine "INDEX"
-    const response = await fetchVkTopic(token, '203785966', '47515406');
+    const effectiveGroupId = groupId && groupId.trim().length > 0 ? groupId.trim() : '203785966';
+    const effectiveTopicId = topicId && topicId.trim().length > 0 ? topicId.trim() : '47515406';
+    const response = await fetchVkTopic(token, effectiveGroupId, effectiveTopicId);
 
     if (!response.response || !response.response.items) {
       return MOCK_ROOT_NODES; // Fallback si l'API échoue
