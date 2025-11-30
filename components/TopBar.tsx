@@ -15,7 +15,7 @@ const TopBar: React.FC<TopBarProps> = ({ searchQuery, setSearchQuery }) => {
       style={{ WebkitAppRegion: 'drag' } as any}
     >
       {/* Search Input */}
-      <div className="relative flex-1 max-w-96 min-w-[150px] mr-4" style={{ WebkitAppRegion: 'no-drag' } as any}>
+      <div className="relative flex-1 max-w-96 min-w-[150px]" style={{ WebkitAppRegion: 'no-drag' } as any}>
         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
           <Search className="text-slate-500" size={16} />
         </div>

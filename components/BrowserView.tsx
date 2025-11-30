@@ -33,6 +33,7 @@ interface BrowserViewProps {
   pauseDownload: (id: string) => void;
   resumeDownload: (id: string) => void;
   cancelDownload: (id: string) => void;
+  retryDownload: (id: string) => void;
 }
 
 const BrowserView: React.FC<BrowserViewProps> = ({
@@ -48,6 +49,7 @@ const BrowserView: React.FC<BrowserViewProps> = ({
   pauseDownload,
   resumeDownload,
   cancelDownload,
+  retryDownload,
 }) => {
   const { t, language } = useTranslation();
   const [isLoading, setIsLoading] = useState(false);
@@ -58,11 +60,32 @@ const BrowserView: React.FC<BrowserViewProps> = ({
   const currentNodes = currentFolder ? currentFolder.children : syncedData;
   const isSearching = searchQuery.trim().length > 0;
 
+  // Fonction récursive pour rechercher dans tous les nœuds
+  const searchAllNodes = (nodes: VkNode[] | null, query: string): VkNode[] => {
+    if (!nodes) return [];
+
+    const results: VkNode[] = [];
+    const lowerQuery = query.toLowerCase();
+
+    for (const node of nodes) {
+      // Si le nœud correspond à la recherche, on l'ajoute
+      if (node.title.toLowerCase().includes(lowerQuery)) {
+        results.push(node);
+      }
+
+      // Recherche récursive dans les enfants
+      if (node.children && node.children.length > 0) {
+        const childResults = searchAllNodes(node.children, query);
+        results.push(...childResults);
+      }
+    }
+
+    return results;
+  };
+
   const displayedNodes =
-    isSearching && currentNodes
-      ? currentNodes.filter((n) =>
-        n.title.toLowerCase().includes(searchQuery.toLowerCase()),
-      )
+    isSearching
+      ? searchAllNodes(syncedData, searchQuery)
       : currentNodes || [];
 
   const fileNodes = displayedNodes.filter((n) => n.type === 'file');
@@ -367,10 +390,10 @@ const BrowserView: React.FC<BrowserViewProps> = ({
               )}
               <button
                 onClick={handleSync}
-                className="text-slate-400 hover:text-white p-2 hover:bg-slate-800 rounded-lg transition-all"
-                title={t.library.syncButtonTooltip || "Actualiser ce dossier uniquement"}
+                className="text-orange-400 hover:text-orange-300 p-2 hover:bg-orange-500/10 rounded-lg transition-all border border-orange-500/20"
+                title="Réinitialiser la base de données"
               >
-                <RefreshCw size={18} className={isLoading ? 'animate-spin' : ''} />
+                <AlertCircle size={18} className={isLoading ? 'animate-pulse' : ''} />
               </button>
             </div>
           </div>
@@ -575,20 +598,37 @@ const BrowserView: React.FC<BrowserViewProps> = ({
                             </button>
                           </>
                         ) : (
-                          !isCompleted && (
-                            <button
-                              className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-blue-900/20"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigateTo(node);
-                              }}
-                            >
-                              <DownloadCloud size={14} />
-                              <span className="hidden lg:inline">
-                                {t.library.downloadFile}
-                              </span>
-                            </button>
-                          )
+                          <>
+                            {!isCompleted && (
+                              <button
+                                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-blue-900/20"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigateTo(node);
+                                }}
+                              >
+                                <DownloadCloud size={14} />
+                                <span className="hidden lg:inline">
+                                  {t.library.downloadFile}
+                                </span>
+                              </button>
+                            )}
+                            {isCompleted && (
+                              <button
+                                className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-100 text-xs font-bold flex items-center gap-2 border border-slate-600 shadow-lg shadow-slate-900/20"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  retryDownload(node.id);
+                                }}
+                                title={t.downloads.redownload}
+                              >
+                                <RefreshCw size={14} />
+                                <span className="hidden lg:inline">
+                                  {t.downloads.redownload}
+                                </span>
+                              </button>
+                            )}
+                          </>
                         )}
                       </div>
                     </div>

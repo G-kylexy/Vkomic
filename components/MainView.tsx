@@ -84,6 +84,7 @@ const MainView: React.FC<MainViewProps> = ({
             pauseDownload={pauseDownload}
             resumeDownload={resumeDownload}
             cancelDownload={cancelDownload}
+            retryDownload={retryDownload}
           />
         );
       case 'downloads':

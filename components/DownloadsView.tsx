@@ -150,109 +150,126 @@ const DownloadsView: React.FC<DownloadsViewProps> = ({
                   </tr>
                 </thead>
                 <tbody className="text-slate-300">
-                  {downloads.map((d) => {
-                    const isCompleted = d.status === 'completed';
-                    const isDownloading = d.status === 'downloading';
-                    const isPaused = d.status === 'paused';
-                    const isCanceled = d.status === 'canceled';
-                    const dateLabel = formatDate(d.createdAt);
-                    const volumeLabel = getVolumeLabel(d.title);
-                    const displaySize = d.size || '--';
+                  {downloads
+                    .sort((a, b) => {
+                      // Ordre de priorité : downloading > paused > pending > completed > canceled/error
+                      const statusPriority = {
+                        downloading: 1,
+                        paused: 2,
+                        pending: 3,
+                        completed: 4,
+                        canceled: 5,
+                        error: 6
+                      };
 
-                    return (
-                      <tr key={d.id} className="hover:bg-[#1a2233] transition-colors group">
-                        <td className="py-4 px-6 border-b border-slate-800/50">
-                          <div className="font-medium text-white truncate max-w-[250px] md:max-w-sm lg:max-w-md" title={d.title}>
-                            {d.title}
-                          </div>
-                          {dateLabel !== '--' && (
-                            <div className="mt-1 text-xs text-slate-500">
-                              {dateLabel}
+                      const priorityA = statusPriority[a.status] || 99;
+                      const priorityB = statusPriority[b.status] || 99;
+
+                      return priorityA - priorityB;
+                    })
+                    .map((d) => {
+                      const isCompleted = d.status === 'completed';
+                      const isDownloading = d.status === 'downloading';
+                      const isPaused = d.status === 'paused';
+                      const isCanceled = d.status === 'canceled';
+                      const dateLabel = formatDate(d.createdAt);
+                      const volumeLabel = getVolumeLabel(d.title);
+                      const displaySize = d.size || '--';
+
+                      return (
+                        <tr key={d.id} className="hover:bg-[#1a2233] transition-colors group">
+                          <td className="py-4 px-6 border-b border-slate-800/50">
+                            <div className="font-medium text-white truncate max-w-[250px] md:max-w-sm lg:max-w-md" title={d.title}>
+                              {d.title}
                             </div>
-                          )}
-                        </td>
-                        <td className="py-4 px-6 border-b border-slate-800/50 font-mono text-slate-400">
-                          {volumeLabel}
-                        </td>
-                        <td className="py-4 px-6 border-b border-slate-800/50">
-                          {isCompleted ? (
-                            <div className="flex items-center gap-2 text-emerald-500 font-bold text-xs uppercase tracking-wide">
-                              <Check size={16} strokeWidth={3} />
-                              {t.downloads.completed}
-                            </div>
-                          ) : isCanceled ? (
-                            <div className="flex items-center gap-2 text-rose-500 font-bold text-xs uppercase tracking-wide">
-                              <X size={16} strokeWidth={3} />
-                              {t.downloads.canceled}
-                            </div>
-                          ) : (
-                            <div className="w-full">
-                              <div className="flex justify-between items-end mb-1">
-                                <span className={`text-[10px] font-bold uppercase ${isPaused ? 'text-amber-500' : 'text-blue-400'}`}>
-                                  {isPaused ? 'Pause' : (isDownloading ? 'Téléchargement...' : 'En attente')}
-                                </span>
-                                <span className="text-[10px] font-mono text-slate-500">{d.progress}%</span>
+                            {dateLabel !== '--' && (
+                              <div className="mt-1 text-xs text-slate-500">
+                                {dateLabel}
                               </div>
-                              <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
-                                <div
-                                  className={`h-full transition-all duration-300 ${isPaused ? 'bg-amber-500' : 'bg-blue-600'}`}
-                                  style={{ width: `${d.progress}%` }}
-                                ></div>
+                            )}
+                          </td>
+                          <td className="py-4 px-6 border-b border-slate-800/50 font-mono text-slate-400">
+                            {volumeLabel}
+                          </td>
+                          <td className="py-4 px-6 border-b border-slate-800/50">
+                            {isCompleted ? (
+                              <div className="flex items-center gap-2 text-emerald-500 font-bold text-xs uppercase tracking-wide">
+                                <Check size={16} strokeWidth={3} />
+                                {t.downloads.completed}
                               </div>
-                            </div>
-                          )}
-                        </td>
-                        <td className="py-4 px-6 border-b border-slate-800/50 text-sm font-mono text-slate-400">
-                          {displaySize}
-                        </td>
-                        <td className="py-4 px-6 border-b border-slate-800/50 text-right">
-                          <div className="flex items-center justify-end gap-2 opacity-60 group-hover:opacity-100 transition-opacity">
-                            {isCanceled ? (
-                              <button onClick={() => retryDownload(d.id)} className="px-2 py-1.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-300 flex items-center gap-2 text-xs font-bold transition-colors" title={t.downloads.redownload}>
-                                <RefreshCw size={14} />
-                                <span className="hidden lg:inline">{t.downloads.redownload}</span>
-                              </button>
+                            ) : isCanceled ? (
+                              <div className="flex items-center gap-2 text-rose-500 font-bold text-xs uppercase tracking-wide">
+                                <X size={16} strokeWidth={3} />
+                                {t.downloads.canceled}
+                              </div>
                             ) : (
-                              !isCompleted && (
-                                <>
-                                  {isPaused ? (
-                                    <button onClick={() => resumeDownload(d.id)} className="p-1.5 hover:bg-slate-700 rounded text-slate-300" title="Reprendre">
-                                      <Play size={16} />
-                                    </button>
-                                  ) : (
-                                    <button onClick={() => pauseDownload(d.id)} className="p-1.5 hover:bg-slate-700 rounded text-slate-300" title="Pause">
-                                      <Pause size={16} />
-                                    </button>
-                                  )}
-                                  <button onClick={() => cancelDownload(d.id)} className="p-1.5 hover:bg-rose-900/30 rounded text-rose-400" title="Annuler">
-                                    <X size={16} />
-                                  </button>
-                                </>
-                              )
+                              <div className="w-full">
+                                <div className="flex justify-between items-end mb-1">
+                                  <span className={`text-[10px] font-bold uppercase ${isPaused ? 'text-amber-500' : 'text-blue-400'}`}>
+                                    {isPaused ? 'Pause' : (isDownloading ? 'Téléchargement...' : 'En attente')}
+                                  </span>
+                                  <span className="text-[10px] font-mono text-slate-500">{d.progress}%</span>
+                                </div>
+                                <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
+                                  <div
+                                    className={`h-full transition-all duration-300 ${isPaused ? 'bg-amber-500' : 'bg-blue-600'}`}
+                                    style={{ width: `${d.progress}%` }}
+                                  ></div>
+                                </div>
+                              </div>
                             )}
+                          </td>
+                          <td className="py-4 px-6 border-b border-slate-800/50 text-sm font-mono text-slate-400">
+                            {displaySize}
+                          </td>
+                          <td className="py-4 px-6 border-b border-slate-800/50 text-right">
+                            <div className="flex items-center justify-end gap-2 opacity-60 group-hover:opacity-100 transition-opacity">
+                              {isCanceled ? (
+                                <button onClick={() => retryDownload(d.id)} className="px-2 py-1.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-300 flex items-center gap-2 text-xs font-bold transition-colors" title={t.downloads.redownload}>
+                                  <RefreshCw size={14} />
+                                  <span className="hidden lg:inline">{t.downloads.redownload}</span>
+                                </button>
+                              ) : (
+                                !isCompleted && (
+                                  <>
+                                    {isPaused ? (
+                                      <button onClick={() => resumeDownload(d.id)} className="p-1.5 hover:bg-slate-700 rounded text-slate-300" title="Reprendre">
+                                        <Play size={16} />
+                                      </button>
+                                    ) : (
+                                      <button onClick={() => pauseDownload(d.id)} className="p-1.5 hover:bg-slate-700 rounded text-slate-300" title="Pause">
+                                        <Pause size={16} />
+                                      </button>
+                                    )}
+                                    <button onClick={() => cancelDownload(d.id)} className="p-1.5 hover:bg-rose-900/30 rounded text-rose-400" title="Annuler">
+                                      <X size={16} />
+                                    </button>
+                                  </>
+                                )
+                              )}
 
-                            {/* Bouton Dossier pour les téléchargements terminés */}
-                            {isCompleted && (
-                              <button
-                                className="p-1.5 hover:bg-slate-700 rounded text-slate-300"
-                                title="Ouvrir le dossier"
-                                onClick={() => {
-                                  if (typeof window !== 'undefined' && window.fs?.openPath) {
-                                    const folder = getFolderFromPath(d.path) || downloadPath;
-                                    if (folder) {
-                                      window.fs.openPath(folder);
+                              {/* Bouton Dossier pour les téléchargements terminés */}
+                              {isCompleted && (
+                                <button
+                                  className="p-1.5 hover:bg-slate-700 rounded text-slate-300"
+                                  title="Ouvrir le dossier"
+                                  onClick={() => {
+                                    if (typeof window !== 'undefined' && window.fs?.openPath) {
+                                      const folder = getFolderFromPath(d.path) || downloadPath;
+                                      if (folder) {
+                                        window.fs.openPath(folder);
+                                      }
                                     }
-                                  }
-                                }}
-                              >
-                                <Folder size={16} />
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                                  }}
+                                >
+                                  <Folder size={16} />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                 </tbody>
               </table>
             </div>

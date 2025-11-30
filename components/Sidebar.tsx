@@ -18,26 +18,114 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, vkStatus }) 
     { id: 'settings', label: t.nav.settings, icon: Settings },
   ];
 
-  // Traduit l'agrégat de région en français si besoin
-  const formatRegion = (region?: string | null) => {
-    if (!region) return '--';
-    if (language === 'fr') {
-      const map: Record<string, string> = {
-        'Europe West': "Europe de l'Ouest",
-        'North America': 'Amérique du Nord',
-        'South America': 'Amérique du Sud',
-        'Asia': 'Asie',
-        'Africa': 'Afrique',
-        'Oceania': 'Océanie',
-        'Pacific': 'Pacifique',
-        'Global': 'Global',
-      };
-      return map[region] || region;
+  // Détecte la région basée sur la timezone avec plus de précision
+  const detectDetailedRegion = (timezone?: string | null): string => {
+    if (!timezone) return '--';
+
+    const tz = timezone.toLowerCase();
+
+    // Europe - Détection détaillée
+    if (tz.startsWith('europe/')) {
+      // Europe de l'Est
+      const eastEurope = ['moscow', 'kiev', 'bucharest', 'sofia', 'warsaw', 'prague', 'budapest', 'minsk', 'tallinn', 'riga', 'vilnius', 'helsinki', 'athens', 'istanbul'];
+      if (eastEurope.some(city => tz.includes(city))) {
+        return language === 'fr' ? 'Europe de l\'Est' : 'Eastern Europe';
+      }
+
+      // Europe du Nord
+      const northEurope = ['stockholm', 'oslo', 'copenhagen', 'reykjavik'];
+      if (northEurope.some(city => tz.includes(city))) {
+        return language === 'fr' ? 'Europe du Nord' : 'Northern Europe';
+      }
+
+      // Europe de l'Ouest par défaut
+      return language === 'fr' ? 'Europe de l\'Ouest' : 'Western Europe';
     }
-    return region;
+
+    // Amérique
+    if (tz.startsWith('america/')) {
+      const southAmerica = ['argentina', 'sao_paulo', 'santiago', 'buenos_aires', 'lima', 'bogota', 'caracas', 'montevideo', 'asuncion', 'la_paz'];
+      if (southAmerica.some(city => tz.includes(city))) {
+        return language === 'fr' ? 'Amérique du Sud' : 'South America';
+      }
+
+      const centralAmerica = ['mexico', 'guatemala', 'panama', 'costa_rica', 'managua'];
+      if (centralAmerica.some(city => tz.includes(city))) {
+        return language === 'fr' ? 'Amérique Centrale' : 'Central America';
+      }
+
+      return language === 'fr' ? 'Amérique du Nord' : 'North America';
+    }
+
+    // Asie - Détection détaillée
+    if (tz.startsWith('asia/')) {
+      const eastAsia = ['tokyo', 'seoul', 'shanghai', 'beijing', 'hong_kong', 'taipei'];
+      if (eastAsia.some(city => tz.includes(city))) {
+        return language === 'fr' ? 'Asie de l\'Est' : 'East Asia';
+      }
+
+      const southeastAsia = ['singapore', 'bangkok', 'manila', 'jakarta', 'kuala_lumpur', 'ho_chi_minh', 'hanoi'];
+      if (southeastAsia.some(city => tz.includes(city))) {
+        return language === 'fr' ? 'Asie du Sud-Est' : 'Southeast Asia';
+      }
+
+      const southAsia = ['kolkata', 'delhi', 'mumbai', 'dhaka', 'karachi', 'colombo'];
+      if (southAsia.some(city => tz.includes(city))) {
+        return language === 'fr' ? 'Asie du Sud' : 'South Asia';
+      }
+
+      const centralAsia = ['almaty', 'tashkent', 'bishkek'];
+      if (centralAsia.some(city => tz.includes(city))) {
+        return language === 'fr' ? 'Asie Centrale' : 'Central Asia';
+      }
+
+      const middleEast = ['dubai', 'riyadh', 'baghdad', 'tehran', 'jerusalem', 'beirut', 'damascus', 'amman', 'kuwait', 'doha'];
+      if (middleEast.some(city => tz.includes(city))) {
+        return language === 'fr' ? 'Moyen-Orient' : 'Middle East';
+      }
+
+      return language === 'fr' ? 'Asie' : 'Asia';
+    }
+
+    // Afrique - Détection détaillée
+    if (tz.startsWith('africa/')) {
+      const northAfrica = ['cairo', 'algiers', 'tunis', 'tripoli', 'casablanca'];
+      if (northAfrica.some(city => tz.includes(city))) {
+        return language === 'fr' ? 'Afrique du Nord' : 'North Africa';
+      }
+
+      const westAfrica = ['lagos', 'accra', 'dakar', 'abidjan'];
+      if (westAfrica.some(city => tz.includes(city))) {
+        return language === 'fr' ? 'Afrique de l\'Ouest' : 'West Africa';
+      }
+
+      const eastAfrica = ['nairobi', 'addis_ababa', 'dar_es_salaam', 'kampala'];
+      if (eastAfrica.some(city => tz.includes(city))) {
+        return language === 'fr' ? 'Afrique de l\'Est' : 'East Africa';
+      }
+
+      const southAfrica = ['johannesburg', 'cape_town', 'maputo', 'lusaka'];
+      if (southAfrica.some(city => tz.includes(city))) {
+        return language === 'fr' ? 'Afrique Australe' : 'Southern Africa';
+      }
+
+      return language === 'fr' ? 'Afrique' : 'Africa';
+    }
+
+    // Océanie
+    if (tz.startsWith('pacific/') || tz.startsWith('australia/')) {
+      return language === 'fr' ? 'Océanie' : 'Oceania';
+    }
+
+    // Atlantique (Europe de l'Ouest)
+    if (tz.startsWith('atlantic/')) {
+      return language === 'fr' ? 'Europe de l\'Ouest' : 'Western Europe';
+    }
+
+    return '--';
   };
 
-  const displayRegion = formatRegion(vkStatus.regionAggregate);
+  const displayRegion = vkStatus.region ? detectDetailedRegion(vkStatus.region) : '--';
 
   return (
     <div className="w-64 bg-[#050B14] flex flex-col h-screen border-r border-[#1e293b] flex-shrink-0 pt-2">
@@ -58,10 +146,9 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, vkStatus }) 
               key={item.id}
               onClick={() => setActiveTab(item.id)}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all text-sm font-medium border relative group
-                ${
-                  isActive
-                    ? 'bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-900/40'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/50 border-transparent'
+                ${isActive
+                  ? 'bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-900/40'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/50 border-transparent'
                 }
               `}
             >
