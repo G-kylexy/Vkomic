@@ -31,3 +31,8 @@ contextBridge.exposeInMainWorld('fs', {
 contextBridge.exposeInMainWorld('vk', {
     ping: (token) => ipcRenderer.invoke('vk:ping', token)
 });
+
+contextBridge.exposeInMainWorld('app', {
+    getVersion: () => ipcRenderer.invoke('app:getVersion'),
+    checkUpdate: (repo) => ipcRenderer.invoke('app:checkUpdate', repo)
+});

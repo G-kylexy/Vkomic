@@ -43,6 +43,14 @@ export interface VkConnectionStatus {
   regionAggregate?: string | null;
 }
 
+export interface AppUpdateInfo {
+  currentVersion: string;
+  latestVersion: string | null;
+  hasUpdate: boolean;
+  url: string | null;
+  error?: string | null;
+}
+
 export interface DownloadItem {
   id: string;
   title: string;

@@ -45,5 +45,16 @@ declare global {
     vk?: {
       ping: (token?: string) => Promise<{ ok: boolean; latency: number | null }>;
     };
+    app?: {
+      getVersion?: () => Promise<string>;
+      checkUpdate?: (repo: string) => Promise<{
+        ok: boolean;
+        currentVersion: string;
+        latestVersion: string | null;
+        hasUpdate: boolean;
+        url: string | null;
+        error?: string | null;
+      }>;
+    };
   }
 }
