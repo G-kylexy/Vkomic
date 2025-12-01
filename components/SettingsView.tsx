@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Save, Folder, ChevronDown } from './Icons';
+import { Save, Folder, ChevronDown, Trash2, AlertCircle } from './Icons';
 import { useTranslation, Language } from '../i18n';
 
 interface SettingsViewProps {
@@ -14,6 +14,7 @@ const SettingsView: React.FC<SettingsViewProps & {
   setVkGroupId: (groupId: string) => void;
   vkTopicId: string;
   setVkTopicId: (topicId: string) => void;
+  onResetDatabase: () => void;
 }> = ({
   vkToken,
   setVkToken,
@@ -23,6 +24,7 @@ const SettingsView: React.FC<SettingsViewProps & {
   setVkGroupId,
   vkTopicId,
   setVkTopicId,
+  onResetDatabase,
 }) => {
     const { t, language, setLanguage } = useTranslation();
 
@@ -243,6 +245,41 @@ const SettingsView: React.FC<SettingsViewProps & {
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
+
+          {/* Carte 3: Gestion des données */}
+          <div className="bg-[#0f1523] border border-slate-800/60 rounded-xl p-8 shadow-sm">
+            <h2 className="text-lg font-bold text-white mb-6">{t.settings.dataManagement}</h2>
+
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+              <div className="flex-1">
+                <h3 className="text-sm font-medium text-slate-200 mb-2 flex items-center gap-2">
+                  <Trash2 size={16} className="text-rose-500" />
+                  {t.settings.resetDatabase}
+                </h3>
+                <p className="text-slate-400 text-xs leading-relaxed mb-3">
+                  {t.settings.resetDatabaseDescription}
+                </p>
+                <div className="flex items-start gap-2 text-amber-500 bg-amber-500/10 px-3 py-2 rounded-lg border border-amber-500/20">
+                  <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />
+                  <span className="text-[11px] font-medium">{t.settings.resetWarning}</span>
+                </div>
+              </div>
+
+              <button
+                onClick={() => {
+                  if (window.confirm(t.settings.resetWarning)) {
+                    onResetDatabase();
+                    setIsSaved(true);
+                    setTimeout(() => setIsSaved(false), 2000);
+                  }
+                }}
+                className="bg-rose-900/20 hover:bg-rose-900/40 text-rose-400 border border-rose-900/50 px-6 py-3 rounded-lg transition-all font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 whitespace-nowrap shadow-lg shadow-rose-900/10"
+              >
+                <Trash2 size={16} />
+                {t.settings.resetButton}
+              </button>
             </div>
           </div>
 

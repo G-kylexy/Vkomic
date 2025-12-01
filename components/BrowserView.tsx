@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { VkConnectionStatus, VkNode, DownloadItem } from '../types';
-import { fetchNodeContent, fetchRootIndex } from '../utils/vk-service';
+import { fetchNodeContent, fetchRootIndex, fetchFolderTreeUpToDepth } from '../utils/vk-service';
 import {
   AlertCircle,
   ChevronRight,
@@ -17,6 +17,7 @@ import {
   X,
   Check,
   Search,
+  AlertTriangle,
 } from './Icons';
 import { useTranslation } from '../i18n';
 
@@ -55,22 +56,51 @@ const BrowserView: React.FC<BrowserViewProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [navPath, setNavPath] = useState<VkNode[]>([]);
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [hasFullSynced, setHasFullSynced] = useState(false);
+
+  // Debounce la recherche pour éviter la surcharge
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedQuery(searchQuery);
+    }, 300); // Attend 300ms après la dernière frappe
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   const currentFolder = navPath.length > 0 ? navPath[navPath.length - 1] : null;
   const currentNodes = currentFolder ? currentFolder.children : syncedData;
-  const isSearching = searchQuery.trim().length > 0;
+  const isSearching = debouncedQuery.trim().length > 0;
+
+  // Fonction pour normaliser le texte (enlever accents, caractères spéciaux)
+  const normalizeText = (text: string): string => {
+    return text
+      .toLowerCase()
+      .normalize('NFD') // Décompose les caractères accentués
+      .replace(/[\u0300-\u036f]/g, '') // Enlève les accents
+      .replace(/[^a-z0-9\s]/g, ' ') // Remplace les caractères spéciaux par des espaces
+      .replace(/\s+/g, ' ') // Normalise les espaces multiples
+      .trim();
+  };
 
   // Fonction récursive pour rechercher dans tous les nœuds
+  // Ne retourne QUE les nœuds qui matchent directement, pas tous leurs enfants
   const searchAllNodes = (nodes: VkNode[] | null, query: string): VkNode[] => {
-    if (!nodes) return [];
+    if (!nodes || query.trim().length === 0) return [];
 
     const results: VkNode[] = [];
-    const lowerQuery = query.toLowerCase();
+    const normalizedQuery = normalizeText(query);
+    const queryWords = normalizedQuery.split(' ').filter(w => w.length > 0);
 
     for (const node of nodes) {
-      // Si le nœud correspond à la recherche, on l'ajoute
-      if (node.title.toLowerCase().includes(lowerQuery)) {
-        results.push(node);
+      const normalizedTitle = normalizeText(node.title);
+
+      // Vérifie si TOUS les mots de la requête sont dans le titre
+      const matches = queryWords.every(word => normalizedTitle.includes(word));
+
+      if (matches) {
+        // On ajoute le nœud qui matche SANS ses enfants
+        results.push({ ...node, children: [] });
       }
 
       // Recherche récursive dans les enfants
@@ -85,7 +115,7 @@ const BrowserView: React.FC<BrowserViewProps> = ({
 
   const displayedNodes =
     isSearching
-      ? searchAllNodes(syncedData, searchQuery)
+      ? searchAllNodes(syncedData, debouncedQuery)
       : currentNodes || [];
 
   const fileNodes = displayedNodes.filter((n) => n.type === 'file');
@@ -110,6 +140,36 @@ const BrowserView: React.FC<BrowserViewProps> = ({
       const start = performance.now();
       const data = await fetchRootIndex(vkToken, vkGroupId, vkTopicId);
       setSyncedData(data);
+      const latency = Math.round(performance.now() - start);
+      onVkStatusChange({
+        connected: true,
+        latencyMs: latency,
+        lastSync: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error(err);
+      setError('Erreur lors de la connexion à VK. Vérifiez votre token.');
+      onVkStatusChange({ connected: false, latencyMs: null, lastSync: null });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleFullSync = async () => {
+    if (!vkToken) {
+      setError('Veuillez configurer un Token VK dans les paramètres.');
+      onVkStatusChange({ connected: false, latencyMs: null, lastSync: null });
+      return;
+    }
+    setError(null);
+    setIsLoading(true);
+    setNavPath([]);
+    try {
+      const start = performance.now();
+      // Synchronisation complète : dossiers uniquement, jusqu'à 3 niveaux
+      const data = await fetchFolderTreeUpToDepth(vkToken, vkGroupId, vkTopicId, 3);
+      setSyncedData(data);
+      setHasFullSynced(true); // Marque comme synchronisé
       const latency = Math.round(performance.now() - start);
       onVkStatusChange({
         connected: true,
@@ -388,13 +448,21 @@ const BrowserView: React.FC<BrowserViewProps> = ({
                   </span>
                 </button>
               )}
-              <button
-                onClick={handleSync}
-                className="text-orange-400 hover:text-orange-300 p-2 hover:bg-orange-500/10 rounded-lg transition-all border border-orange-500/20"
-                title="Réinitialiser la base de données"
-              >
-                <AlertCircle size={18} className={isLoading ? 'animate-pulse' : ''} />
-              </button>
+              {!hasFullSynced && (
+                <button
+                  onClick={handleFullSync}
+                  className="flex items-center overflow-hidden rounded-lg transition-all border border-orange-500/20 text-xs font-bold"
+                  title={t.library.syncAllWarning}
+                  disabled={isLoading}
+                >
+                  <div className="flex items-center justify-center px-2 py-2">
+                    <AlertCircle size={16} className={`text-orange-400 ${isLoading ? 'animate-pulse' : ''}`} />
+                  </div>
+                  <div className="bg-amber-600 hover:bg-amber-500 px-3 py-2 text-white transition-colors">
+                    {t.library.syncAllButton}
+                  </div>
+                </button>
+              )}
             </div>
           </div>
         </div>

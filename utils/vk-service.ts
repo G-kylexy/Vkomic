@@ -1,47 +1,46 @@
-
 import { VkNode } from '../types';
 
 const API_VERSION = '5.131';
 
-// --- DONNÉES DE SECOURS (FALLBACK) ---
-// Utilisées si l'API VK échoue ou si le token est invalide, 
+// --- DONNEES DE SECOURS (FALLBACK) ---
+// Utilisees si l'API VK echoue ou si le token est invalide,
 // pour garder l'interface navigable.
 const MOCK_ROOT_NODES: VkNode[] = [
   {
     id: 'topic_47386771',
-    title: 'BDs EN FRANÇAIS',
+    title: 'BDs EN FRANCAIS',
     type: 'category',
     vkGroupId: '203785966',
     vkTopicId: '47386771',
     url: 'https://vk.com/topic-203785966_47386771',
     children: [],
-    isLoaded: false
+    isLoaded: false,
   },
   {
     id: 'topic_47423270',
-    title: 'MANGAS EN FRANÇAIS',
+    title: 'MANGAS EN FRANCAIS',
     type: 'category',
     vkGroupId: '203785966',
     vkTopicId: '47423270',
     url: 'https://vk.com/topic-203785966_47423270',
     children: [],
-    isLoaded: false
+    isLoaded: false,
   },
   {
     id: 'topic_47543940',
-    title: 'COMICS EN FRANÇAIS',
+    title: 'COMICS EN FRANCAIS',
     type: 'category',
     vkGroupId: '203785966',
     vkTopicId: '47543940',
     url: 'https://vk.com/topic-203785966_47543940',
     children: [],
-    isLoaded: false
-  }
+    isLoaded: false,
+  },
 ];
 
 // --- HACK JSONP ---
-// L'API VK ne supporte pas le CORS (Cross-Origin Resource Sharing) pour les requêtes frontend directes.
-// JSONP permet de contourner cela en injectant une balise <script> qui exécute un callback.
+// L'API VK ne supporte pas le CORS pour les appels frontend directs.
+// JSONP permet de contourner cela en injectant une balise <script>.
 const jsonp = (url: string): Promise<any> => {
   return new Promise((resolve, reject) => {
     const callbackName = 'vk_cb_' + Math.round(100000 * Math.random());
@@ -65,19 +64,27 @@ const jsonp = (url: string): Promise<any> => {
 
 // --- API Calls ---
 
-// Récupère les commentaires d'un topic VK (c'est là que sont listés les liens)
-export const fetchVkTopic = async (token: string, groupId: string, topicId: string): Promise<any> => {
-  if (!token || token.length < 10) throw new Error("Invalid Token");
+// Recupere les commentaires d'un topic VK (une seule page, 100 messages)
+export const fetchVkTopic = async (
+  token: string,
+  groupId: string,
+  topicId: string
+): Promise<any> => {
+  if (!token || token.length < 10) throw new Error('Invalid Token');
   const url = `https://api.vk.com/method/board.getComments?access_token=${token}&group_id=${groupId}&topic_id=${topicId}&count=100&extended=1&v=${API_VERSION}`;
   return jsonp(url);
 };
 
 // Recherche globale dans les topics du groupe
-export const searchVkBoard = async (token: string, query: string, groupId?: string): Promise<VkNode[]> => {
+export const searchVkBoard = async (
+  token: string,
+  query: string,
+  groupId?: string
+): Promise<VkNode[]> => {
   if (!token) return [];
   const effectiveGroupId = groupId && groupId.trim().length > 0 ? groupId.trim() : '203785966';
-  // On récupère un max de topics (100 est le max par défaut pour un appel)
-  // Idéalement il faudrait paginer, mais pour l'instant on prend les 100 plus récents
+
+  // On recupere un max de topics (100 est le max par defaut pour un appel)
   const url = `https://api.vk.com/method/board.getTopics?access_token=${token}&group_id=${effectiveGroupId}&count=100&order=1&preview=1&v=${API_VERSION}`;
 
   try {
@@ -96,12 +103,12 @@ export const searchVkBoard = async (token: string, query: string, groupId?: stri
           vkTopicId: item.id.toString(),
           url: `https://vk.com/topic-${effectiveGroupId}_${item.id}`,
           children: [],
-          isLoaded: false
+          isLoaded: false,
         }));
     }
     return [];
   } catch (e) {
-    console.error("Search Error", e);
+    console.error('Search Error', e);
     return [];
   }
 };
@@ -111,139 +118,157 @@ export const searchVkBoard = async (token: string, query: string, groupId?: stri
 const cleanTitle = (text: string) => {
   return text
     .replace(/[:\-]+$/, '')
-    .replace(/^►+\s*/, '')
-    .replace(/\s*◄+$/, '')
+    .replace(/^\s*[-"»«]+\s*/, '')
+    .replace(/\s*[-"»«]+\s*$/, '')
     .replace(/\(lien\)/gi, '')
     .trim();
 };
 
 // Analyse le texte brut des messages pour trouver "Titre de la BD -> Lien VK"
 const parseTopicBody = (text: string, excludeTopicId?: string): VkNode[] => {
-  const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  const lines = text
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+
   const nodes: VkNode[] = [];
-  const seenIds = new Set<string>(); // Set pour éviter les doublons
+  const seenIds = new Set<string>(); // Set pour eviter les doublons
 
   const linkRegex = /vk\.com\/topic-(\d+)_(\d+)/;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
 
-    if (line.includes('vk.com/topic-')) {
-      const match = line.match(linkRegex);
-      if (match) {
-        const topicId = match[2];
+    if (!line.includes('vk.com/topic-')) continue;
 
-        // ANTI-BOUCLE : On exclut le topic actuel s'il est cité
-        if (excludeTopicId && topicId === excludeTopicId) continue;
+    const match = line.match(linkRegex);
+    if (!match) continue;
 
-        const uniqueId = `topic_${topicId}`;
+    const topicId = match[2];
 
-        // ANTI-DOUBLON : Si on a déjà traité cet ID, on passe
-        if (seenIds.has(uniqueId)) continue;
+    // ANTI-BOUCLE : on exclut le topic actuel s'il est cite
+    if (excludeTopicId && topicId === excludeTopicId) continue;
 
-        let title = '';
+    const uniqueId = `topic_${topicId}`;
 
-        const parts = line.split(/http|vk\.com/);
-        // Cas 1: "Naruto : http://vk.com..." (Sur la même ligne)
-        if (parts[0].trim().length > 3) {
-          title = parts[0];
-        }
-        // Cas 2: "Naruto" (Ligne précédente)
-        // http://vk.com... (Ligne actuelle)
-        else if (i > 0) {
-          const prevLine = lines[i - 1];
-          // On utilise la ligne précédente SEULEMENT si elle ne ressemble pas à un lien
-          if (!prevLine.includes('vk.com') && prevLine.length > 2) {
-            title = prevLine;
-          }
-        }
+    // ANTI-DOUBLON
+    if (seenIds.has(uniqueId)) continue;
 
-        title = cleanTitle(title);
+    let title = '';
 
-        // Si pas de titre trouvé, on utilise un nom générique ou on saute ?
-        // Pour l'instant on saute pour éviter les liens "morts" ou de navigation
-        if (!title) continue;
-
-        if (title.length < 100) {
-          seenIds.add(uniqueId);
-          nodes.push({
-            id: uniqueId,
-            title: title,
-            type: 'genre',
-            url: `https://vk.com/topic-${match[1]}_${match[2]}`,
-            vkGroupId: match[1],
-            vkTopicId: match[2],
-            children: [],
-            isLoaded: false
-          });
-        }
+    const parts = line.split(/http|vk\.com/);
+    // Cas 1: "Naruto : http://vk.com..." (sur la meme ligne)
+    if (parts[0].trim().length > 3) {
+      title = parts[0];
+    } else if (i > 0) {
+      // Cas 2: "Naruto" (ligne precedente)
+      const prevLine = lines[i - 1];
+      if (!prevLine.includes('vk.com') && prevLine.length > 2) {
+        title = prevLine;
       }
+    }
+
+    // Fallback : si on n'a toujours pas de titre, on prend la ligne
+    // sans le lien VK, ou a defaut un nom generique.
+    if (!title) {
+      const withoutLink = line.replace(/https?:\/\/vk\.com\/topic-\d+_\d+/i, '').trim();
+      title = withoutLink || `Topic ${topicId}`;
+    }
+
+    title = cleanTitle(title);
+    if (!title) {
+      title = `Topic ${topicId}`;
+    }
+
+    if (title.length < 200) {
+      seenIds.add(uniqueId);
+      nodes.push({
+        id: uniqueId,
+        title,
+        type: 'genre',
+        url: `https://vk.com/topic-${match[1]}_${match[2]}`,
+        vkGroupId: match[1],
+        vkTopicId: match[2],
+        children: [],
+        isLoaded: false,
+      });
     }
   }
 
   return nodes;
 };
 
-// Extrait les documents attachés (PDF, CBZ, CBR, ZIP) des commentaires VK
+// Extrait les documents attaches (PDF, CBZ, CBR, ZIP) des commentaires VK
 const extractDocuments = (items: any[]): VkNode[] => {
   const nodes: VkNode[] = [];
   const seenUrls = new Set<string>();
 
-  items.forEach(item => {
-    if (item.attachments) {
-      item.attachments.forEach((att: any) => {
-        // On ne garde que les pièces jointes de type "doc"
-        if (att.type === 'doc') {
-          const doc = att.doc;
-          const url = doc.url;
+  items.forEach((item: any) => {
+    if (!item.attachments) return;
 
-          if (seenUrls.has(url)) return;
-          seenUrls.add(url);
+    item.attachments.forEach((att: any) => {
+      if (att.type !== 'doc') return;
 
-          nodes.push({
-            id: `doc_${doc.id}`,
-            title: doc.title,
-            type: 'file',
-            extension: doc.ext.toUpperCase(), // ex: PDF
-            url: url,
-            sizeBytes: typeof doc.size === 'number' ? doc.size : undefined,
-            isLoaded: true
-          });
-        }
+      const doc = att.doc;
+      const url = doc.url;
+      if (seenUrls.has(url)) return;
+      seenUrls.add(url);
+
+      nodes.push({
+        id: `doc_${doc.id}`,
+        title: doc.title,
+        type: 'file',
+        extension: doc.ext?.toUpperCase?.() || undefined,
+        url,
+        sizeBytes: typeof doc.size === 'number' ? doc.size : undefined,
+        isLoaded: true,
       });
-    }
+    });
   });
+
   return nodes;
 };
 
 // --- SERVICES PRINCIPAUX ---
 
-// Fonction appelée par le bouton "Synchroniser"
-export const fetchRootIndex = async (token: string, groupId?: string, topicId?: string): Promise<VkNode[]> => {
+// Fonction appelee par le bouton "Synchroniser" (simple)
+export const fetchRootIndex = async (
+  token: string,
+  groupId?: string,
+  topicId?: string
+): Promise<VkNode[]> => {
   try {
     const effectiveGroupId = groupId && groupId.trim().length > 0 ? groupId.trim() : '203785966';
     const effectiveTopicId = topicId && topicId.trim().length > 0 ? topicId.trim() : '47515406';
-    const response = await fetchVkTopic(token, effectiveGroupId, effectiveTopicId);
 
-    if (!response.response || !response.response.items) {
-      return MOCK_ROOT_NODES; // Fallback si l'API échoue
+    // Utilisation de fetchAllComments pour récupérer TOUS les messages du topic index
+    // et pas seulement les 100 premiers.
+    const items = await fetchAllComments(token, effectiveGroupId, effectiveTopicId);
+
+    if (!items || items.length === 0) {
+      return MOCK_ROOT_NODES;
     }
 
-    const fullText = response.response.items.map((i: any) => i.text).join('\n');
+    const fullText = items.map((i: any) => i.text).join('\n');
     const nodes = parseTopicBody(fullText);
 
     if (nodes.length === 0) {
-      return MOCK_ROOT_NODES; // Fallback si parsing vide
+      return MOCK_ROOT_NODES;
     }
 
-    return nodes.map(n => ({ ...n, type: 'category' }));
+    // Filtrage pour ne garder que les catégories principales (ex: "BDs EN FRANCAIS")
+    // Cela évite d'afficher des liens "parasites" (comme "Howard Flynn") qui se trouvent dans l'index.
+    const filteredNodes = nodes.filter((n) => n.title.toUpperCase().includes('EN FRANCAIS'));
+    const finalNodes = filteredNodes.length > 0 ? filteredNodes : nodes;
+
+    return finalNodes.map((n) => ({ ...n, type: 'category' }));
   } catch (error) {
-    console.error("VK API Error (Root):", error);
-    return MOCK_ROOT_NODES; // Fallback final
+    console.error('VK API Error (Root):', error);
+    return MOCK_ROOT_NODES;
   }
 };
 
-// Fonction appelée pour charger le contenu d'un dossier
+// Fonction appelee pour charger le contenu d'un dossier (lazy, un seul appel)
 export const fetchNodeContent = async (token: string, node: VkNode): Promise<VkNode> => {
   if (!node.vkGroupId || !node.vkTopicId) {
     return { ...node, isLoaded: true, children: [] };
@@ -253,21 +278,18 @@ export const fetchNodeContent = async (token: string, node: VkNode): Promise<VkN
     const response = await fetchVkTopic(token, node.vkGroupId, node.vkTopicId);
 
     if (!response.response || !response.response.items) {
-      throw new Error("Failed to fetch node content");
+      throw new Error('Failed to fetch node content');
     }
 
     const items = response.response.items;
 
-    // ÉTAPE 1 : Chercher des sous-dossiers (Autres Topics cités)
-    // On passe l'ID du topic actuel pour éviter les auto-références (boucles)
+    // Etape 1 : Sous-dossiers (autres topics cites)
     const fullText = items.map((i: any) => i.text).join('\n');
     const subTopics = parseTopicBody(fullText, node.vkTopicId);
 
-    // ÉTAPE 2 : Chercher des FICHIERS (Documents)
+    // Etape 2 : Fichiers (documents)
     const documents = extractDocuments(items);
 
-    // ÉTAPE 3 : Fusionner les résultats
-    // On affiche tout : sous-dossiers ET fichiers
     const allChildren = [...subTopics, ...documents];
 
     if (allChildren.length > 0) {
@@ -275,22 +297,232 @@ export const fetchNodeContent = async (token: string, node: VkNode): Promise<VkN
         ...node,
         children: allChildren,
         isLoaded: true,
-        // Si on a des fichiers, c'est une "série" (ou un dossier mixte), sinon une catégorie
-        type: documents.length > 0 ? 'series' : 'genre'
+        type: documents.length > 0 ? 'series' : 'genre',
       };
     }
 
-    // Rien trouvé (Dossier vide)
     return { ...node, isLoaded: true, children: [] };
-
   } catch (error) {
-    console.error("VK API Error (Node):", error);
+    console.error('VK API Error (Node):', error);
     return {
       ...node,
       isLoaded: true,
-      children: [
-        { id: 'err1', title: 'Erreur (API)', type: 'category', isLoaded: true }
-      ]
+      children: [{ id: 'err1', title: 'Erreur (API)', type: 'category', isLoaded: true }],
     };
   }
+};
+
+// --- Helpers pour la synchro profonde ---
+
+// Fonction utilitaire pour attendre (delay)
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Paginer tous les commentaires d'un topic (tant que VK renvoie des pages pleines)
+// Avec retry automatique en cas d'échec
+const fetchAllComments = async (
+  token: string,
+  groupId: string,
+  topicId: string,
+  maxRetries: number = 3
+): Promise<any[]> => {
+  const allItems: any[] = [];
+  let offset = 0;
+  const count = 100;
+
+  while (true) {
+    const url = `https://api.vk.com/method/board.getComments?access_token=${token}&group_id=${groupId}&topic_id=${topicId}&count=${count}&offset=${offset}&extended=1&v=${API_VERSION}`;
+
+    let response = null;
+    let retries = 0;
+
+    // Retry logic
+    while (retries < maxRetries) {
+      try {
+        response = await jsonp(url);
+
+        // Vérifier s'il y a une erreur VK API
+        if (response.error) {
+          console.warn(`VK API Error for topic ${topicId} (attempt ${retries + 1}/${maxRetries}):`, response.error);
+          retries++;
+          if (retries < maxRetries) {
+            await sleep(1000 * retries); // Délai croissant: 1s, 2s, 3s
+            continue;
+          }
+          break;
+        }
+
+        // Succès
+        break;
+      } catch (error) {
+        console.warn(`Network error for topic ${topicId} (attempt ${retries + 1}/${maxRetries}):`, error);
+        retries++;
+        if (retries < maxRetries) {
+          await sleep(1000 * retries);
+          continue;
+        }
+        break;
+      }
+    }
+
+    if (!response || !response.response || !Array.isArray(response.response.items)) {
+      if (allItems.length === 0) {
+        console.error(`Failed to fetch any comments for topic ${topicId} after ${maxRetries} retries`);
+      }
+      break;
+    }
+
+    const items = response.response.items;
+    allItems.push(...items);
+
+    if (items.length < count) {
+      break; // derniere page
+    }
+    offset += count;
+
+    // Petit délai entre les pages pour éviter de surcharger l'API
+    await sleep(150);
+  }
+
+  console.log(`✅ Fetched ${allItems.length} comments for topic ${topicId}`);
+  return allItems;
+};
+
+// Recupere uniquement la STRUCTURE (sous-topics) d'un topic, sans documents,
+// en lisant toutes les pages de commentaires.
+const fetchTopicStructure = async (
+  token: string,
+  groupId: string,
+  topicId: string
+): Promise<VkNode[]> => {
+  const items = await fetchAllComments(token, groupId, topicId);
+  if (!items || items.length === 0) return [];
+  const fullText = items.map((i: any) => i.text).join('\n');
+  return parseTopicBody(fullText, topicId);
+};
+
+// Synchronise uniquement la structure de dossiers (sans documents)
+// jusqu'a une profondeur maximale (par defaut 3 niveaux).
+// Utilisee par le bouton "Tout synchroniser (3 niveaux)".
+export const fetchFolderTreeUpToDepth = async (
+  token: string,
+  groupId?: string,
+  topicId?: string,
+  maxDepth: number = 3
+): Promise<VkNode[]> => {
+  // Helper de parallelisation limitee
+  const runWithConcurrency = async <T, R>(
+    items: T[],
+    limit: number,
+    worker: (item: T, index: number) => Promise<R>
+  ): Promise<R[]> => {
+    if (items.length === 0) return [];
+    const results: R[] = new Array(items.length);
+    let currentIndex = 0;
+
+    const runner = async (): Promise<void> => {
+      while (true) {
+        const index = currentIndex++;
+        if (index >= items.length) break;
+        results[index] = await worker(items[index], index);
+      }
+    };
+
+    const workers = Array(Math.min(limit, items.length))
+      .fill(0)
+      .map(() => runner());
+
+    await Promise.all(workers);
+    return results;
+  };
+
+  const CONCURRENCY_LIMIT = 5;
+
+  // Niveau 1 : categories racine (index -> topics principaux)
+  console.log('🔄 Starting Full Sync - Fetching root categories...');
+  const rootNodes = await fetchRootIndex(token, groupId, topicId);
+  console.log(`✅ Found ${rootNodes.length} root categories`);
+
+  if (maxDepth <= 1) {
+    return rootNodes;
+  }
+
+  // Niveau 2 : sous-topics des categories (ex: Adulte, Jeunesse, etc.)
+  console.log('🔄 Level 2 - Fetching subcategories for each root category...');
+  const level1Expanded = await runWithConcurrency(rootNodes, CONCURRENCY_LIMIT, async (root, idx) => {
+    if (!root.vkGroupId || !root.vkTopicId) {
+      return root;
+    }
+
+    try {
+      console.log(`  📁 [${idx + 1}/${rootNodes.length}] Fetching: ${root.title}`);
+      const children = await fetchTopicStructure(token, root.vkGroupId, root.vkTopicId);
+      console.log(`    ✅ Found ${children.length} subcategories in "${root.title}"`);
+      return {
+        ...root,
+        children,
+        isLoaded: true,
+      };
+    } catch (e) {
+      console.error(`    ❌ Failed to fetch subcategories for "${root.title}":`, e);
+      return root;
+    }
+  });
+
+  if (maxDepth <= 2) {
+    return level1Expanded;
+  }
+
+  // Niveau 3 : series a l'interieur de chaque sous-topic
+  const level2Nodes: VkNode[] = [];
+  level1Expanded.forEach((root) => {
+    (root.children || []).forEach((child) => {
+      if (child.vkGroupId && child.vkTopicId) {
+        level2Nodes.push(child);
+      }
+    });
+  });
+
+  if (level2Nodes.length === 0) {
+    console.log('⚠️ No level 2 nodes found to expand');
+    return level1Expanded;
+  }
+
+  console.log(`🔄 Level 3 - Fetching series for ${level2Nodes.length} subcategories...`);
+  const level2Expanded = await runWithConcurrency(
+    level2Nodes,
+    CONCURRENCY_LIMIT,
+    async (node, idx) => {
+      try {
+        console.log(`  📚 [${idx + 1}/${level2Nodes.length}] Fetching series in: ${node.title}`);
+        const children = await fetchTopicStructure(
+          token,
+          node.vkGroupId as string,
+          node.vkTopicId as string
+        );
+        console.log(`    ✅ Found ${children.length} series in "${node.title}"`);
+        return {
+          ...node,
+          children,
+          isLoaded: true,
+        };
+      } catch (e) {
+        console.error(`    ❌ Failed to fetch series for "${node.title}":`, e);
+        return node;
+      }
+    }
+  );
+
+  const level2Map = new Map<string, VkNode>();
+  level2Expanded.forEach((node) => {
+    level2Map.set(node.id, node);
+  });
+
+  // On reconstruit l'arbre complet avec les niveaux 2 mis a jour
+  const finalRoots = level1Expanded.map((root) => ({
+    ...root,
+    children: (root.children || []).map((child) => level2Map.get(child.id) || child),
+  }));
+
+  console.log('✅ Full Sync Complete!');
+  return finalRoots;
 };

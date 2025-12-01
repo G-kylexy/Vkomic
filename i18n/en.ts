@@ -50,6 +50,13 @@ export const en: Translations = {
         // Save button
         saveAll: 'Save',
         saved: 'Changes Saved',
+
+        // Data Management
+        dataManagement: 'Data Management',
+        resetDatabase: 'Reset Database',
+        resetDatabaseDescription: 'Clears the local VK tree cache. Useful if the app seems out of sync or shows empty folders.',
+        resetButton: 'Reset',
+        resetWarning: 'Warning: You will need to perform a new sync to access content.',
     },
 
     // Library
@@ -57,8 +64,10 @@ export const en: Translations = {
         empty: 'Empty Library',
         emptyDescription: 'Sync the app with VK index to access comics.',
         syncButton: 'Sync from VK',
+        syncAllButton: 'Sync everything',
+        syncAllWarning: 'Warning: this will pre-load all folders. Depending on your connection and VK server load, it may take several seconds. Ideal if you plan to use the search bar.',
         syncing: 'Syncing...',
-        searching: 'Searching inside this folder...',
+        searching: 'Searching in library...',
         noResults: 'This folder is empty or nothing matches your search.',
         localTitle: 'Local Library',
         noDownloadPath: 'Choose a download folder in Settings to browse your files here.',
@@ -98,6 +107,20 @@ export const en: Translations = {
         redownload: 'Redownload',
         noDownloads: 'No downloads yet',
         noDownloadsDescription: 'Your download history will appear here.',
+        statusDownloading: 'Downloading...',
+        statusPending: 'Pending',
+        statusPaused: 'Paused',
+    },
+
+    // Tooltips
+    tooltips: {
+        home: 'Home',
+        resetDatabase: 'Reset database',
+        clean: 'Clean',
+        resume: 'Resume',
+        pause: 'Pause',
+        cancel: 'Cancel',
+        openFolder: 'Open folder',
     },
 
     // Languages

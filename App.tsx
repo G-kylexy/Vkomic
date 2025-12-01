@@ -133,7 +133,7 @@ const App: React.FC = () => {
 
       // Si déjà en cours (file d'attente / pause / déjà terminé), on ne recrée pas un doublon
       if (existing && ['pending', 'downloading', 'paused', 'completed'].includes(existing.status)) {
-        
+
         return prev;
       }
 
@@ -159,7 +159,7 @@ const App: React.FC = () => {
 
       // Nouveau téléchargement
       const itemWithSubFolder = { ...newDownload, subFolder };
-      
+
       return [itemWithSubFolder, ...prev];
     });
 
@@ -167,7 +167,7 @@ const App: React.FC = () => {
   };
 
   const startRealDownload = async (id: string, url: string, title: string, extension?: string, subFolder?: string) => {
-    
+
     // Mise à jour du statut en "downloading"
     // On ne reset PAS la progression si on reprend un téléchargement
     setDownloads((prev) =>
@@ -267,7 +267,7 @@ const App: React.FC = () => {
 
     // Si on a moins de 5 téléchargements actifs et qu'il y a des éléments en attente
     if (activeCount < 5 && pendingItems.length > 0) {
-      
+
       // On lance les prochains éléments pour atteindre la limite de 5
       const slotsAvailable = 5 - activeCount;
       const toStart = pendingItems.slice(0, slotsAvailable);
@@ -337,12 +337,26 @@ const App: React.FC = () => {
     // Relance le téléchargement
     const download = downloads.find(d => d.id === id);
     if (download) {
-      // On remet en pending pour que la queue le prenne en charge
-      setDownloads((prev) =>
-        prev.map((d) =>
-          d.id === id ? { ...d, status: 'pending', speed: '0 MB/s' } : d,
-        ),
-      );
+      // Vérifier le nombre de téléchargements actifs pour un démarrage immédiat
+      const activeCount = downloads.filter(d => d.status === 'downloading').length;
+
+      if (activeCount < 5) {
+        // Démarrage immédiat pour éviter le délai visuel
+        startRealDownload(download.id, download.url, download.title, download.extension, download.subFolder);
+
+        setDownloads((prev) =>
+          prev.map((d) =>
+            d.id === id ? { ...d, status: 'downloading', speed: '...' } : d,
+          ),
+        );
+      } else {
+        // Sinon mise en file d'attente
+        setDownloads((prev) =>
+          prev.map((d) =>
+            d.id === id ? { ...d, status: 'pending', speed: '0 MB/s' } : d,
+          ),
+        );
+      }
     }
   };
 
@@ -485,6 +499,7 @@ const App: React.FC = () => {
           {/* Vue dynamique (Change selon l'onglet actif) */}
           <MainView
             searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
             activeTab={activeTab}
             vkToken={vkToken}
             setVkToken={handleSetVkToken}

@@ -110,10 +110,10 @@ const DownloadsView: React.FC<DownloadsViewProps> = ({
             <button
               onClick={clearDownloads}
               className="flex items-center gap-2 px-4 py-2 bg-rose-900/20 hover:bg-rose-900/40 text-rose-400 rounded-lg transition-colors text-sm font-medium"
-              title="Nettoyer"
+              title={t.tooltips.clean}
             >
               <Trash2 size={18} />
-              <span>Nettoyer</span>
+              <span>{t.tooltips.clean}</span>
             </button>
           )}
         </div>
@@ -206,7 +206,7 @@ const DownloadsView: React.FC<DownloadsViewProps> = ({
                               <div className="w-full">
                                 <div className="flex justify-between items-end mb-1">
                                   <span className={`text-[10px] font-bold uppercase ${isPaused ? 'text-amber-500' : 'text-blue-400'}`}>
-                                    {isPaused ? 'Pause' : (isDownloading ? 'Téléchargement...' : 'En attente')}
+                                    {isPaused ? t.downloads.statusPaused : (isDownloading ? t.downloads.statusDownloading : t.downloads.statusPending)}
                                   </span>
                                   <span className="text-[10px] font-mono text-slate-500">{d.progress}%</span>
                                 </div>
@@ -233,15 +233,15 @@ const DownloadsView: React.FC<DownloadsViewProps> = ({
                                 !isCompleted && (
                                   <>
                                     {isPaused ? (
-                                      <button onClick={() => resumeDownload(d.id)} className="p-1.5 hover:bg-slate-700 rounded text-slate-300" title="Reprendre">
+                                      <button onClick={() => resumeDownload(d.id)} className="p-1.5 hover:bg-slate-700 rounded text-slate-300" title={t.tooltips.resume}>
                                         <Play size={16} />
                                       </button>
                                     ) : (
-                                      <button onClick={() => pauseDownload(d.id)} className="p-1.5 hover:bg-slate-700 rounded text-slate-300" title="Pause">
+                                      <button onClick={() => pauseDownload(d.id)} className="p-1.5 hover:bg-slate-700 rounded text-slate-300" title={t.tooltips.pause}>
                                         <Pause size={16} />
                                       </button>
                                     )}
-                                    <button onClick={() => cancelDownload(d.id)} className="p-1.5 hover:bg-rose-900/30 rounded text-rose-400" title="Annuler">
+                                    <button onClick={() => cancelDownload(d.id)} className="p-1.5 hover:bg-rose-900/30 rounded text-rose-400" title={t.tooltips.cancel}>
                                       <X size={16} />
                                     </button>
                                   </>
@@ -252,7 +252,7 @@ const DownloadsView: React.FC<DownloadsViewProps> = ({
                               {isCompleted && (
                                 <button
                                   className="p-1.5 hover:bg-slate-700 rounded text-slate-300"
-                                  title="Ouvrir le dossier"
+                                  title={t.tooltips.openFolder}
                                   onClick={() => {
                                     if (typeof window !== 'undefined' && window.fs?.openPath) {
                                       const folder = getFolderFromPath(d.path) || downloadPath;

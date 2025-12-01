@@ -23,7 +23,9 @@ const TopBar: React.FC<TopBarProps> = ({ searchQuery, setSearchQuery }) => {
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
+          onClick={(e) => e.currentTarget.focus()}
           placeholder={t.topbar.searchPlaceholder}
+          style={{ WebkitAppRegion: 'no-drag' } as any}
           className="w-full bg-[#1e293b] text-slate-200 text-sm rounded-lg pl-10 pr-4 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500 border border-slate-700/50 placeholder-slate-500"
         />
       </div>

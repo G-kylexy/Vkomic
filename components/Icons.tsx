@@ -1,12 +1,12 @@
 
 // Re-exporting lucide icons to keep imports clean in components
-import { 
-  Zap, 
-  Globe, 
-  Download, 
-  Library, 
-  Settings, 
-  Search, 
+import {
+  Zap,
+  Globe,
+  Download,
+  Library,
+  Settings,
+  Search,
   RefreshCw,
   Minus,
   Square,
@@ -30,7 +30,9 @@ import {
   Clock,
   FileArchive,
   Pause,
-  Play
+  Play,
+  Trash2,
+  AlertTriangle
 } from 'lucide-react';
 
 export {
@@ -63,5 +65,7 @@ export {
   Clock,
   FileArchive,
   Pause,
-  Play
+  Play,
+  Trash2,
+  AlertTriangle
 };

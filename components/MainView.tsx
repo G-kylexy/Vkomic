@@ -7,6 +7,7 @@ import { VkNode, VkConnectionStatus, DownloadItem } from '../types';
 
 interface MainViewProps {
   searchQuery: string;
+  setSearchQuery: (q: string) => void;
   activeTab: string;
   vkToken: string;
   setVkToken: (t: string) => void;
@@ -15,7 +16,7 @@ interface MainViewProps {
   vkTopicId: string;
   setVkTopicId: (topicId: string) => void;
   syncedData: VkNode[] | null;
-  setSyncedData: (data: VkNode[]) => void;
+  setSyncedData: (data: VkNode[] | null) => void;
   downloadPath: string;
   setDownloadPath: (path: string) => void;
   onVkStatusChange: (status: VkConnectionStatus) => void;
@@ -32,6 +33,7 @@ interface MainViewProps {
 // Il décide quel écran afficher en fonction de `activeTab`.
 const MainView: React.FC<MainViewProps> = ({
   searchQuery,
+  setSearchQuery,
   activeTab,
   vkToken,
   setVkToken,
@@ -66,6 +68,7 @@ const MainView: React.FC<MainViewProps> = ({
             setVkTopicId={setVkTopicId}
             downloadPath={downloadPath}
             setDownloadPath={setDownloadPath}
+            onResetDatabase={() => setSyncedData(null)}
           />
         );
       case 'home':
@@ -78,6 +81,7 @@ const MainView: React.FC<MainViewProps> = ({
             syncedData={syncedData}
             setSyncedData={setSyncedData}
             searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
             onVkStatusChange={onVkStatusChange}
             addDownload={addDownload}
             downloads={downloads}
