@@ -4,12 +4,35 @@
   "version": "0.0.0",
   "main": "electron/main.js",
   "type": "module",
+  "description": "Lecteur et téléchargeur de comics VK",
+  "author": "G-kylexy",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
     "electron": "electron .",
-    "electron:dev": "concurrently -k \"npm run dev\" \"wait-on http://localhost:3000 && npm run electron\""
+    "electron:dev": "concurrently -k \"npm run dev\" \"wait-on http://localhost:3000 && npm run electron\"",
+    "dist": "npm run build && electron-builder"
+  },
+  "build": {
+    "appId": "com.vkomic.app",
+    "productName": "Vkomic",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    }
   },
   "dependencies": {
     "lucide-react": "^0.555.0",
@@ -21,6 +44,7 @@
     "@vitejs/plugin-react": "^5.0.0",
     "concurrently": "^9.2.1",
     "electron": "^39.2.4",
+    "electron-builder": "^25.1.8",
     "typescript": "~5.8.2",
     "vite": "^6.2.0",
     "wait-on": "^9.0.3"

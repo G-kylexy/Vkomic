@@ -5,6 +5,10 @@ import MainView from './components/MainView';
 import { VkNode, VkConnectionStatus, DownloadItem } from './types';
 import { TranslationProvider } from './i18n';
 import { DEFAULT_DOWNLOAD_PATH } from './utils/constants';
+import UpdateModal from './components/UpdateModal';
+
+// REMPLACER PAR VOTRE DEPOT GITHUB (ex: 'username/repo')
+const GITHUB_REPO = 'G-kylexy/Vkomic';
 
 const MAX_CONCURRENT_DOWNLOADS = 5;
 
@@ -34,6 +38,32 @@ const formatSpeed = (bytesPerSecond?: number | null): string => {
 
 const App: React.FC = () => {
   // --- GESTION DE L'ÉTAT GLOBAL ---
+
+  // État pour la mise à jour
+  const [updateInfo, setUpdateInfo] = useState<{
+    version: string;
+    url: string;
+    notes: string;
+  } | null>(null);
+
+  useEffect(() => {
+    const checkUpdate = async () => {
+      if ((window as any).app?.checkUpdate) {
+        const result = await (window as any).app.checkUpdate(GITHUB_REPO);
+        if (result.updateAvailable) {
+          setUpdateInfo({
+            version: result.version,
+            url: result.url,
+            notes: result.notes
+          });
+        }
+      }
+    };
+
+    // Vérifier après 2 secondes pour ne pas ralentir le démarrage
+    const timer = setTimeout(checkUpdate, 2000);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Onglet actif (Accueil, Téléchargements, etc.)
   const [activeTab, setActiveTab] = useState('home');
@@ -158,6 +188,7 @@ const App: React.FC = () => {
         createdAt: new Date().toISOString(),
         // Garder la taille si le téléchargement existait déjà (ex: relance après annulation)
         size: existing && existing.size ? existing.size : formattedSize,
+        path: existing && (existing as any).path ? (existing as any).path : undefined,
       };
 
       if (existing) {
@@ -227,6 +258,26 @@ const App: React.FC = () => {
         if (result && !result.ok && result.status === 'aborted') {
           // Le statut a déjà été mis à jour par pauseDownload ou cancelDownload
           return;
+        }
+
+        // Si le téléchargement est terminé, on conserve le chemin réel pour le révéler/sélectionner ensuite
+        if (result && result.ok && (result as any).path) {
+          const pathFromResult = (result as any).path as string;
+          const formattedSize = typeof (result as any).size === 'number'
+            ? formatBytes((result as any).size) || undefined
+            : undefined;
+
+          setDownloads((prev) =>
+            prev.map((d) =>
+              d.id === id
+                ? {
+                    ...d,
+                    path: pathFromResult,
+                    size: formattedSize || d.size,
+                  }
+                : d
+            )
+          );
         }
 
         // La progression est gérée par l'événement onDownloadProgress dans useEffect
@@ -532,6 +583,16 @@ const App: React.FC = () => {
             retryDownload={retryDownload}
             clearDownloads={() => setDownloads([])}
           />
+
+          {/* Modal de mise à jour */}
+          {updateInfo && (
+            <UpdateModal
+              version={updateInfo.version}
+              notes={updateInfo.notes}
+              url={updateInfo.url}
+              onClose={() => setUpdateInfo(null)}
+            />
+          )}
         </div>
       </div>
     </TranslationProvider>

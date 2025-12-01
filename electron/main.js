@@ -318,6 +318,64 @@ app.whenReady().then(() => {
     }
   });
 
+  // Récupère la version de l'application
+  ipcMain.handle('app:getVersion', () => {
+    return app.getVersion();
+  });
+
+  // Vérifie les mises à jour sur GitHub
+  ipcMain.handle('app:checkUpdate', async (_, repo) => {
+    if (!repo) return { updateAvailable: false };
+
+    try {
+      const response = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, {
+        headers: {
+          'User-Agent': 'Vkomic-App'
+        }
+      });
+
+      if (!response.ok) {
+        return { updateAvailable: false, error: 'Failed to fetch releases' };
+      }
+
+      const data = await response.json();
+      const latestVersion = data.tag_name.replace(/^v/, '');
+      const currentVersion = app.getVersion();
+
+      // Comparaison simple de version (suppose format x.y.z)
+      if (latestVersion !== currentVersion) {
+        return {
+          updateAvailable: true,
+          version: latestVersion,
+          url: data.html_url,
+          notes: data.body
+        };
+      }
+
+      return { updateAvailable: false };
+    } catch (error) {
+      console.error('Update check failed:', error);
+      return { updateAvailable: false, error: error.message };
+    }
+  });
+
+  // Ouvre le dossier contenant et s��lectionne le fichier si possible
+  ipcMain.handle('fs:revealPath', async (_, targetPath) => {
+    if (!targetPath || typeof targetPath !== 'string') {
+      return;
+    }
+    try {
+      shell.showItemInFolder(targetPath);
+    } catch {
+      try {
+        const dir = path.dirname(targetPath);
+        await shell.openPath(dir);
+      } catch {
+        // ignore
+      }
+    }
+  });
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

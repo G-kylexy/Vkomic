@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('dialog', {
 contextBridge.exposeInMainWorld('fs', {
     listDirectory: (path) => ipcRenderer.invoke('fs:listDirectory', path),
     openPath: (path) => ipcRenderer.invoke('fs:openPath', path),
+    revealPath: (path) => ipcRenderer.invoke('fs:revealPath', path),
     downloadFile: (id, url, directory, fileName) =>
         ipcRenderer.invoke('fs:downloadFile', { id, url, directory, fileName }),
     onDownloadProgress: (callback) => {

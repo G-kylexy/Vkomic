@@ -383,7 +383,7 @@ const fetchAllComments = async (
     await sleep(150);
   }
 
-  console.log(`✅ Fetched ${allItems.length} comments for topic ${topicId}`);
+
   return allItems;
 };
 
@@ -438,25 +438,20 @@ export const fetchFolderTreeUpToDepth = async (
   const CONCURRENCY_LIMIT = 5;
 
   // Niveau 1 : categories racine (index -> topics principaux)
-  console.log('🔄 Starting Full Sync - Fetching root categories...');
   const rootNodes = await fetchRootIndex(token, groupId, topicId);
-  console.log(`✅ Found ${rootNodes.length} root categories`);
 
   if (maxDepth <= 1) {
     return rootNodes;
   }
 
   // Niveau 2 : sous-topics des categories (ex: Adulte, Jeunesse, etc.)
-  console.log('🔄 Level 2 - Fetching subcategories for each root category...');
   const level1Expanded = await runWithConcurrency(rootNodes, CONCURRENCY_LIMIT, async (root, idx) => {
     if (!root.vkGroupId || !root.vkTopicId) {
       return root;
     }
 
     try {
-      console.log(`  📁 [${idx + 1}/${rootNodes.length}] Fetching: ${root.title}`);
       const children = await fetchTopicStructure(token, root.vkGroupId, root.vkTopicId);
-      console.log(`    ✅ Found ${children.length} subcategories in "${root.title}"`);
       return {
         ...root,
         children,
@@ -483,23 +478,19 @@ export const fetchFolderTreeUpToDepth = async (
   });
 
   if (level2Nodes.length === 0) {
-    console.log('⚠️ No level 2 nodes found to expand');
     return level1Expanded;
   }
 
-  console.log(`🔄 Level 3 - Fetching series for ${level2Nodes.length} subcategories...`);
   const level2Expanded = await runWithConcurrency(
     level2Nodes,
     CONCURRENCY_LIMIT,
     async (node, idx) => {
       try {
-        console.log(`  📚 [${idx + 1}/${level2Nodes.length}] Fetching series in: ${node.title}`);
         const children = await fetchTopicStructure(
           token,
           node.vkGroupId as string,
           node.vkTopicId as string
         );
-        console.log(`    ✅ Found ${children.length} series in "${node.title}"`);
         return {
           ...node,
           children,
@@ -523,6 +514,5 @@ export const fetchFolderTreeUpToDepth = async (
     children: (root.children || []).map((child) => level2Map.get(child.id) || child),
   }));
 
-  console.log('✅ Full Sync Complete!');
   return finalRoots;
 };

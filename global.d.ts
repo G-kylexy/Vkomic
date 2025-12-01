@@ -25,6 +25,7 @@ declare global {
         }[];
       }>;
       openPath: (path: string) => Promise<void>;
+      revealPath?: (path: string) => Promise<void>;
       downloadFile: (
         id: string,
         url: string,

@@ -1,4 +1,3 @@
-
 // Re-exporting lucide icons to keep imports clean in components
 import {
   Zap,
@@ -33,7 +32,8 @@ import {
   Play,
   Trash2,
   AlertTriangle,
-  File
+  File,
+  Github
 } from 'lucide-react';
 
 export {
@@ -69,5 +69,6 @@ export {
   Play,
   Trash2,
   AlertTriangle,
-  File
+  File,
+  Github
 };

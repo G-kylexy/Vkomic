@@ -254,7 +254,11 @@ const DownloadsView: React.FC<DownloadsViewProps> = ({
                                   className="p-1.5 hover:bg-slate-700 rounded text-slate-300"
                                   title={t.tooltips.openFolder}
                                   onClick={() => {
-                                    if (typeof window !== 'undefined' && window.fs?.openPath) {
+                                    if (typeof window === 'undefined' || !window.fs) return;
+
+                                    if (window.fs.revealPath && d.path) {
+                                      window.fs.revealPath(d.path);
+                                    } else if (window.fs.openPath) {
                                       const folder = getFolderFromPath(d.path) || downloadPath;
                                       if (folder) {
                                         window.fs.openPath(folder);
