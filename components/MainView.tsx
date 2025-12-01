@@ -17,6 +17,8 @@ interface MainViewProps {
   setVkTopicId: (topicId: string) => void;
   syncedData: VkNode[] | null;
   setSyncedData: (data: VkNode[] | null) => void;
+  hasFullSynced: boolean;
+  setHasFullSynced: (hasSynced: boolean) => void;
   downloadPath: string;
   setDownloadPath: (path: string) => void;
   onVkStatusChange: (status: VkConnectionStatus) => void;
@@ -43,6 +45,8 @@ const MainView: React.FC<MainViewProps> = ({
   setVkTopicId,
   syncedData,
   setSyncedData,
+  hasFullSynced,
+  setHasFullSynced,
   downloadPath,
   setDownloadPath,
   onVkStatusChange,
@@ -68,7 +72,10 @@ const MainView: React.FC<MainViewProps> = ({
             setVkTopicId={setVkTopicId}
             downloadPath={downloadPath}
             setDownloadPath={setDownloadPath}
-            onResetDatabase={() => setSyncedData(null)}
+            onResetDatabase={() => {
+              setSyncedData(null);
+              setHasFullSynced(false);
+            }}
           />
         );
       case 'home':
@@ -80,6 +87,8 @@ const MainView: React.FC<MainViewProps> = ({
             vkTopicId={vkTopicId}
             syncedData={syncedData}
             setSyncedData={setSyncedData}
+            hasFullSynced={hasFullSynced}
+            setHasFullSynced={setHasFullSynced}
             searchQuery={searchQuery}
             setSearchQuery={setSearchQuery}
             onVkStatusChange={onVkStatusChange}

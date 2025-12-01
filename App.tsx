@@ -76,6 +76,16 @@ const App: React.FC = () => {
       console.error("Failed to save synced data", e);
     }
   }, [syncedData]);
+
+  // État pour savoir si une synchronisation complète a déjà été effectuée
+  const [hasFullSynced, setHasFullSynced] = useState(() => {
+    return localStorage.getItem('vk_has_full_synced') === 'true';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('vk_has_full_synced', String(hasFullSynced));
+  }, [hasFullSynced]);
+
   // Chemin de téléchargement local choisi par l'utilisateur
   const [downloadPath, setDownloadPath] = useState(() => {
     return localStorage.getItem('vk_download_path') || DEFAULT_DOWNLOAD_PATH;
@@ -509,6 +519,8 @@ const App: React.FC = () => {
             setVkTopicId={handleSetVkTopicId}
             syncedData={syncedData}
             setSyncedData={setSyncedData}
+            hasFullSynced={hasFullSynced}
+            setHasFullSynced={setHasFullSynced}
             downloadPath={downloadPath}
             setDownloadPath={handleSetDownloadPath}
             onVkStatusChange={setVkStatus}

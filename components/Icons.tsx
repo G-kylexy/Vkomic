@@ -32,7 +32,8 @@ import {
   Pause,
   Play,
   Trash2,
-  AlertTriangle
+  AlertTriangle,
+  File
 } from 'lucide-react';
 
 export {
@@ -67,5 +68,6 @@ export {
   Pause,
   Play,
   Trash2,
-  AlertTriangle
+  AlertTriangle,
+  File
 };

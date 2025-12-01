@@ -1,33 +1,38 @@
 import React, { useState, useEffect } from 'react';
-import { VkConnectionStatus, VkNode, DownloadItem } from '../types';
-import { fetchNodeContent, fetchRootIndex, fetchFolderTreeUpToDepth } from '../utils/vk-service';
 import {
-  AlertCircle,
-  ChevronRight,
-  DownloadCloud,
-  FileText,
   Folder,
-  Home,
+  FileText,
+  File,
+  DownloadCloud,
   RefreshCw,
-  FileArchive,
-  BookOpen,
-  Image,
-  Pause,
+  Trash2,
   Play,
+  Pause,
   X,
   Check,
+  ChevronRight,
+  Home,
   Search,
+  Image,
+  FileArchive,
+  BookOpen,
+  AlertCircle,
   AlertTriangle,
 } from './Icons';
 import { useTranslation } from '../i18n';
+import { VkNode, VkConnectionStatus, DownloadItem } from '../types';
+import { fetchRootIndex, fetchNodeContent, fetchFolderTreeUpToDepth } from '../utils/vk-service';
 
 interface BrowserViewProps {
   vkToken: string;
   vkGroupId: string;
   vkTopicId: string;
   syncedData: VkNode[] | null;
-  setSyncedData: (data: VkNode[]) => void;
+  setSyncedData: (data: VkNode[] | null) => void;
+  hasFullSynced: boolean;
+  setHasFullSynced: (hasSynced: boolean) => void;
   searchQuery: string;
+  setSearchQuery: (q: string) => void;
   onVkStatusChange: (status: VkConnectionStatus) => void;
   addDownload: (node: VkNode, subFolder?: string) => void;
   downloads: DownloadItem[];
@@ -43,7 +48,10 @@ const BrowserView: React.FC<BrowserViewProps> = ({
   vkTopicId,
   syncedData,
   setSyncedData,
+  hasFullSynced,
+  setHasFullSynced,
   searchQuery,
+  setSearchQuery,
   onVkStatusChange,
   addDownload,
   downloads,
@@ -57,7 +65,6 @@ const BrowserView: React.FC<BrowserViewProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [navPath, setNavPath] = useState<VkNode[]>([]);
   const [debouncedQuery, setDebouncedQuery] = useState('');
-  const [hasFullSynced, setHasFullSynced] = useState(false);
 
   // Debounce la recherche pour éviter la surcharge
   useEffect(() => {
@@ -76,47 +83,47 @@ const BrowserView: React.FC<BrowserViewProps> = ({
   const normalizeText = (text: string): string => {
     return text
       .toLowerCase()
-      .normalize('NFD') // Décompose les caractères accentués
-      .replace(/[\u0300-\u036f]/g, '') // Enlève les accents
-      .replace(/[^a-z0-9\s]/g, ' ') // Remplace les caractères spéciaux par des espaces
-      .replace(/\s+/g, ' ') // Normalise les espaces multiples
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
       .trim();
   };
 
-  // Fonction récursive pour rechercher dans tous les nœuds
-  // Ne retourne QUE les nœuds qui matchent directement, pas tous leurs enfants
-  const searchAllNodes = (nodes: VkNode[] | null, query: string): VkNode[] => {
-    if (!nodes || query.trim().length === 0) return [];
-
-    const results: VkNode[] = [];
-    const normalizedQuery = normalizeText(query);
-    const queryWords = normalizedQuery.split(' ').filter(w => w.length > 0);
-
-    for (const node of nodes) {
-      const normalizedTitle = normalizeText(node.title);
-
-      // Vérifie si TOUS les mots de la requête sont dans le titre
-      const matches = queryWords.every(word => normalizedTitle.includes(word));
-
-      if (matches) {
-        // On ajoute le nœud qui matche SANS ses enfants
-        results.push({ ...node, children: [] });
-      }
-
-      // Recherche récursive dans les enfants
-      if (node.children && node.children.length > 0) {
-        const childResults = searchAllNodes(node.children, query);
-        results.push(...childResults);
-      }
+  // Fonction de recherche optimisée avec useMemo
+  const displayedNodes = React.useMemo(() => {
+    if (!isSearching) {
+      return currentNodes || [];
     }
 
-    return results;
-  };
+    if (!syncedData) return [];
 
-  const displayedNodes =
-    isSearching
-      ? searchAllNodes(syncedData, debouncedQuery)
-      : currentNodes || [];
+    const normalizedQuery = normalizeText(debouncedQuery);
+    const queryWords = normalizedQuery.split(' ').filter((w) => w.length > 0);
+    const results: VkNode[] = [];
+    const MAX_RESULTS = 100; // Limite pour éviter le freeze du DOM
+
+    const traverse = (nodes: VkNode[]) => {
+      for (const node of nodes) {
+        if (results.length >= MAX_RESULTS) return;
+
+        const normalizedTitle = normalizeText(node.title);
+        // Vérifie si TOUS les mots de la requête sont dans le titre
+        const matches = queryWords.every((word) => normalizedTitle.includes(word));
+
+        if (matches) {
+          results.push(node);
+        }
+
+        if (node.children && node.children.length > 0) {
+          traverse(node.children);
+        }
+      }
+    };
+
+    traverse(syncedData);
+    return results;
+  }, [isSearching, debouncedQuery, syncedData, currentNodes]);
 
   const fileNodes = displayedNodes.filter((n) => n.type === 'file');
 
@@ -166,10 +173,10 @@ const BrowserView: React.FC<BrowserViewProps> = ({
     setNavPath([]);
     try {
       const start = performance.now();
-      // Synchronisation complète : dossiers uniquement, jusqu'à 3 niveaux
+      // Use depth 3 for full sync as requested
       const data = await fetchFolderTreeUpToDepth(vkToken, vkGroupId, vkTopicId, 3);
       setSyncedData(data);
-      setHasFullSynced(true); // Marque comme synchronisé
+      setHasFullSynced(true); // Mark as fully synced
       const latency = Math.round(performance.now() - start);
       onVkStatusChange({
         connected: true,
@@ -186,6 +193,12 @@ const BrowserView: React.FC<BrowserViewProps> = ({
   };
 
   const navigateTo = async (node: VkNode) => {
+    // Si on est en mode recherche, on quitte la recherche pour naviguer dans le dossier
+    if (isSearching) {
+      setSearchQuery('');
+      setDebouncedQuery('');
+    }
+
     if (node.type === 'file' && node.url) {
       addDownload(node);
       return;
@@ -334,8 +347,8 @@ const BrowserView: React.FC<BrowserViewProps> = ({
 
   const openVkSearch = () => {
     const url = `https://vk.com/board203785966?act=search&q=${encodeURIComponent(searchQuery)}`;
-    if (window.shell && window.shell.openExternal) {
-      window.shell.openExternal(url);
+    if ((window as any).shell && (window as any).shell.openExternal) {
+      (window as any).shell.openExternal(url);
     } else {
       window.open(url, '_blank');
     }
@@ -368,6 +381,35 @@ const BrowserView: React.FC<BrowserViewProps> = ({
             <RefreshCw size={18} className={isLoading ? 'animate-spin' : ''} />
             {isLoading ? t.library.syncing : t.library.syncButton}
           </button>
+
+          {!hasFullSynced && (
+            <div className="mt-8 flex flex-col items-center animate-fade-in">
+              <div className="flex items-center gap-2 text-amber-500 mb-2">
+                <AlertTriangle size={16} />
+                <span className="text-xs font-medium uppercase tracking-wider">Option Avancée</span>
+              </div>
+              <p className="text-slate-500 text-sm text-center max-w-md mb-4">
+                {t.library.syncAllWarning.split('.')[0]}.
+              </p>
+              <button
+                onClick={handleFullSync}
+                disabled={isLoading}
+                className="group relative overflow-hidden rounded-lg transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] shadow-lg hover:shadow-amber-500/20 border border-amber-500/30"
+              >
+                <div className="absolute inset-0 bg-gradient-to-r from-amber-500/10 to-orange-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                <div className="relative flex items-center">
+                  <div className="px-4 py-3 bg-amber-500/10 border-r border-amber-500/20 group-hover:bg-amber-500/20 transition-colors">
+                    <AlertCircle size={18} className={`text-amber-500 ${isLoading ? 'animate-pulse' : ''}`} />
+                  </div>
+                  <div className="px-6 py-3 bg-amber-500/5 group-hover:bg-amber-500/10 transition-colors">
+                    <span className="text-amber-500 font-semibold text-sm tracking-wide">
+                      TOUT SYNCHRONISER
+                    </span>
+                  </div>
+                </div>
+              </button>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -377,7 +419,7 @@ const BrowserView: React.FC<BrowserViewProps> = ({
     <div className="flex-1 flex flex-col h-full animate-fade-in overflow-hidden">
       {/* Header / Breadcrumbs - Fixed */}
       <div className="w-full flex-shrink-0 z-10 bg-[#050B14]/95 backdrop-blur-xl border-b border-slate-800/50 shadow-sm">
-        <div className="w-full px-8 py-4">
+        <div className="w-full px-4 sm:px-6 py-4">
           <div className="flex items-center justify-between text-sm min-h-[32px]">
             <div className="flex items-center gap-2 overflow-x-auto flex-nowrap flex-1 min-w-0 pr-2 custom-scrollbar-none">
               {!isSearching && (
@@ -458,7 +500,7 @@ const BrowserView: React.FC<BrowserViewProps> = ({
                   <div className="flex items-center justify-center px-2 py-2">
                     <AlertCircle size={16} className={`text-orange-400 ${isLoading ? 'animate-pulse' : ''}`} />
                   </div>
-                  <div className="bg-amber-600 hover:bg-amber-500 px-3 py-2 text-white transition-colors">
+                  <div className="bg-amber-600 hover:bg-amber-500 px-3 py-2 text-white transition-colors hidden sm:block">
                     {t.library.syncAllButton}
                   </div>
                 </button>
@@ -592,7 +634,7 @@ const BrowserView: React.FC<BrowserViewProps> = ({
                         <div className="flex-1 min-w-0 flex flex-col justify-center">
                           <div className="flex items-start justify-between gap-2">
                             <h3
-                              className="text-slate-200 font-semibold text-sm truncate pr-2 group-hover:text-white transition-colors"
+                              className="text-slate-200 font-semibold text-sm leading-snug line-clamp-2 break-words pr-2 group-hover:text-white transition-colors flex-1 min-w-0"
                               title={node.title}
                             >
                               {displayTitle}
@@ -631,7 +673,7 @@ const BrowserView: React.FC<BrowserViewProps> = ({
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2 self-end sm:self-auto">
+                      <div className="flex items-center gap-2 self-end sm:self-auto flex-shrink-0">
                         {showProgress ? (
                           <>
                             {activeDownload?.status === 'paused' ? (
