@@ -1,3 +1,5 @@
+# <p align="center"><img src="public/icon.png" width="180" alt="Vkomic" /></p>
+
 # Vkomic
 Une application qui se branche sur https://vk.com/board203785966 et permet de telecharger les BD, mangas et comics disponibles.
 
