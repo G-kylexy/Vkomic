@@ -147,13 +147,18 @@ const App: React.FC = () => {
     }
   });
   const downloadIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  // Avoid repeating the missing download path alert when batch-triggering downloads
+  const missingDownloadPathAlertedRef = useRef(false);
 
   const addDownload = (node: VkNode, subFolder?: string) => {
     if (!node.url) return;
 
     // Vérifier si un dossier de téléchargement est configuré
     if (!downloadPath || downloadPath === DEFAULT_DOWNLOAD_PATH) {
-      window.alert("Aucun dossier de telechargement n'est configure. Choisissez un chemin dans Parametres avant de lancer un telechargement.");
+      if (!missingDownloadPathAlertedRef.current) {
+        window.alert("Aucun dossier de telechargement n'est configure. Choisissez un chemin dans Parametres avant de lancer un telechargement.");
+        missingDownloadPathAlertedRef.current = true;
+      }
       // Ajouter un téléchargement avec statut "error" pour informer l'utilisateur
       const id = node.id || Math.random().toString(36).substr(2, 9);
       const formattedSize = formatBytes(node.sizeBytes);
@@ -476,6 +481,12 @@ const App: React.FC = () => {
     setDownloadPath(path);
     localStorage.setItem('vk_download_path', path);
   };
+
+  useEffect(() => {
+    if (downloadPath && downloadPath !== DEFAULT_DOWNLOAD_PATH) {
+      missingDownloadPathAlertedRef.current = false;
+    }
+  }, [downloadPath]);
 
   useEffect(() => {
     if (!vkToken) {
