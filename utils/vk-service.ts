@@ -579,5 +579,56 @@ export const fetchFolderTreeUpToDepth = async (
     children: (root.children || []).map((child) => level2Map.get(child.id) || child),
   }));
 
-  return finalRoots;
+  if (maxDepth <= 3) {
+    return finalRoots;
+  }
+
+  // Niveau 4 : dossiers finaux dans chaque série (niveau 3 de l'arbre)
+  const level3Nodes: VkNode[] = [];
+  level2Expanded.forEach((serie) => {
+    (serie.children || []).forEach((child) => {
+      if (child.vkGroupId && child.vkTopicId) {
+        level3Nodes.push(child);
+      }
+    });
+  });
+
+  if (level3Nodes.length === 0) {
+    return finalRoots;
+  }
+
+  const level3Expanded = await runWithConcurrency(
+    level3Nodes,
+    CONCURRENCY_LIMIT,
+    async (node, idx) => {
+      try {
+        const children = await fetchTopicStructure(
+          token,
+          node.vkGroupId as string,
+          node.vkTopicId as string
+        );
+        return {
+          ...node,
+          children,
+          isLoaded: true,
+        };
+      } catch (e) {
+        console.error(`    ⚠️ Failed to fetch final folders for "${node.title}":`, e);
+        return node;
+      }
+    }
+  );
+
+  const level3Map = new Map<string, VkNode>();
+  level3Expanded.forEach((node) => level3Map.set(node.id, node));
+
+  const finalRootsDepth4 = finalRoots.map((root) => ({
+    ...root,
+    children: (root.children || []).map((lvl2) => ({
+      ...lvl2,
+      children: (lvl2.children || []).map((lvl3) => level3Map.get(lvl3.id) || lvl3),
+    })),
+  }));
+
+  return finalRootsDepth4;
 };
