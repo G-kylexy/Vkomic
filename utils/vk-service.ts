@@ -38,27 +38,59 @@ const MOCK_ROOT_NODES: VkNode[] = [
   },
 ];
 
-// --- HACK JSONP ---
+// --- HACK JSONP + Limiteur ---
 // L'API VK ne supporte pas le CORS pour les appels frontend directs.
 // JSONP permet de contourner cela en injectant une balise <script>.
-const jsonp = (url: string): Promise<any> => {
-  return new Promise((resolve, reject) => {
-    const callbackName = 'vk_cb_' + Math.round(100000 * Math.random());
-    const script = document.createElement('script');
+// On ajoute en plus un petit limiteur global pour �viter de spammer l'API.
 
-    (window as any)[callbackName] = (data: any) => {
-      delete (window as any)[callbackName];
-      document.body.removeChild(script);
-      resolve(data);
-    };
+const RATE_LIMIT_DELAY_MS = 350; // ~3 req/s
+type QueueItem<T> = { fn: () => Promise<T>; resolve: (v: T) => void; reject: (e: any) => void };
+const requestQueue: QueueItem<any>[] = [];
+let processingQueue = false;
 
-    script.src = `${url}&callback=${callbackName}`;
-    script.onerror = (err) => {
-      delete (window as any)[callbackName];
-      document.body.removeChild(script);
+const processQueue = async () => {
+  if (processingQueue) return;
+  processingQueue = true;
+  while (requestQueue.length > 0) {
+    const { fn, resolve, reject } = requestQueue.shift()!;
+    try {
+      const result = await fn();
+      resolve(result);
+    } catch (err) {
       reject(err);
-    };
-    document.body.appendChild(script);
+    }
+    await new Promise((r) => setTimeout(r, RATE_LIMIT_DELAY_MS));
+  }
+  processingQueue = false;
+};
+
+const enqueueRequest = <T>(fn: () => Promise<T>): Promise<T> => {
+  return new Promise((resolve, reject) => {
+    requestQueue.push({ fn, resolve, reject });
+    processQueue();
+  });
+};
+
+const jsonp = (url: string): Promise<any> => {
+  return enqueueRequest(() => {
+    return new Promise((resolve, reject) => {
+      const callbackName = 'vk_cb_' + Math.round(100000 * Math.random());
+      const script = document.createElement('script');
+
+      (window as any)[callbackName] = (data: any) => {
+        delete (window as any)[callbackName];
+        document.body.removeChild(script);
+        resolve(data);
+      };
+
+      script.src = `${url}&callback=${callbackName}`;
+      script.onerror = (err) => {
+        delete (window as any)[callbackName];
+        document.body.removeChild(script);
+        reject(err);
+      };
+      document.body.appendChild(script);
+    });
   });
 };
 
@@ -73,6 +105,42 @@ export const fetchVkTopic = async (
   if (!token || token.length < 10) throw new Error('Invalid Token');
   const url = `https://api.vk.com/method/board.getComments?access_token=${token}&group_id=${groupId}&topic_id=${topicId}&count=100&extended=1&v=${API_VERSION}`;
   return jsonp(url);
+};
+
+// Version batch pour plusieurs offsets d'un même topic via VK execute (max 25 sous-appels)
+const fetchVkTopicBatch = async (
+  token: string,
+  groupId: string,
+  topicId: string,
+  offsets: number[]
+): Promise<any[]> => {
+  if (!token || token.length < 10) throw new Error('Invalid Token');
+  const offsetsLiteral = offsets.join(',');
+  const code = `
+    var offsets = [${offsetsLiteral}];
+    var res = [];
+    var i = 0;
+    while (i < offsets.length) {
+      res.push(API.board.getComments({
+        group_id: ${groupId},
+        topic_id: ${topicId},
+        count: 100,
+        offset: offsets[i],
+        extended: 1
+      }));
+      i = i + 1;
+    }
+    return res;
+  `;
+  const url = `https://api.vk.com/method/execute?access_token=${token}&v=${API_VERSION}&code=${encodeURIComponent(code)}`;
+  const data = await jsonp(url);
+  if (data.error) {
+    throw new Error(`VK execute error: ${JSON.stringify(data.error)}`);
+  }
+  if (!data.response || !Array.isArray(data.response)) {
+    return [];
+  }
+  return data.response;
 };
 
 // Recherche globale dans les topics du groupe
@@ -328,33 +396,32 @@ const fetchAllComments = async (
   const allItems: any[] = [];
   let offset = 0;
   const count = 100;
+  const BATCH_SIZE = 10; // <=25 sous-appels autorisés dans execute, marge de sécurité
 
   while (true) {
-    const url = `https://api.vk.com/method/board.getComments?access_token=${token}&group_id=${groupId}&topic_id=${topicId}&count=${count}&offset=${offset}&extended=1&v=${API_VERSION}`;
+    const offsets: number[] = [];
+    for (let i = 0; i < BATCH_SIZE; i++) {
+      offsets.push(offset + i * count);
+    }
 
-    let response = null;
+    let responses: any[] = [];
     let retries = 0;
 
-    // Retry logic
     while (retries < maxRetries) {
       try {
-        response = await jsonp(url);
-
-        // Vérifier s'il y a une erreur VK API
-        if (response.error) {
-          console.warn(`VK API Error for topic ${topicId} (attempt ${retries + 1}/${maxRetries}):`, response.error);
+        responses = await fetchVkTopicBatch(token, groupId, topicId, offsets);
+        const hasError = responses.some((r) => r?.error);
+        if (hasError) {
+          console.warn(`VK execute error for topic ${topicId} (attempt ${retries + 1}/${maxRetries})`);
           retries++;
           if (retries < maxRetries) {
-            await sleep(1000 * retries); // Délai croissant: 1s, 2s, 3s
+            await sleep(1000 * retries);
             continue;
           }
-          break;
         }
-
-        // Succès
         break;
       } catch (error) {
-        console.warn(`Network error for topic ${topicId} (attempt ${retries + 1}/${maxRetries}):`, error);
+        console.warn(`Network/execute error for topic ${topicId} (attempt ${retries + 1}/${maxRetries}):`, error);
         retries++;
         if (retries < maxRetries) {
           await sleep(1000 * retries);
@@ -364,25 +431,24 @@ const fetchAllComments = async (
       }
     }
 
-    if (!response || !response.response || !Array.isArray(response.response.items)) {
-      if (allItems.length === 0) {
-        console.error(`Failed to fetch any comments for topic ${topicId} after ${maxRetries} retries`);
+    let reachedEnd = false;
+    for (let idx = 0; idx < responses.length; idx++) {
+      const resp = responses[idx];
+      if (!resp || !resp.items) continue;
+      const items = resp.items;
+      allItems.push(...items);
+      if (items.length < count) {
+        reachedEnd = true;
+        break;
       }
-      break;
     }
 
-    const items = response.response.items;
-    allItems.push(...items);
+    offset += count * BATCH_SIZE;
+    if (reachedEnd) break;
 
-    if (items.length < count) {
-      break; // derniere page
-    }
-    offset += count;
-
-    // Petit délai entre les pages pour éviter de surcharger l'API
-    await sleep(150);
+    // Petit délai entre les batches pour éviter de surcharger l'API
+    await sleep(200);
   }
-
 
   return allItems;
 };
