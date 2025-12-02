@@ -9,6 +9,7 @@ interface MainViewProps {
   searchQuery: string;
   setSearchQuery: (q: string) => void;
   activeTab: string;
+  setActiveTab: (tab: string) => void;
   vkToken: string;
   setVkToken: (t: string) => void;
   vkGroupId: string;
@@ -37,6 +38,7 @@ const MainView: React.FC<MainViewProps> = ({
   searchQuery,
   setSearchQuery,
   activeTab,
+  setActiveTab,
   vkToken,
   setVkToken,
   vkGroupId,
@@ -114,7 +116,12 @@ const MainView: React.FC<MainViewProps> = ({
           />
         );
       case 'library':
-        return <LibraryView downloadPath={downloadPath} />;
+        return (
+          <LibraryView
+            downloadPath={downloadPath}
+            onNavigateToSettings={() => setActiveTab('settings')}
+          />
+        );
       default:
         return null;
     }

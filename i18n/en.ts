@@ -87,6 +87,7 @@ export const en: Translations = {
         downloadAll: 'Download All',
         cancelAll: 'Cancel All',
         emptyFolder: 'This folder is empty.',
+        configureFolder: 'Configure Folder',
     },
 
     // Downloads

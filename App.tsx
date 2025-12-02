@@ -590,6 +590,7 @@ const App: React.FC = () => {
             searchQuery={searchQuery}
             setSearchQuery={setSearchQuery}
             activeTab={activeTab}
+            setActiveTab={setActiveTab}
             vkToken={vkToken}
             setVkToken={handleSetVkToken}
             vkGroupId={vkGroupId}

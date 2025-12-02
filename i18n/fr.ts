@@ -88,6 +88,7 @@ export const fr = {
     downloadAll: 'Tout télécharger',
     cancelAll: 'Tout annuler',
     emptyFolder: 'Ce dossier est vide.',
+    configureFolder: 'Configurer le dossier',
   },
 
   // Downloads

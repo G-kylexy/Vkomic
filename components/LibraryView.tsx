@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Folder, FileText, RefreshCw, ChevronLeft, DownloadCloud } from './Icons';
+import { Folder, FileText, RefreshCw, ChevronLeft, DownloadCloud, Settings } from './Icons';
 import { useTranslation } from '../i18n';
 
 interface FsEntry {
@@ -12,6 +12,7 @@ interface FsEntry {
 
 interface LibraryViewProps {
   downloadPath: string;
+  onNavigateToSettings?: () => void;
 }
 
 const normalizePath = (value: string) => value.replace(/\\/g, '/');
@@ -88,7 +89,7 @@ const computeParentWithinBase = (current: string, base: string) => {
 };
 
 // Parcourt le dossier de téléchargement local via l'IPC exposé par Electron
-const LibraryView: React.FC<LibraryViewProps> = ({ downloadPath }) => {
+const LibraryView: React.FC<LibraryViewProps> = ({ downloadPath, onNavigateToSettings }) => {
   const { t } = useTranslation();
   const [currentPath, setCurrentPath] = useState<string | null>(null);
   const [entries, setEntries] = useState<FsEntry[]>([]);
@@ -117,7 +118,8 @@ const LibraryView: React.FC<LibraryViewProps> = ({ downloadPath }) => {
         setIsLoading(false);
       }
     },
-    [t.library.desktopOnly, t.library.readError],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
   );
 
   useEffect(() => {
@@ -159,8 +161,20 @@ const LibraryView: React.FC<LibraryViewProps> = ({ downloadPath }) => {
   if (!effectivePath) {
     return (
       <div className="flex-1 p-8 flex flex-col pt-6 animate-fade-in overflow-y-auto custom-scrollbar">
-        <div className="flex-1 flex flex-col items-center justify-center text-center px-6 text-slate-400 gap-3">
+        <div className="flex-1 flex flex-col items-center justify-center text-center px-6 text-slate-400 gap-4">
+          <div className="w-16 h-16 rounded-full bg-slate-800/50 flex items-center justify-center mb-2">
+            <Settings size={32} className="text-slate-500" />
+          </div>
           <p className="font-medium text-lg">{t.library.noDownloadPath}</p>
+          {onNavigateToSettings && (
+            <button
+              onClick={onNavigateToSettings}
+              className="mt-2 flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium shadow-lg"
+            >
+              <Settings size={18} />
+              <span>{t.library.configureFolder}</span>
+            </button>
+          )}
         </div>
       </div>
     );
