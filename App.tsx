@@ -320,7 +320,8 @@ const App: React.FC = () => {
 
       // On lance les prochains éléments pour atteindre la limite de 5
       const slotsAvailable = 5 - activeCount;
-      const toStart = pendingItems.slice(0, slotsAvailable);
+      // Traiter en priorité les plus anciens en attente (fin de liste) pour coller à l'ordre visuel
+      const toStart = pendingItems.slice(-slotsAvailable);
 
       toStart.forEach(item => {
         startRealDownload(item.id, item.url, item.title, item.extension, item.subFolder);
