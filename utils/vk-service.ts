@@ -473,7 +473,7 @@ export const fetchFolderTreeUpToDepth = async (
   token: string,
   groupId?: string,
   topicId?: string,
-  maxDepth: number = 3
+  maxDepth: number = 4
 ): Promise<VkNode[]> => {
   // Helper de parallelisation limitee
   const runWithConcurrency = async <T, R>(
