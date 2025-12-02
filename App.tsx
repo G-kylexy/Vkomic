@@ -153,17 +153,6 @@ const App: React.FC = () => {
 
     const id = node.id || Math.random().toString(36).substr(2, 9);
 
-    const formatBytes = (bytes?: number): string | undefined => {
-      if (bytes === undefined || bytes === null || isNaN(bytes)) return undefined;
-      if (bytes < 1024) return `${bytes} B`;
-      const kb = bytes / 1024;
-      if (kb < 1024) return `${kb.toFixed(1)} KB`;
-      const mb = kb / 1024;
-      if (mb < 1024) return `${mb.toFixed(1)} MB`;
-      const gb = mb / 1024;
-      return `${gb.toFixed(1)} GB`;
-    };
-
     const formattedSize = formatBytes(node.sizeBytes);
 
     // Mise à jour fonctionnelle de la liste des téléchargements
@@ -271,10 +260,10 @@ const App: React.FC = () => {
             prev.map((d) =>
               d.id === id
                 ? {
-                    ...d,
-                    path: pathFromResult,
-                    size: formattedSize || d.size,
-                  }
+                  ...d,
+                  path: pathFromResult,
+                  size: formattedSize || d.size,
+                }
                 : d
             )
           );
@@ -502,20 +491,30 @@ const App: React.FC = () => {
 
     // Mesure la latence vers VK toutes les secondes (via IPC pour éviter CORB côté renderer)
     const measurePing = async () => {
+      if (!vkToken) {
+        setVkStatus((prev) => ({
+          ...prev,
+          connected: false,
+          latencyMs: null,
+          lastSync: null,
+          region: rawRegion,
+          regionAggregate,
+        }));
+        return;
+      }
+
       try {
         let latency: number | null = null;
 
         if (window.vk?.ping) {
-          const res = await window.vk.ping(vkToken || undefined);
+          const res = await window.vk.ping(vkToken);
           latency = res.latency !== null ? res.latency : null;
         } else {
-          const start = performance.now();
-          await fetch('https://vk.com/favicon.ico', {
-            mode: 'no-cors',
-            cache: 'no-store',
-            method: 'HEAD',
-          });
-          latency = Math.round(performance.now() - start);
+          // Fallback pour le développement web (sans Electron)
+          // On ne fait rien si pas de token ou pas d'IPC, pour respecter la demande "pas d'appel direct"
+          // Mais pour le dev web, on peut simuler un succès si le token a l'air valide, ou juste échouer.
+          // Pour être strict : on échoue si pas d'IPC.
+          throw new Error("VK IPC not available");
         }
 
         setVkStatus((prev) => ({
@@ -541,7 +540,7 @@ const App: React.FC = () => {
     measurePing();
     const id = setInterval(measurePing, 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [vkToken]);
 
   return (
     <TranslationProvider>
