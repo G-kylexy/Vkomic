@@ -173,8 +173,8 @@ const BrowserView: React.FC<BrowserViewProps> = ({
     setNavPath([]);
     try {
       const start = performance.now();
-      // Use depth 3 for full sync as requested
-      const data = await fetchFolderTreeUpToDepth(vkToken, vkGroupId, vkTopicId, 3);
+      // Full sync jusqu'au 4ème niveau pour inclure les dossiers finaux
+      const data = await fetchFolderTreeUpToDepth(vkToken, vkGroupId, vkTopicId, 4);
       setSyncedData(data);
       setHasFullSynced(true); // Mark as fully synced
       const latency = Math.round(performance.now() - start);
