@@ -29,6 +29,7 @@
     "win": {
       "target": [
         "nsis",
+        "portable",
         "zip"
       ],
       "icon": "public/icon.ico",
@@ -46,7 +47,14 @@
         "tar.gz"
       ],
       "category": "Utility"
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "G-kylexy",
+        "repo": "Vkomic"
+      }
+    ]
   },
   "dependencies": {
     "lucide-react": "^0.555.0",
