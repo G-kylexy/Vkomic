@@ -42,7 +42,7 @@ const DownloadsView: React.FC<DownloadsViewProps> = ({
     if (syncedData) countSeries(syncedData);
 
     return {
-      indexed: seriesCount > 0 ? seriesCount : 11, // Fallback visuel si pas de données
+      indexed: seriesCount > 0 ? seriesCount : 0, // Pas de données -> 0
       downloaded: downloadedCount,
       inProgress: inProgressCount
     };
