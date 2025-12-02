@@ -32,7 +32,7 @@ Les redevances sont dues **à perpétuité** tant que le Licencié utilise le Lo
 ### 3.3 Paiement
 - Fréquence : **Trimestrielle** (tous les 3 mois)
 - Délai : Dans les 30 jours suivant la fin de chaque trimestre
-- Méthode : Virement bancaire ou PayPal à [votre-email@example.com]
+- Méthode : Virement bancaire ou PayPal à [ghostkylexy1@gmail.com]
 
 ### 3.4 Rapports
 Le Licencié doit fournir un rapport trimestriel détaillant :
