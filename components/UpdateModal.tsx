@@ -1,6 +1,6 @@
-import React from 'react';
-import { Download, X } from './Icons';
-import { Github } from 'lucide-react';
+import React from "react";
+import { Download, X } from "./Icons";
+import { Github } from "lucide-react";
 
 interface UpdateModalProps {
   version: string;
@@ -9,12 +9,17 @@ interface UpdateModalProps {
   onClose: () => void;
 }
 
-const UpdateModal: React.FC<UpdateModalProps> = ({ version, notes, url, onClose }) => {
+const UpdateModal: React.FC<UpdateModalProps> = ({
+  version,
+  notes,
+  url,
+  onClose,
+}) => {
   const handleDownload = () => {
     if (window.shell?.openExternal) {
       window.shell.openExternal(url);
     } else {
-      window.open(url, '_blank');
+      window.open(url, "_blank");
     }
     onClose();
   };
@@ -29,8 +34,12 @@ const UpdateModal: React.FC<UpdateModalProps> = ({ version, notes, url, onClose 
               <Github className="text-white" size={24} />
             </div>
             <div>
-              <h3 className="text-white font-bold text-lg">Mise à jour disponible</h3>
-              <p className="text-blue-100 text-xs font-medium">Version {version}</p>
+              <h3 className="text-white font-bold text-lg">
+                Mise à jour disponible
+              </h3>
+              <p className="text-blue-100 text-xs font-medium">
+                Version {version}
+              </p>
             </div>
           </div>
           <button
@@ -49,7 +58,7 @@ const UpdateModal: React.FC<UpdateModalProps> = ({ version, notes, url, onClose 
             </h4>
             <div className="bg-[#0f1523] rounded-lg p-4 border border-slate-800 max-h-48 overflow-y-auto custom-scrollbar">
               <p className="text-slate-400 text-sm whitespace-pre-wrap leading-relaxed">
-                {notes || 'Aucune note de version disponible.'}
+                {notes || "Aucune note de version disponible."}
               </p>
             </div>
           </div>
@@ -76,4 +85,3 @@ const UpdateModal: React.FC<UpdateModalProps> = ({ version, notes, url, onClose 
 };
 
 export default UpdateModal;
-

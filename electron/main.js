@@ -1,7 +1,7 @@
-import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron';
-import path from 'path';
-import fs from 'fs';
-import { fileURLToPath } from 'url';
+import { app, BrowserWindow, ipcMain, shell, dialog } from "electron";
+import path from "path";
+import fs from "fs";
+import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -15,17 +15,17 @@ function createWindow() {
     frame: false,
     autoHideMenuBar: true,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
     },
   });
 
   if (!app.isPackaged) {
-    mainWindow.loadURL('http://localhost:3000');
+    mainWindow.loadURL("http://localhost:3000");
     mainWindow.webContents.openDevTools();
   } else {
-    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+    mainWindow.loadFile(path.join(__dirname, "../dist/index.html"));
   }
 }
 
@@ -33,23 +33,23 @@ app.whenReady().then(() => {
   createWindow();
 
   // IPC handlers for window controls
-  ipcMain.on('win:min', () => mainWindow.minimize());
+  ipcMain.on("win:min", () => mainWindow.minimize());
 
-  ipcMain.on('win:max', () =>
+  ipcMain.on("win:max", () =>
     mainWindow.isMaximized() ? mainWindow.unmaximize() : mainWindow.maximize(),
   );
 
-  ipcMain.on('win:close', () => mainWindow.close());
+  ipcMain.on("win:close", () => mainWindow.close());
 
   // IPC handler for opening external links
-  ipcMain.on('open-external', (event, url) => {
+  ipcMain.on("open-external", (event, url) => {
     shell.openExternal(url);
   });
 
   // Sélecteur natif pour choisir un dossier de téléchargement
-  ipcMain.handle('dialog:selectFolder', async () => {
+  ipcMain.handle("dialog:selectFolder", async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
-      properties: ['openDirectory', 'createDirectory'],
+      properties: ["openDirectory", "createDirectory"],
     });
     if (result.canceled || result.filePaths.length === 0) {
       return null;
@@ -58,17 +58,19 @@ app.whenReady().then(() => {
   });
 
   // Lecture d'un dossier local (Bibliothèque)
-  ipcMain.handle('fs:listDirectory', async (_, targetPath) => {
-    if (!targetPath || typeof targetPath !== 'string') {
-      throw new Error('Invalid path');
+  ipcMain.handle("fs:listDirectory", async (_, targetPath) => {
+    if (!targetPath || typeof targetPath !== "string") {
+      throw new Error("Invalid path");
     }
 
     const stats = await fs.promises.stat(targetPath);
     if (!stats.isDirectory()) {
-      throw new Error('Path is not a directory');
+      throw new Error("Path is not a directory");
     }
 
-    const dirEntries = await fs.promises.readdir(targetPath, { withFileTypes: true });
+    const dirEntries = await fs.promises.readdir(targetPath, {
+      withFileTypes: true,
+    });
 
     const entries = await Promise.all(
       dirEntries.map(async (entry) => {
@@ -97,12 +99,12 @@ app.whenReady().then(() => {
   const activeDownloads = new Map();
 
   // Annule un téléchargement en cours
-  ipcMain.handle('fs:cancelDownload', async (_, id) => {
+  ipcMain.handle("fs:cancelDownload", async (_, id) => {
     if (activeDownloads.has(id)) {
       try {
         activeDownloads.get(id).abort();
       } catch (e) {
-        console.error('Error cancelling download:', e);
+        console.error("Error cancelling download:", e);
       }
       activeDownloads.delete(id);
       return true;
@@ -111,37 +113,39 @@ app.whenReady().then(() => {
   });
 
   // Télécharge un fichier dans le dossier choisi
-  ipcMain.handle('fs:downloadFile', async (event, args) => {
+  ipcMain.handle("fs:downloadFile", async (event, args) => {
     const { id, url, directory, fileName } = args || {};
-    if (!id || typeof id !== 'string') {
-      throw new Error('Invalid download identifier');
+    if (!id || typeof id !== "string") {
+      throw new Error("Invalid download identifier");
     }
-    if (!url || typeof url !== 'string') {
-      throw new Error('Invalid URL for download');
+    if (!url || typeof url !== "string") {
+      throw new Error("Invalid URL for download");
     }
-    if (!directory || typeof directory !== 'string') {
-      throw new Error('Invalid download directory');
+    if (!directory || typeof directory !== "string") {
+      throw new Error("Invalid download directory");
     }
 
     const safeDirectory = directory;
 
     let finalName =
-      typeof fileName === 'string' && fileName.trim().length > 0
+      typeof fileName === "string" && fileName.trim().length > 0
         ? fileName.trim()
         : undefined;
 
     try {
       if (!finalName) {
         const urlObj = new URL(url);
-        const pathname = urlObj.pathname || '';
-        const lastSegment = pathname.split('/').filter(Boolean).pop() || 'download';
+        const pathname = urlObj.pathname || "";
+        const lastSegment =
+          pathname.split("/").filter(Boolean).pop() || "download";
         finalName = decodeURIComponent(lastSegment);
       }
     } catch {
-      if (!finalName) finalName = 'download';
+      if (!finalName) finalName = "download";
     }
 
-    const sanitizedName = finalName.replace(/[<>:"/\\|?*]+/g, '').trim() || 'download';
+    const sanitizedName =
+      finalName.replace(/[<>:"/\\|?*]+/g, "").trim() || "download";
     const targetPath = path.join(safeDirectory, sanitizedName);
 
     // Vérifier si le fichier existe déjà pour reprise
@@ -160,12 +164,12 @@ app.whenReady().then(() => {
     try {
       const headers = {};
       if (startByte > 0) {
-        headers['Range'] = `bytes=${startByte}-`;
+        headers["Range"] = `bytes=${startByte}-`;
       }
 
       const res = await fetch(url, {
         signal: controller.signal,
-        headers: headers
+        headers: headers,
       });
 
       if (!res.ok && res.status !== 206) {
@@ -180,8 +184,10 @@ app.whenReady().then(() => {
       await fs.promises.mkdir(safeDirectory, { recursive: true });
 
       let receivedBytes = 0; // Octets reçus dans CETTE session
-      const contentLengthHeader = res.headers.get('content-length');
-      const chunkLength = contentLengthHeader ? parseInt(contentLengthHeader, 10) : null;
+      const contentLengthHeader = res.headers.get("content-length");
+      const chunkLength = contentLengthHeader
+        ? parseInt(contentLengthHeader, 10)
+        : null;
 
       // La taille totale est la taille déjà téléchargée + la taille restante (chunk)
       // Si status 200, startByte est 0, donc totalBytes = chunkLength
@@ -202,7 +208,7 @@ app.whenReady().then(() => {
               ? Math.min(100, (currentTotalBytes / totalBytes) * 100)
               : null;
 
-        event.sender.send('fs:downloadProgress', {
+        event.sender.send("fs:downloadProgress", {
           id,
           receivedBytes: currentTotalBytes, // On envoie le total cumulé
           totalBytes,
@@ -218,7 +224,7 @@ app.whenReady().then(() => {
       }
 
       const reader =
-        typeof res.body?.getReader === 'function' ? res.body.getReader() : null;
+        typeof res.body?.getReader === "function" ? res.body.getReader() : null;
 
       if (!reader) {
         const arrayBuffer = await res.arrayBuffer();
@@ -232,7 +238,7 @@ app.whenReady().then(() => {
       }
 
       // Mode 'a' (append) si on reprend (206), sinon 'w' (write)
-      const flags = startByte > 0 && res.status === 206 ? 'a' : 'w';
+      const flags = startByte > 0 && res.status === 206 ? "a" : "w";
       const fileStream = fs.createWriteStream(targetPath, { flags });
 
       let lastEmit = Date.now();
@@ -245,7 +251,7 @@ app.whenReady().then(() => {
             const chunk = Buffer.from(value);
             receivedBytes += chunk.length;
             if (!fileStream.write(chunk)) {
-              await new Promise((resolve) => fileStream.once('drain', resolve));
+              await new Promise((resolve) => fileStream.once("drain", resolve));
             }
             const now = Date.now();
             if (now - lastEmit >= 250) {
@@ -257,16 +263,21 @@ app.whenReady().then(() => {
 
         fileStream.end();
         await new Promise((resolve, reject) => {
-          fileStream.on('finish', resolve);
-          fileStream.on('error', reject);
+          fileStream.on("finish", resolve);
+          fileStream.on("error", reject);
         });
         emitProgress(true);
       } catch (error) {
         fileStream.destroy();
         // IMPORTANT: On ne supprime PAS le fichier si c'est une annulation (AbortError)
         // Cela permet de reprendre le téléchargement plus tard
-        if (error.name === 'AbortError') {
-          return { ok: false, status: 'aborted', path: targetPath, size: startByte + receivedBytes };
+        if (error.name === "AbortError") {
+          return {
+            ok: false,
+            status: "aborted",
+            path: targetPath,
+            size: startByte + receivedBytes,
+          };
         }
 
         await fs.promises.rm(targetPath, { force: true }).catch(() => { });
@@ -277,16 +288,27 @@ app.whenReady().then(() => {
     } catch (error) {
       // Gestion de l'annulation (AbortError) au niveau global
       // Vérifier plusieurs propriétés car l'erreur peut avoir différents formats
-      const isAbortError = error.name === 'AbortError' ||
-        error.code === 'ABORT_ERR' ||
-        error.message?.includes('aborted');
+      const isAbortError =
+        error.name === "AbortError" ||
+        error.code === "ABORT_ERR" ||
+        error.message?.includes("aborted");
 
       if (isAbortError) {
         try {
           const stats = await fs.promises.stat(targetPath);
-          return { ok: false, status: 'aborted', path: targetPath, size: stats.size };
+          return {
+            ok: false,
+            status: "aborted",
+            path: targetPath,
+            size: stats.size,
+          };
         } catch {
-          return { ok: false, status: 'aborted', path: targetPath, size: startByte };
+          return {
+            ok: false,
+            status: "aborted",
+            path: targetPath,
+            size: startByte,
+          };
         }
       }
       // Pour toute autre erreur, on la propage
@@ -297,22 +319,22 @@ app.whenReady().then(() => {
   });
 
   // Ouvre un fichier/dossier dans le système
-  ipcMain.handle('fs:openPath', async (_, targetPath) => {
-    if (!targetPath || typeof targetPath !== 'string') {
+  ipcMain.handle("fs:openPath", async (_, targetPath) => {
+    if (!targetPath || typeof targetPath !== "string") {
       return;
     }
     await shell.openPath(targetPath);
   });
 
   // Ping VK depuis le processus principal (évite les erreurs CORB côté renderer)
-  ipcMain.handle('vk:ping', async (_, token) => {
+  ipcMain.handle("vk:ping", async (_, token) => {
     if (!token) {
       return { ok: false, latency: null };
     }
     const start = Date.now();
     try {
       const url = `https://api.vk.com/method/utils.getServerTime?access_token=${token}&v=5.131`;
-      const res = await fetch(url, { method: 'GET', cache: 'no-store' });
+      const res = await fetch(url, { method: "GET", cache: "no-store" });
       const data = await res.json();
 
       // Si l'API retourne une erreur (ex: token invalide), on considère le ping comme échoué
@@ -327,27 +349,30 @@ app.whenReady().then(() => {
   });
 
   // Récupère la version de l'application
-  ipcMain.handle('app:getVersion', () => {
+  ipcMain.handle("app:getVersion", () => {
     return app.getVersion();
   });
 
   // Vérifie les mises à jour sur GitHub
-  ipcMain.handle('app:checkUpdate', async (_, repo) => {
+  ipcMain.handle("app:checkUpdate", async (_, repo) => {
     if (!repo) return { updateAvailable: false };
 
     try {
-      const response = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, {
-        headers: {
-          'User-Agent': 'Vkomic-App'
-        }
-      });
+      const response = await fetch(
+        `https://api.github.com/repos/${repo}/releases/latest`,
+        {
+          headers: {
+            "User-Agent": "Vkomic-App",
+          },
+        },
+      );
 
       if (!response.ok) {
-        return { updateAvailable: false, error: 'Failed to fetch releases' };
+        return { updateAvailable: false, error: "Failed to fetch releases" };
       }
 
       const data = await response.json();
-      const latestVersion = data.tag_name.replace(/^v/, '');
+      const latestVersion = data.tag_name.replace(/^v/, "");
       const currentVersion = app.getVersion();
 
       // Comparaison simple de version (suppose format x.y.z)
@@ -356,20 +381,20 @@ app.whenReady().then(() => {
           updateAvailable: true,
           version: latestVersion,
           url: data.html_url,
-          notes: data.body
+          notes: data.body,
         };
       }
 
       return { updateAvailable: false };
     } catch (error) {
-      console.error('Update check failed:', error);
+      console.error("Update check failed:", error);
       return { updateAvailable: false, error: error.message };
     }
   });
 
   // Ouvre le dossier contenant et s��lectionne le fichier si possible
-  ipcMain.handle('fs:revealPath', async (_, targetPath) => {
-    if (!targetPath || typeof targetPath !== 'string') {
+  ipcMain.handle("fs:revealPath", async (_, targetPath) => {
+    if (!targetPath || typeof targetPath !== "string") {
       return;
     }
     try {
@@ -384,11 +409,12 @@ app.whenReady().then(() => {
     }
   });
 
-  app.on('activate', () => {
+  app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") app.quit();
 });
+// Updated

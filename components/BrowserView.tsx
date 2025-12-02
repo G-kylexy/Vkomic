@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from "react";
 import {
   Folder,
   FileText,
@@ -18,10 +18,14 @@ import {
   BookOpen,
   AlertCircle,
   AlertTriangle,
-} from './Icons';
-import { useTranslation } from '../i18n';
-import { VkNode, VkConnectionStatus, DownloadItem } from '../types';
-import { fetchRootIndex, fetchNodeContent, fetchFolderTreeUpToDepth } from '../utils/vk-service';
+} from "./Icons";
+import { useTranslation } from "../i18n";
+import { VkNode, VkConnectionStatus, DownloadItem } from "../types";
+import {
+  fetchRootIndex,
+  fetchNodeContent,
+  fetchFolderTreeUpToDepth,
+} from "../utils/vk-service";
 
 interface BrowserViewProps {
   vkToken: string;
@@ -64,7 +68,7 @@ const BrowserView: React.FC<BrowserViewProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [navPath, setNavPath] = useState<VkNode[]>([]);
-  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState("");
 
   // Debounce la recherche pour éviter la surcharge
   useEffect(() => {
@@ -83,10 +87,10 @@ const BrowserView: React.FC<BrowserViewProps> = ({
   const normalizeText = (text: string): string => {
     return text
       .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-z0-9\s]/g, ' ')
-      .replace(/\s+/g, ' ')
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9\s]/g, " ")
+      .replace(/\s+/g, " ")
       .trim();
   };
 
@@ -99,7 +103,7 @@ const BrowserView: React.FC<BrowserViewProps> = ({
     if (!syncedData) return [];
 
     const normalizedQuery = normalizeText(debouncedQuery);
-    const queryWords = normalizedQuery.split(' ').filter((w) => w.length > 0);
+    const queryWords = normalizedQuery.split(" ").filter((w) => w.length > 0);
     const results: VkNode[] = [];
     const MAX_RESULTS = 100; // Limite pour éviter le freeze du DOM
 
@@ -109,7 +113,9 @@ const BrowserView: React.FC<BrowserViewProps> = ({
 
         const normalizedTitle = normalizeText(node.title);
         // Vérifie si TOUS les mots de la requête sont dans le titre
-        const matches = queryWords.every((word) => normalizedTitle.includes(word));
+        const matches = queryWords.every((word) =>
+          normalizedTitle.includes(word),
+        );
 
         if (matches) {
           results.push(node);
@@ -125,18 +131,18 @@ const BrowserView: React.FC<BrowserViewProps> = ({
     return results;
   }, [isSearching, debouncedQuery, syncedData, currentNodes]);
 
-  const fileNodes = displayedNodes.filter((n) => n.type === 'file');
+  const fileNodes = displayedNodes.filter((n) => n.type === "file");
 
   const activeDownloadsInView = fileNodes.filter((node) => {
     const d = downloads.find((down) => down.id === node.id);
-    return d && ['pending', 'downloading', 'paused'].includes(d.status);
+    return d && ["pending", "downloading", "paused"].includes(d.status);
   });
 
   const hasActiveDownloads = activeDownloadsInView.length > 0;
 
   const handleSync = async () => {
     if (!vkToken) {
-      setError('Veuillez configurer un Token VK dans les paramètres.');
+      setError("Veuillez configurer un Token VK dans les paramètres.");
       onVkStatusChange({ connected: false, latencyMs: null, lastSync: null });
       return;
     }
@@ -155,7 +161,7 @@ const BrowserView: React.FC<BrowserViewProps> = ({
       });
     } catch (err) {
       console.error(err);
-      setError('Erreur lors de la connexion à VK. Vérifiez votre token.');
+      setError("Erreur lors de la connexion à VK. Vérifiez votre token.");
       onVkStatusChange({ connected: false, latencyMs: null, lastSync: null });
     } finally {
       setIsLoading(false);
@@ -164,7 +170,7 @@ const BrowserView: React.FC<BrowserViewProps> = ({
 
   const handleFullSync = async () => {
     if (!vkToken) {
-      setError('Veuillez configurer un Token VK dans les paramètres.');
+      setError("Veuillez configurer un Token VK dans les paramètres.");
       onVkStatusChange({ connected: false, latencyMs: null, lastSync: null });
       return;
     }
@@ -174,7 +180,12 @@ const BrowserView: React.FC<BrowserViewProps> = ({
     try {
       const start = performance.now();
       // Full sync sur 3 niveaux (structure uniquement)
-      const data = await fetchFolderTreeUpToDepth(vkToken, vkGroupId, vkTopicId, 3);
+      const data = await fetchFolderTreeUpToDepth(
+        vkToken,
+        vkGroupId,
+        vkTopicId,
+        3,
+      );
       setSyncedData(data);
       setHasFullSynced(true); // Mark as fully synced
       const latency = Math.round(performance.now() - start);
@@ -185,7 +196,7 @@ const BrowserView: React.FC<BrowserViewProps> = ({
       });
     } catch (err) {
       console.error(err);
-      setError('Erreur lors de la connexion à VK. Vérifiez votre token.');
+      setError("Erreur lors de la connexion à VK. Vérifiez votre token.");
       onVkStatusChange({ connected: false, latencyMs: null, lastSync: null });
     } finally {
       setIsLoading(false);
@@ -195,11 +206,11 @@ const BrowserView: React.FC<BrowserViewProps> = ({
   const navigateTo = async (node: VkNode) => {
     // Si on est en mode recherche, on quitte la recherche pour naviguer dans le dossier
     if (isSearching) {
-      setSearchQuery('');
-      setDebouncedQuery('');
+      setSearchQuery("");
+      setDebouncedQuery("");
     }
 
-    if (node.type === 'file' && node.url) {
+    if (node.type === "file" && node.url) {
       addDownload(node);
       return;
     }
@@ -248,31 +259,39 @@ const BrowserView: React.FC<BrowserViewProps> = ({
   const clearNav = () => setNavPath([]);
 
   const MAX_BREADCRUMBS = 4;
-  const breadcrumbs: { node?: VkNode; originalIndex?: number; isEllipsis?: boolean }[] =
-    (() => {
-      if (navPath.length <= MAX_BREADCRUMBS) {
-        return navPath.map((node, index) => ({ node, originalIndex: index }));
-      }
+  const breadcrumbs: {
+    node?: VkNode;
+    originalIndex?: number;
+    isEllipsis?: boolean;
+  }[] = (() => {
+    if (navPath.length <= MAX_BREADCRUMBS) {
+      return navPath.map((node, index) => ({ node, originalIndex: index }));
+    }
 
-      const first = { node: navPath[0], originalIndex: 0 };
-      const secondLastIndex = navPath.length - 2;
-      const lastIndex = navPath.length - 1;
-      const secondLast = { node: navPath[secondLastIndex], originalIndex: secondLastIndex };
-      const last = { node: navPath[lastIndex], originalIndex: lastIndex };
+    const first = { node: navPath[0], originalIndex: 0 };
+    const secondLastIndex = navPath.length - 2;
+    const lastIndex = navPath.length - 1;
+    const secondLast = {
+      node: navPath[secondLastIndex],
+      originalIndex: secondLastIndex,
+    };
+    const last = { node: navPath[lastIndex], originalIndex: lastIndex };
 
-      return [first, { isEllipsis: true }, secondLast, last];
-    })();
+    return [first, { isEllipsis: true }, secondLast, last];
+  })();
 
   const handleGlobalAction = () => {
     if (hasActiveDownloads) {
       activeDownloadsInView.forEach((node) => cancelDownload(node.id));
     } else {
       // Si on est dans un dossier, on utilise son titre comme nom de sous-dossier
-      const subFolder = currentFolder ? getDisplayTitle(currentFolder) : undefined;
+      const subFolder = currentFolder
+        ? getDisplayTitle(currentFolder)
+        : undefined;
 
       fileNodes.forEach((node) => {
         const d = downloads.find((down) => down.id === node.id);
-        if (!d || d.status !== 'completed') {
+        if (!d || d.status !== "completed") {
           addDownload(node, subFolder);
         }
       });
@@ -283,64 +302,64 @@ const BrowserView: React.FC<BrowserViewProps> = ({
     let title = node.title;
 
     // Gestion des titres multilingues (ex: "Français / English")
-    if (title.includes('/')) {
-      const parts = title.split('/');
+    if (title.includes("/")) {
+      const parts = title.split("/");
       if (parts.length >= 2) {
-        if (language === 'fr') {
+        if (language === "fr") {
           title = parts[0].trim();
         } else {
-          title = parts.slice(1).join('/').trim();
+          title = parts.slice(1).join("/").trim();
         }
       }
     }
 
     // Nettoyage léger
-    title = title.replace(/^[-_]\s*/, '');
+    title = title.replace(/^[-_]\s*/, "");
     return title;
   };
 
   const getFileIconConfig = (extension?: string) => {
-    const ext = extension?.toUpperCase() || '';
+    const ext = extension?.toUpperCase() || "";
     switch (ext) {
-      case 'PDF':
+      case "PDF":
         return {
           icon: FileText,
-          color: 'text-rose-400',
-          bg: 'group-hover:bg-rose-500/20 bg-rose-500/10',
-          border: 'border-rose-500/20',
+          color: "text-rose-400",
+          bg: "group-hover:bg-rose-500/20 bg-rose-500/10",
+          border: "border-rose-500/20",
         };
-      case 'CBZ':
-      case 'CBR':
+      case "CBZ":
+      case "CBR":
         return {
           icon: BookOpen,
-          color: 'text-purple-400',
-          bg: 'group-hover:bg-purple-500/20 bg-purple-500/10',
-          border: 'border-purple-500/20',
+          color: "text-purple-400",
+          bg: "group-hover:bg-purple-500/20 bg-purple-500/10",
+          border: "border-purple-500/20",
         };
-      case 'ZIP':
-      case 'RAR':
-      case '7Z':
+      case "ZIP":
+      case "RAR":
+      case "7Z":
         return {
           icon: FileArchive,
-          color: 'text-amber-400',
-          bg: 'group-hover:bg-amber-500/20 bg-amber-500/10',
-          border: 'border-amber-500/20',
+          color: "text-amber-400",
+          bg: "group-hover:bg-amber-500/20 bg-amber-500/10",
+          border: "border-amber-500/20",
         };
-      case 'JPG':
-      case 'PNG':
-      case 'JPEG':
+      case "JPG":
+      case "PNG":
+      case "JPEG":
         return {
           icon: Image,
-          color: 'text-cyan-400',
-          bg: 'group-hover:bg-cyan-500/20 bg-cyan-500/10',
-          border: 'border-cyan-500/20',
+          color: "text-cyan-400",
+          bg: "group-hover:bg-cyan-500/20 bg-cyan-500/10",
+          border: "border-cyan-500/20",
         };
       default:
         return {
           icon: FileText,
-          color: 'text-slate-400',
-          bg: 'group-hover:bg-slate-700/50 bg-slate-800/50',
-          border: 'border-slate-700',
+          color: "text-slate-400",
+          bg: "group-hover:bg-slate-700/50 bg-slate-800/50",
+          border: "border-slate-700",
         };
     }
   };
@@ -350,7 +369,7 @@ const BrowserView: React.FC<BrowserViewProps> = ({
     if ((window as any).shell && (window as any).shell.openExternal) {
       (window as any).shell.openExternal(url);
     } else {
-      window.open(url, '_blank');
+      window.open(url, "_blank");
     }
   };
 
@@ -361,7 +380,9 @@ const BrowserView: React.FC<BrowserViewProps> = ({
           <div className="w-16 h-16 bg-slate-800 rounded-2xl flex items-center justify-center mb-6 border border-slate-700 shadow-lg shadow-blue-900/10">
             <Folder className="text-slate-500" size={32} />
           </div>
-          <h2 className="text-white text-xl font-bold mb-2">{t.library.empty}</h2>
+          <h2 className="text-white text-xl font-bold mb-2">
+            {t.library.empty}
+          </h2>
           <p className="text-slate-400 mb-8 font-medium text-center max-w-md px-6">
             {t.library.emptyDescription}
           </p>
@@ -378,7 +399,7 @@ const BrowserView: React.FC<BrowserViewProps> = ({
             disabled={isLoading}
             className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 px-8 rounded-lg flex items-center gap-2 transition-all shadow-lg shadow-blue-600/20 hover:shadow-blue-500/40 text-sm tracking-wide uppercase"
           >
-            <RefreshCw size={18} className={isLoading ? 'animate-spin' : ''} />
+            <RefreshCw size={18} className={isLoading ? "animate-spin" : ""} />
             {isLoading ? t.library.syncing : t.library.syncButton}
           </button>
         </div>
@@ -397,10 +418,11 @@ const BrowserView: React.FC<BrowserViewProps> = ({
                 <>
                   <button
                     onClick={clearNav}
-                    className={`flex items-center justify-center w-8 h-8 rounded-lg transition-colors ${navPath.length === 0
-                      ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40'
-                      : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
-                      }`}
+                    className={`flex items-center justify-center w-8 h-8 rounded-lg transition-colors ${
+                      navPath.length === 0
+                        ? "bg-blue-600 text-white shadow-lg shadow-blue-900/40"
+                        : "bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white"
+                    }`}
                     title="Accueil"
                   >
                     <Home size={16} />
@@ -409,7 +431,10 @@ const BrowserView: React.FC<BrowserViewProps> = ({
                   {breadcrumbs.map((crumb, idx) => {
                     if (crumb.isEllipsis) {
                       return (
-                        <div key={`ellipsis-${idx}`} className="flex items-center gap-2 text-slate-500">
+                        <div
+                          key={`ellipsis-${idx}`}
+                          className="flex items-center gap-2 text-slate-500"
+                        >
                           <ChevronRight size={14} className="text-slate-600" />
                           <span className="text-xs">...</span>
                         </div>
@@ -420,16 +445,22 @@ const BrowserView: React.FC<BrowserViewProps> = ({
                     const index = crumb.originalIndex as number;
 
                     return (
-                      <div key={node.id} className="flex items-center gap-2 whitespace-nowrap">
+                      <div
+                        key={node.id}
+                        className="flex items-center gap-2 whitespace-nowrap"
+                      >
                         <ChevronRight size={14} className="text-slate-600" />
                         <button
                           onClick={() =>
-                            index === navPath.length - 1 ? undefined : navigateUp(index)
+                            index === navPath.length - 1
+                              ? undefined
+                              : navigateUp(index)
                           }
-                          className={`font-medium transition-colors max-w-[180px] truncate text-left ${index === navPath.length - 1
-                            ? 'text-white cursor-default'
-                            : 'text-slate-500 hover:text-slate-300'
-                            }`}
+                          className={`font-medium transition-colors max-w-[180px] truncate text-left ${
+                            index === navPath.length - 1
+                              ? "text-white cursor-default"
+                              : "text-slate-500 hover:text-slate-300"
+                          }`}
                         >
                           {getDisplayTitle(node)}
                         </button>
@@ -440,7 +471,9 @@ const BrowserView: React.FC<BrowserViewProps> = ({
               )}
               {isSearching && (
                 <div className="flex items-center gap-2">
-                  <div className="text-white font-medium">{t.library.searching}</div>
+                  <div className="text-white font-medium">
+                    {t.library.searching}
+                  </div>
                 </div>
               )}
             </div>
@@ -449,15 +482,26 @@ const BrowserView: React.FC<BrowserViewProps> = ({
               {fileNodes.length > 0 && (
                 <button
                   onClick={handleGlobalAction}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-lg ${hasActiveDownloads
-                    ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-900/20'
-                    : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/20'
-                    }`}
-                  title={hasActiveDownloads ? t.library.cancelAll : t.library.downloadAll}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-lg ${
+                    hasActiveDownloads
+                      ? "bg-rose-600 hover:bg-rose-500 text-white shadow-rose-900/20"
+                      : "bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/20"
+                  }`}
+                  title={
+                    hasActiveDownloads
+                      ? t.library.cancelAll
+                      : t.library.downloadAll
+                  }
                 >
-                  {hasActiveDownloads ? <X size={14} /> : <DownloadCloud size={14} />}
+                  {hasActiveDownloads ? (
+                    <X size={14} />
+                  ) : (
+                    <DownloadCloud size={14} />
+                  )}
                   <span className="hidden sm:inline">
-                    {hasActiveDownloads ? t.library.cancelAll : t.library.downloadAll}
+                    {hasActiveDownloads
+                      ? t.library.cancelAll
+                      : t.library.downloadAll}
                   </span>
                 </button>
               )}
@@ -469,7 +513,10 @@ const BrowserView: React.FC<BrowserViewProps> = ({
                   disabled={isLoading}
                 >
                   <div className="flex items-center justify-center px-2 py-2">
-                    <AlertCircle size={16} className={`text-orange-400 ${isLoading ? 'animate-pulse' : ''}`} />
+                    <AlertCircle
+                      size={16}
+                      className={`text-orange-400 ${isLoading ? "animate-pulse" : ""}`}
+                    />
                   </div>
                   <div className="bg-amber-600 hover:bg-amber-500 px-3 py-2 text-white transition-colors hidden sm:block">
                     {t.library.syncAllButton}
@@ -491,10 +538,10 @@ const BrowserView: React.FC<BrowserViewProps> = ({
           )}
 
           {/* Folders Grid */}
-          {displayedNodes.filter((n) => n.type !== 'file').length > 0 && (
+          {displayedNodes.filter((n) => n.type !== "file").length > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
               {displayedNodes
-                .filter((n) => n.type !== 'file')
+                .filter((n) => n.type !== "file")
                 .map((node) => {
                   const displayTitle = getDisplayTitle(node);
                   return (
@@ -529,12 +576,17 @@ const BrowserView: React.FC<BrowserViewProps> = ({
                             <div className="flex items-center gap-2">
                               <span className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />
                               <span className="text-xs text-slate-400 font-medium capitalize truncate">
-                                {node.type || 'Category'}
+                                {node.type || "Category"}
                               </span>
                             </div>
                             <div className="flex items-center gap-2">
-                              <Folder size={12} className="text-slate-500 flex-shrink-0" />
-                              <span className="text-xs text-slate-500 font-medium">Folder</span>
+                              <Folder
+                                size={12}
+                                className="text-slate-500 flex-shrink-0"
+                              />
+                              <span className="text-xs text-slate-500 font-medium">
+                                Folder
+                              </span>
                             </div>
                           </div>
 
@@ -568,18 +620,23 @@ const BrowserView: React.FC<BrowserViewProps> = ({
                   const fileConfig = getFileIconConfig(node.extension);
                   const FileIcon = fileConfig.icon;
 
-                  const activeDownload = downloads.find((d) => d.id === node.id);
+                  const activeDownload = downloads.find(
+                    (d) => d.id === node.id,
+                  );
                   const isDownloading =
                     activeDownload &&
-                    ['pending', 'downloading', 'paused'].includes(activeDownload.status);
-                  const isCompleted = activeDownload && activeDownload.status === 'completed';
+                    ["pending", "downloading", "paused"].includes(
+                      activeDownload.status,
+                    );
+                  const isCompleted =
+                    activeDownload && activeDownload.status === "completed";
 
                   const showProgress = Boolean(isDownloading);
                   const progress = activeDownload?.progress || 0;
                   const statusText =
-                    activeDownload?.status === 'paused'
-                      ? 'Pause'
-                      : activeDownload?.speed || '0 MB/s';
+                    activeDownload?.status === "paused"
+                      ? "Pause"
+                      : activeDownload?.speed || "0 MB/s";
 
                   return (
                     <div
@@ -612,7 +669,7 @@ const BrowserView: React.FC<BrowserViewProps> = ({
                             </h3>
                             {!showProgress && !isCompleted && (
                               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded border border-slate-700 text-slate-400 bg-slate-800/50 uppercase flex-shrink-0">
-                                {node.extension || 'FILE'}
+                                {node.extension || "FILE"}
                               </span>
                             )}
                             {isCompleted && (
@@ -626,10 +683,11 @@ const BrowserView: React.FC<BrowserViewProps> = ({
                             <div className="mt-2 flex items-center gap-3">
                               <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
                                 <div
-                                  className={`h-full ${activeDownload?.status === 'paused'
-                                    ? 'bg-amber-500'
-                                    : 'bg-blue-500'
-                                    }`}
+                                  className={`h-full ${
+                                    activeDownload?.status === "paused"
+                                      ? "bg-amber-500"
+                                      : "bg-blue-500"
+                                  }`}
                                   style={{ width: `${progress}%` }}
                                 />
                               </div>
@@ -647,7 +705,7 @@ const BrowserView: React.FC<BrowserViewProps> = ({
                       <div className="flex items-center gap-2 self-end sm:self-auto flex-shrink-0">
                         {showProgress ? (
                           <>
-                            {activeDownload?.status === 'paused' ? (
+                            {activeDownload?.status === "paused" ? (
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -741,12 +799,19 @@ const BrowserView: React.FC<BrowserViewProps> = ({
                     onClick={openVkSearch}
                     className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg shadow-lg shadow-blue-900/20 transition-all flex items-center justify-center gap-2 group"
                   >
-                    <span className="uppercase text-xs tracking-wider">Rechercher sur VK</span>
-                    <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform" />
+                    <span className="uppercase text-xs tracking-wider">
+                      Rechercher sur VK
+                    </span>
+                    <ChevronRight
+                      size={14}
+                      className="group-hover:translate-x-1 transition-transform"
+                    />
                   </button>
                 </div>
               ) : (
-                <div className="text-slate-500 italic">{t.library.noResults}</div>
+                <div className="text-slate-500 italic">
+                  {t.library.noResults}
+                </div>
               )}
             </div>
           )}

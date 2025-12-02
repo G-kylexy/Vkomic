@@ -1,21 +1,27 @@
-import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
-import { fr, type Translations } from './fr';
-import { en } from './en';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useMemo,
+  useState,
+} from "react";
+import { fr, type Translations } from "./fr";
+import { en } from "./en";
 
-export type Language = 'fr' | 'en';
+export type Language = "fr" | "en";
 
 const translations: Record<Language, Translations> = {
   fr,
   en,
 };
 
-const STORAGE_KEY = 'vk_language';
+const STORAGE_KEY = "vk_language";
 
 const getInitialLanguage = (): Language => {
-  if (typeof window === 'undefined') return 'fr';
+  if (typeof window === "undefined") return "fr";
   const stored = localStorage.getItem(STORAGE_KEY);
-  if (stored === 'en' || stored === 'fr') return stored;
-  return 'fr';
+  if (stored === "en" || stored === "fr") return stored;
+  return "fr";
 };
 
 interface TranslationContextValue {
@@ -25,17 +31,19 @@ interface TranslationContextValue {
 }
 
 const TranslationContext = createContext<TranslationContextValue>({
-  language: 'fr',
+  language: "fr",
   setLanguage: () => {},
   t: fr,
 });
 
-export const TranslationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const TranslationProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
   const [language, setLang] = useState<Language>(getInitialLanguage);
 
   const setLanguage = useCallback((lang: Language) => {
     setLang(lang);
-    if (typeof window !== 'undefined') {
+    if (typeof window !== "undefined") {
       localStorage.setItem(STORAGE_KEY, lang);
     }
   }, []);
@@ -49,7 +57,11 @@ export const TranslationProvider: React.FC<{ children: React.ReactNode }> = ({ c
     [language, setLanguage],
   );
 
-  return <TranslationContext.Provider value={value}>{children}</TranslationContext.Provider>;
+  return (
+    <TranslationContext.Provider value={value}>
+      {children}
+    </TranslationContext.Provider>
+  );
 };
 
 export const useTranslation = () => useContext(TranslationContext);

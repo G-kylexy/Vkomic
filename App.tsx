@@ -1,14 +1,14 @@
-import React, { useEffect, useState, useRef } from 'react';
-import Sidebar from './components/Sidebar';
-import TopBar from './components/TopBar';
-import MainView from './components/MainView';
-import { VkNode, VkConnectionStatus, DownloadItem } from './types';
-import { TranslationProvider } from './i18n';
-import { DEFAULT_DOWNLOAD_PATH } from './utils/constants';
-import UpdateModal from './components/UpdateModal';
+import React, { useEffect, useState, useRef } from "react";
+import Sidebar from "./components/Sidebar";
+import TopBar from "./components/TopBar";
+import MainView from "./components/MainView";
+import { VkNode, VkConnectionStatus, DownloadItem } from "./types";
+import { TranslationProvider } from "./i18n";
+import { DEFAULT_DOWNLOAD_PATH } from "./utils/constants";
+import UpdateModal from "./components/UpdateModal";
 
 // REMPLACER PAR VOTRE DEPOT GITHUB (ex: 'username/repo')
-const GITHUB_REPO = 'G-kylexy/Vkomic';
+const GITHUB_REPO = "G-kylexy/Vkomic";
 
 const MAX_CONCURRENT_DOWNLOADS = 5;
 
@@ -24,8 +24,12 @@ const formatBytes = (bytes?: number): string | undefined => {
 };
 
 const formatSpeed = (bytesPerSecond?: number | null): string => {
-  if (!bytesPerSecond || !Number.isFinite(bytesPerSecond) || bytesPerSecond <= 0) {
-    return '0 MB/s';
+  if (
+    !bytesPerSecond ||
+    !Number.isFinite(bytesPerSecond) ||
+    bytesPerSecond <= 0
+  ) {
+    return "0 MB/s";
   }
   if (bytesPerSecond >= 1024 * 1024) {
     return `${(bytesPerSecond / (1024 * 1024)).toFixed(1)} MB/s`;
@@ -54,7 +58,7 @@ const App: React.FC = () => {
           setUpdateInfo({
             version: result.version,
             url: result.url,
-            notes: result.notes
+            notes: result.notes,
           });
         }
       }
@@ -66,25 +70,25 @@ const App: React.FC = () => {
   }, []);
 
   // Onglet actif (Accueil, Téléchargements, etc.)
-  const [activeTab, setActiveTab] = useState('home');
+  const [activeTab, setActiveTab] = useState("home");
   // Barre de recherche
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Token VK : Initialisé depuis le LocalStorage du navigateur pour persister au rechargement
   const [vkToken, setVkToken] = useState(() => {
-    return localStorage.getItem('vk_token') || '';
+    return localStorage.getItem("vk_token") || "";
   });
   const [vkGroupId, setVkGroupId] = useState(() => {
-    return localStorage.getItem('vk_group_id') || '203785966';
+    return localStorage.getItem("vk_group_id") || "203785966";
   });
   const [vkTopicId, setVkTopicId] = useState(() => {
-    return localStorage.getItem('vk_topic_id') || '47515406';
+    return localStorage.getItem("vk_topic_id") || "47515406";
   });
 
   // Données synchronisées : L'arbre des dossiers/fichiers récupéré depuis VK
   const [syncedData, setSyncedData] = useState<VkNode[] | null>(() => {
     try {
-      const raw = localStorage.getItem('vk_synced_data');
+      const raw = localStorage.getItem("vk_synced_data");
       if (!raw) return null;
       const parsed = JSON.parse(raw);
       if (!Array.isArray(parsed)) return null;
@@ -98,9 +102,9 @@ const App: React.FC = () => {
   useEffect(() => {
     try {
       if (syncedData) {
-        localStorage.setItem('vk_synced_data', JSON.stringify(syncedData));
+        localStorage.setItem("vk_synced_data", JSON.stringify(syncedData));
       } else {
-        localStorage.removeItem('vk_synced_data');
+        localStorage.removeItem("vk_synced_data");
       }
     } catch (e) {
       console.error("Failed to save synced data", e);
@@ -109,16 +113,16 @@ const App: React.FC = () => {
 
   // État pour savoir si une synchronisation complète a déjà été effectuée
   const [hasFullSynced, setHasFullSynced] = useState(() => {
-    return localStorage.getItem('vk_has_full_synced') === 'true';
+    return localStorage.getItem("vk_has_full_synced") === "true";
   });
 
   useEffect(() => {
-    localStorage.setItem('vk_has_full_synced', String(hasFullSynced));
+    localStorage.setItem("vk_has_full_synced", String(hasFullSynced));
   }, [hasFullSynced]);
 
   // Chemin de téléchargement local choisi par l'utilisateur
   const [downloadPath, setDownloadPath] = useState(() => {
-    return localStorage.getItem('vk_download_path') || DEFAULT_DOWNLOAD_PATH;
+    return localStorage.getItem("vk_download_path") || DEFAULT_DOWNLOAD_PATH;
   });
   // Statut VK global (latence, dernière synchro, région)
   const [vkStatus, setVkStatus] = useState<VkConnectionStatus>({
@@ -132,15 +136,15 @@ const App: React.FC = () => {
   // Gestion des téléchargements
   const [downloads, setDownloads] = useState<DownloadItem[]>(() => {
     try {
-      const raw = localStorage.getItem('vk_downloads');
+      const raw = localStorage.getItem("vk_downloads");
       if (!raw) return [];
       const parsed = JSON.parse(raw);
       if (!Array.isArray(parsed)) return [];
 
       // On remet les téléchargements "en cours" en pause au démarrage
       // car le processus de téléchargement est perdu au rechargement
-      return (parsed as DownloadItem[]).map(d =>
-        d.status === 'downloading' ? { ...d, status: 'paused' } : d
+      return (parsed as DownloadItem[]).map((d) =>
+        d.status === "downloading" ? { ...d, status: "paused" } : d,
       );
     } catch {
       return [];
@@ -156,7 +160,9 @@ const App: React.FC = () => {
     // Vérifier si un dossier de téléchargement est configuré
     if (!downloadPath || downloadPath === DEFAULT_DOWNLOAD_PATH) {
       if (!missingDownloadPathAlertedRef.current) {
-        window.alert("Aucun dossier de telechargement n'est configure. Choisissez un chemin dans Parametres avant de lancer un telechargement.");
+        window.alert(
+          "Aucun dossier de telechargement n'est configure. Choisissez un chemin dans Parametres avant de lancer un telechargement.",
+        );
         missingDownloadPathAlertedRef.current = true;
       }
       // Ajouter un téléchargement avec statut "error" pour informer l'utilisateur
@@ -172,9 +178,9 @@ const App: React.FC = () => {
           title: node.title,
           url: node.url,
           progress: 0,
-          status: 'error',
+          status: "error",
           extension: node.extension,
-          speed: 'Dossier non configuré',
+          speed: "Dossier non configuré",
           createdAt: new Date().toISOString(),
           size: formattedSize,
         };
@@ -194,8 +200,12 @@ const App: React.FC = () => {
       const existing = existingIndex >= 0 ? prev[existingIndex] : undefined;
 
       // Si déjà en cours (file d'attente / pause / déjà terminé), on ne recrée pas un doublon
-      if (existing && ['pending', 'downloading', 'paused', 'completed'].includes(existing.status)) {
-
+      if (
+        existing &&
+        ["pending", "downloading", "paused", "completed"].includes(
+          existing.status,
+        )
+      ) {
         return prev;
       }
 
@@ -204,13 +214,16 @@ const App: React.FC = () => {
         title: node.title,
         url: node.url,
         progress: 0,
-        status: 'pending',
+        status: "pending",
         extension: node.extension,
-        speed: '0 MB/s',
+        speed: "0 MB/s",
         createdAt: new Date().toISOString(),
         // Garder la taille si le téléchargement existait déjà (ex: relance après annulation)
         size: existing && existing.size ? existing.size : formattedSize,
-        path: existing && (existing as any).path ? (existing as any).path : undefined,
+        path:
+          existing && (existing as any).path
+            ? (existing as any).path
+            : undefined,
       };
 
       if (existing) {
@@ -229,8 +242,13 @@ const App: React.FC = () => {
     // On ne démarre plus le téléchargement immédiatement, le useEffect de gestion de file d'attente s'en chargera
   };
 
-  const startRealDownload = async (id: string, url: string, title: string, extension?: string, subFolder?: string) => {
-
+  const startRealDownload = async (
+    id: string,
+    url: string,
+    title: string,
+    extension?: string,
+    subFolder?: string,
+  ) => {
     // Mise à jour du statut en "downloading"
     // On ne reset PAS la progression si on reprend un téléchargement
     setDownloads((prev) =>
@@ -238,18 +256,21 @@ const App: React.FC = () => {
         if (d.id === id) {
           // Si on reprend, on garde la progression actuelle
           // y compris pour les éléments repassés en "pending" mais ayant déjà une progression > 0
-          const hasProgress = typeof d.progress === 'number' && d.progress > 0;
+          const hasProgress = typeof d.progress === "number" && d.progress > 0;
           const keepProgress =
-            d.status === 'paused' || d.status === 'canceled' || d.status === 'error' || hasProgress;
+            d.status === "paused" ||
+            d.status === "canceled" ||
+            d.status === "error" ||
+            hasProgress;
           return {
             ...d,
-            status: 'downloading',
+            status: "downloading",
             progress: keepProgress ? d.progress : 0,
-            speed: '0 MB/s'
+            speed: "0 MB/s",
           };
         }
         return d;
-      })
+      }),
     );
 
     try {
@@ -266,18 +287,25 @@ const App: React.FC = () => {
         let targetPath = downloadPath;
         if (subFolder) {
           // Nettoyage du nom de dossier (suppression des caractères interdits sous Windows)
-          const safeSubFolder = subFolder.replace(/[<>:"/\\|?*]+/g, '').trim();
+          const safeSubFolder = subFolder.replace(/[<>:"/\\|?*]+/g, "").trim();
 
           // Détection basique du séparateur
-          const separator = downloadPath.includes('\\') ? '\\' : '/';
+          const separator = downloadPath.includes("\\") ? "\\" : "/";
           // On évite les doubles séparateurs
-          const cleanPath = downloadPath.endsWith(separator) ? downloadPath.slice(0, -1) : downloadPath;
+          const cleanPath = downloadPath.endsWith(separator)
+            ? downloadPath.slice(0, -1)
+            : downloadPath;
           targetPath = `${cleanPath}${separator}${safeSubFolder}`;
         }
-        const result = await window.fs.downloadFile(id, url, targetPath, fileName);
+        const result = await window.fs.downloadFile(
+          id,
+          url,
+          targetPath,
+          fileName,
+        );
 
         // Si le téléchargement a été avorté (pause/cancel), ce n'est pas une erreur
-        if (result && !result.ok && result.status === 'aborted') {
+        if (result && !result.ok && result.status === "aborted") {
           // Le statut a déjà été mis à jour par pauseDownload ou cancelDownload
           return;
         }
@@ -285,20 +313,21 @@ const App: React.FC = () => {
         // Si le téléchargement est terminé, on conserve le chemin réel pour le révéler/sélectionner ensuite
         if (result && result.ok && (result as any).path) {
           const pathFromResult = (result as any).path as string;
-          const formattedSize = typeof (result as any).size === 'number'
-            ? formatBytes((result as any).size) || undefined
-            : undefined;
+          const formattedSize =
+            typeof (result as any).size === "number"
+              ? formatBytes((result as any).size) || undefined
+              : undefined;
 
           setDownloads((prev) =>
             prev.map((d) =>
               d.id === id
                 ? {
-                  ...d,
-                  path: pathFromResult,
-                  size: formattedSize || d.size,
-                }
-                : d
-            )
+                    ...d,
+                    path: pathFromResult,
+                    size: formattedSize || d.size,
+                  }
+                : d,
+            ),
           );
         }
 
@@ -312,11 +341,11 @@ const App: React.FC = () => {
         prev.map((d) => {
           if (d.id === id) {
             // Si le téléchargement a été mis en pause manuellement, on ne le marque pas comme annulé/erreur
-            if (d.status === 'paused') return d;
-            return { ...d, status: 'canceled', speed: 'Error' };
+            if (d.status === "paused") return d;
+            return { ...d, status: "canceled", speed: "Error" };
           }
           return d;
-        })
+        }),
       );
     }
   };
@@ -330,14 +359,14 @@ const App: React.FC = () => {
         if (d.id === id) {
           return {
             ...d,
-            status: 'pending',
+            status: "pending",
             progress: 0,
-            speed: '0 MB/s',
+            speed: "0 MB/s",
             createdAt: new Date().toISOString(),
           };
         }
         return d;
-      })
+      }),
     );
   };
 
@@ -345,19 +374,26 @@ const App: React.FC = () => {
   useEffect(() => {
     // Compte les téléchargements actifs (en cours)
     // Les téléchargements en pause ne comptent pas dans la limite
-    const activeCount = downloads.filter(d => d.status === 'downloading').length;
-    const pendingItems = downloads.filter(d => d.status === 'pending');
+    const activeCount = downloads.filter(
+      (d) => d.status === "downloading",
+    ).length;
+    const pendingItems = downloads.filter((d) => d.status === "pending");
 
     // Si on a moins de 5 téléchargements actifs et qu'il y a des éléments en attente
     if (activeCount < 5 && pendingItems.length > 0) {
-
       // On lance les prochains éléments pour atteindre la limite de 5
       const slotsAvailable = 5 - activeCount;
       // Traiter en priorité les plus anciens en attente (fin de liste) pour coller à l'ordre visuel
       const toStart = pendingItems.slice(-slotsAvailable);
 
-      toStart.forEach(item => {
-        startRealDownload(item.id, item.url, item.title, item.extension, item.subFolder);
+      toStart.forEach((item) => {
+        startRealDownload(
+          item.id,
+          item.url,
+          item.title,
+          item.extension,
+          item.subFolder,
+        );
       });
     }
   }, [downloads]);
@@ -373,7 +409,10 @@ const App: React.FC = () => {
         prev.map((d) => {
           if (d.id === id) {
             const isComplete = progress >= 100;
-            const newProgress = typeof progress === 'number' ? parseFloat(progress.toFixed(1)) : 0;
+            const newProgress =
+              typeof progress === "number"
+                ? parseFloat(progress.toFixed(1))
+                : 0;
 
             // Ne jamais réduire la progression - cela évite le flottement à 0% lors de la reprise
             const safeProgress = Math.max(d.progress || 0, newProgress);
@@ -381,12 +420,12 @@ const App: React.FC = () => {
             return {
               ...d,
               progress: safeProgress,
-              status: isComplete ? 'completed' : 'downloading',
-              speed: formatSpeed(speedBytes)
+              status: isComplete ? "completed" : "downloading",
+              speed: formatSpeed(speedBytes),
             };
           }
           return d;
-        })
+        }),
       );
     });
 
@@ -398,7 +437,7 @@ const App: React.FC = () => {
   // Persistance de l'historique de téléchargement
   useEffect(() => {
     try {
-      localStorage.setItem('vk_downloads', JSON.stringify(downloads));
+      localStorage.setItem("vk_downloads", JSON.stringify(downloads));
     } catch {
       // Ignore les erreurs de stockage
     }
@@ -412,32 +451,40 @@ const App: React.FC = () => {
 
     setDownloads((prev) =>
       prev.map((d) =>
-        d.id === id ? { ...d, status: 'paused', speed: '0 MB/s' } : d,
+        d.id === id ? { ...d, status: "paused", speed: "0 MB/s" } : d,
       ),
     );
   };
 
   const resumeDownload = (id: string) => {
     // Relance le téléchargement
-    const download = downloads.find(d => d.id === id);
+    const download = downloads.find((d) => d.id === id);
     if (download) {
       // Vérifier le nombre de téléchargements actifs pour un démarrage immédiat
-      const activeCount = downloads.filter(d => d.status === 'downloading').length;
+      const activeCount = downloads.filter(
+        (d) => d.status === "downloading",
+      ).length;
 
       if (activeCount < 5) {
         // Démarrage immédiat pour éviter le délai visuel
-        startRealDownload(download.id, download.url, download.title, download.extension, download.subFolder);
+        startRealDownload(
+          download.id,
+          download.url,
+          download.title,
+          download.extension,
+          download.subFolder,
+        );
 
         setDownloads((prev) =>
           prev.map((d) =>
-            d.id === id ? { ...d, status: 'downloading', speed: '...' } : d,
+            d.id === id ? { ...d, status: "downloading", speed: "..." } : d,
           ),
         );
       } else {
         // Sinon mise en file d'attente
         setDownloads((prev) =>
           prev.map((d) =>
-            d.id === id ? { ...d, status: 'pending', speed: '0 MB/s' } : d,
+            d.id === id ? { ...d, status: "pending", speed: "0 MB/s" } : d,
           ),
         );
       }
@@ -453,7 +500,7 @@ const App: React.FC = () => {
     setDownloads((prev) =>
       prev.map((d) =>
         d.id === id
-          ? { ...d, status: 'canceled', speed: '0 MB/s', progress: d.progress }
+          ? { ...d, status: "canceled", speed: "0 MB/s", progress: d.progress }
           : d,
       ),
     );
@@ -464,22 +511,22 @@ const App: React.FC = () => {
   // Wrapper pour sauvegarder le token dans le stockage local (Persistance)
   const handleSetVkToken = (token: string) => {
     setVkToken(token);
-    localStorage.setItem('vk_token', token);
+    localStorage.setItem("vk_token", token);
   };
 
   const handleSetVkGroupId = (groupId: string) => {
     setVkGroupId(groupId);
-    localStorage.setItem('vk_group_id', groupId);
+    localStorage.setItem("vk_group_id", groupId);
   };
 
   const handleSetVkTopicId = (topicId: string) => {
     setVkTopicId(topicId);
-    localStorage.setItem('vk_topic_id', topicId);
+    localStorage.setItem("vk_topic_id", topicId);
   };
 
   const handleSetDownloadPath = (path: string) => {
     setDownloadPath(path);
-    localStorage.setItem('vk_download_path', path);
+    localStorage.setItem("vk_download_path", path);
   };
 
   useEffect(() => {
@@ -504,27 +551,28 @@ const App: React.FC = () => {
     // Déduit une région agrégée à partir de la timezone/locale
     const rawRegion =
       Intl?.DateTimeFormat?.().resolvedOptions().timeZone ||
-      (typeof navigator !== 'undefined' ? navigator.language : null) ||
+      (typeof navigator !== "undefined" ? navigator.language : null) ||
       null;
 
     const mapRegion = (value: string | null): string | null => {
       if (!value) return null;
       const upper = value.toUpperCase();
-      if (upper.includes('EUROPE')) return 'Europe West';
-      if (upper.includes('AMERICA')) {
+      if (upper.includes("EUROPE")) return "Europe West";
+      if (upper.includes("AMERICA")) {
         if (
-          upper.includes('SOUTH') ||
-          upper.includes('ARGENTINA') ||
-          upper.includes('SAO_PAULO')
+          upper.includes("SOUTH") ||
+          upper.includes("ARGENTINA") ||
+          upper.includes("SAO_PAULO")
         )
-          return 'South America';
-        return 'North America';
+          return "South America";
+        return "North America";
       }
-      if (upper.includes('PACIFIC')) return 'Pacific';
-      if (upper.includes('ASIA')) return 'Asia';
-      if (upper.includes('AFRICA')) return 'Africa';
-      if (upper.includes('AUSTRALIA') || upper.includes('OCEANIA')) return 'Oceania';
-      return 'Global';
+      if (upper.includes("PACIFIC")) return "Pacific";
+      if (upper.includes("ASIA")) return "Asia";
+      if (upper.includes("AFRICA")) return "Africa";
+      if (upper.includes("AUSTRALIA") || upper.includes("OCEANIA"))
+        return "Oceania";
+      return "Global";
     };
 
     const regionAggregate = mapRegion(rawRegion);
@@ -586,7 +634,11 @@ const App: React.FC = () => {
     <TranslationProvider>
       <div className="flex w-full h-screen bg-[#050B14] overflow-hidden font-sans text-slate-200">
         {/* Barre latérale gauche (Navigation) */}
-        <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} vkStatus={vkStatus} />
+        <Sidebar
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          vkStatus={vkStatus}
+        />
 
         {/* Contenu Principal */}
         <div className="content-wrapper flex-1 flex flex-col h-full relative">
@@ -640,4 +692,3 @@ const App: React.FC = () => {
 };
 
 export default App;
-

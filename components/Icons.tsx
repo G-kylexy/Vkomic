@@ -33,8 +33,8 @@ import {
   Trash2,
   AlertTriangle,
   File,
-  Github
-} from 'lucide-react';
+  Github,
+} from "lucide-react";
 
 export {
   Zap,
@@ -70,5 +70,5 @@ export {
   Trash2,
   AlertTriangle,
   File,
-  Github
+  Github,
 };

@@ -1,6 +1,13 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Folder, FileText, RefreshCw, ChevronLeft, DownloadCloud, Settings } from './Icons';
-import { useTranslation } from '../i18n';
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Folder,
+  FileText,
+  RefreshCw,
+  ChevronLeft,
+  DownloadCloud,
+  Settings,
+} from "./Icons";
+import { useTranslation } from "../i18n";
 
 interface FsEntry {
   name: string;
@@ -15,17 +22,17 @@ interface LibraryViewProps {
   onNavigateToSettings?: () => void;
 }
 
-const normalizePath = (value: string) => value.replace(/\\/g, '/');
+const normalizePath = (value: string) => value.replace(/\\/g, "/");
 
 const joinPaths = (base: string, segment: string) => {
   if (!segment) return base;
-  if (base.endsWith('\\') || base.endsWith('/')) return `${base}${segment}`;
-  const usesBackslash = base.includes('\\');
-  return `${base}${usesBackslash ? '\\' : '/'}${segment}`;
+  if (base.endsWith("\\") || base.endsWith("/")) return `${base}${segment}`;
+  const usesBackslash = base.includes("\\");
+  return `${base}${usesBackslash ? "\\" : "/"}${segment}`;
 };
 
 const formatSize = (size: number | null) => {
-  if (size === null || size === undefined) return '--';
+  if (size === null || size === undefined) return "--";
   if (size < 1024) return `${size} B`;
   const kb = size / 1024;
   if (kb < 1024) return `${kb.toFixed(1)} KB`;
@@ -36,7 +43,7 @@ const formatSize = (size: number | null) => {
 };
 
 const formatDate = (timestamp: number) => {
-  if (!timestamp) return '--';
+  if (!timestamp) return "--";
   const date = new Date(timestamp);
   return date.toLocaleString();
 };
@@ -54,11 +61,13 @@ const buildBreadcrumbs = (base: string, target: string, rootLabel: string) => {
     return breadcrumbs;
   }
 
-  const diff = normalizedTarget.slice(normalizedBase.length).replace(/^\/+/, '');
+  const diff = normalizedTarget
+    .slice(normalizedBase.length)
+    .replace(/^\/+/, "");
   if (!diff) return breadcrumbs;
 
   let current = base;
-  diff.split('/').forEach((segment) => {
+  diff.split("/").forEach((segment) => {
     if (segment.length === 0) return;
     current = joinPaths(current, segment);
     breadcrumbs.push({ label: segment, path: current });
@@ -75,10 +84,12 @@ const computeParentWithinBase = (current: string, base: string) => {
     return base;
   }
 
-  const relative = normalizedCurrent.slice(normalizedBase.length).replace(/^\/+/, '');
+  const relative = normalizedCurrent
+    .slice(normalizedBase.length)
+    .replace(/^\/+/, "");
   if (!relative) return base;
 
-  const parts = relative.split('/');
+  const parts = relative.split("/");
   parts.pop();
 
   let target = base;
@@ -89,7 +100,10 @@ const computeParentWithinBase = (current: string, base: string) => {
 };
 
 // Parcourt le dossier de téléchargement local via l'IPC exposé par Electron
-const LibraryView: React.FC<LibraryViewProps> = ({ downloadPath, onNavigateToSettings }) => {
+const LibraryView: React.FC<LibraryViewProps> = ({
+  downloadPath,
+  onNavigateToSettings,
+}) => {
   const { t } = useTranslation();
   const [currentPath, setCurrentPath] = useState<string | null>(null);
   const [entries, setEntries] = useState<FsEntry[]>([]);
@@ -97,11 +111,12 @@ const LibraryView: React.FC<LibraryViewProps> = ({ downloadPath, onNavigateToSet
   const [error, setError] = useState<string | null>(null);
 
   const effectivePath = downloadPath?.trim();
-  const hasFsBridge = typeof window !== 'undefined' && Boolean(window.fs?.listDirectory);
+  const hasFsBridge =
+    typeof window !== "undefined" && Boolean(window.fs?.listDirectory);
 
   const loadPath = useCallback(
     async (target: string) => {
-      if (typeof window === 'undefined' || !window.fs?.listDirectory) {
+      if (typeof window === "undefined" || !window.fs?.listDirectory) {
         setError(t.library.desktopOnly);
         return;
       }
@@ -134,7 +149,9 @@ const LibraryView: React.FC<LibraryViewProps> = ({ downloadPath, onNavigateToSet
   }, [effectivePath, currentPath, t.library.rootLabel]);
 
   const canNavigateUp = Boolean(
-    currentPath && effectivePath && normalizePath(currentPath) !== normalizePath(effectivePath),
+    currentPath &&
+    effectivePath &&
+    normalizePath(currentPath) !== normalizePath(effectivePath),
   );
 
   const handleNavigateUp = () => {
@@ -147,13 +164,13 @@ const LibraryView: React.FC<LibraryViewProps> = ({ downloadPath, onNavigateToSet
   const handleEntryClick = (entry: FsEntry) => {
     if (entry.isDirectory) {
       loadPath(entry.path);
-    } else if (typeof window !== 'undefined' && window.fs?.openPath) {
+    } else if (typeof window !== "undefined" && window.fs?.openPath) {
       window.fs.openPath(entry.path);
     }
   };
 
   const handleOpenFile = (entry: FsEntry) => {
-    if (typeof window !== 'undefined' && window.fs?.openPath) {
+    if (typeof window !== "undefined" && window.fs?.openPath) {
       window.fs.openPath(entry.path);
     }
   };
@@ -196,17 +213,22 @@ const LibraryView: React.FC<LibraryViewProps> = ({ downloadPath, onNavigateToSet
         <div className="pt-2 pb-6">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h1 className="text-3xl font-bold text-white tracking-tight">{t.library.localTitle}</h1>
-              <p className="text-slate-500 text-sm mt-2">{currentPath || effectivePath}</p>
+              <h1 className="text-3xl font-bold text-white tracking-tight">
+                {t.library.localTitle}
+              </h1>
+              <p className="text-slate-500 text-sm mt-2">
+                {currentPath || effectivePath}
+              </p>
             </div>
             <div className="flex items-center gap-2">
               <button
                 onClick={handleNavigateUp}
                 disabled={!canNavigateUp || isLoading}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-700/50 text-sm transition-colors ${canNavigateUp && !isLoading
-                  ? 'text-slate-200 bg-slate-800 hover:bg-slate-700'
-                  : 'text-slate-500 bg-slate-800/50 cursor-not-allowed'
-                  }`}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-700/50 text-sm transition-colors ${
+                  canNavigateUp && !isLoading
+                    ? "text-slate-200 bg-slate-800 hover:bg-slate-700"
+                    : "text-slate-500 bg-slate-800/50 cursor-not-allowed"
+                }`}
               >
                 <ChevronLeft size={16} />
                 {t.library.back}
@@ -216,7 +238,10 @@ const LibraryView: React.FC<LibraryViewProps> = ({ downloadPath, onNavigateToSet
                 disabled={!currentPath || isLoading}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-700/50 text-sm text-slate-200 bg-slate-800 hover:bg-slate-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
               >
-                <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
+                <RefreshCw
+                  size={16}
+                  className={isLoading ? "animate-spin" : ""}
+                />
                 {t.library.refresh}
               </button>
             </div>
@@ -229,8 +254,11 @@ const LibraryView: React.FC<LibraryViewProps> = ({ downloadPath, onNavigateToSet
                   {index > 0 && <span className="text-slate-600">/</span>}
                   <button
                     onClick={() => loadPath(crumb.path)}
-                    className={`hover:text-white transition-colors ${index === breadcrumbs.length - 1 ? 'text-white font-semibold cursor-default' : ''
-                      }`}
+                    className={`hover:text-white transition-colors ${
+                      index === breadcrumbs.length - 1
+                        ? "text-white font-semibold cursor-default"
+                        : ""
+                    }`}
                     disabled={index === breadcrumbs.length - 1}
                   >
                     {crumb.label}
@@ -273,7 +301,10 @@ const LibraryView: React.FC<LibraryViewProps> = ({ downloadPath, onNavigateToSet
                       {isFolder ? <Folder size={24} /> : <FileText size={24} />}
                     </button>
                     <div className="flex-1 min-w-0">
-                      <h3 className="text-white font-semibold truncate" title={entry.name}>
+                      <h3
+                        className="text-white font-semibold truncate"
+                        title={entry.name}
+                      >
                         {entry.name}
                       </h3>
                       <p className="text-xs text-slate-500">
@@ -284,7 +315,8 @@ const LibraryView: React.FC<LibraryViewProps> = ({ downloadPath, onNavigateToSet
 
                   <div className="text-xs text-slate-500 space-y-1 mb-4">
                     <p>
-                      {t.library.size}: {isFolder ? '--' : formatSize(entry.size)}
+                      {t.library.size}:{" "}
+                      {isFolder ? "--" : formatSize(entry.size)}
                     </p>
                     <p>
                       {t.library.modified}: {formatDate(entry.modifiedAt)}
@@ -293,7 +325,9 @@ const LibraryView: React.FC<LibraryViewProps> = ({ downloadPath, onNavigateToSet
 
                   <button
                     type="button"
-                    onClick={() => (isFolder ? loadPath(entry.path) : handleOpenFile(entry))}
+                    onClick={() =>
+                      isFolder ? loadPath(entry.path) : handleOpenFile(entry)
+                    }
                     className="w-full border border-slate-700/50 rounded-md py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800 hover:border-slate-600 transition-all flex items-center justify-center gap-2"
                   >
                     {!isFolder && <DownloadCloud size={14} />}

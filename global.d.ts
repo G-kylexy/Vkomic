@@ -30,8 +30,13 @@ declare global {
         id: string,
         url: string,
         directory: string,
-        fileName?: string
-      ) => Promise<{ ok: boolean; path: string; size?: number | null; status?: string }>;
+        fileName?: string,
+      ) => Promise<{
+        ok: boolean;
+        path: string;
+        size?: number | null;
+        status?: string;
+      }>;
       onDownloadProgress?: (
         callback: (payload: {
           id: string;
@@ -44,7 +49,9 @@ declare global {
       cancelDownload?: (id: string) => Promise<boolean>;
     };
     vk?: {
-      ping: (token?: string) => Promise<{ ok: boolean; latency: number | null }>;
+      ping: (
+        token?: string,
+      ) => Promise<{ ok: boolean; latency: number | null }>;
     };
     app?: {
       getVersion?: () => Promise<string>;
@@ -59,3 +66,4 @@ declare global {
     };
   }
 }
+// Updated

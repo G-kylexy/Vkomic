@@ -1,7 +1,7 @@
 {
   "name": "vkomic-clone",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "main": "electron/main.js",
   "type": "module",
   "description": "Lecteur et téléchargeur de comics VK",

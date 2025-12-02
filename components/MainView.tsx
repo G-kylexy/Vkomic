@@ -1,9 +1,9 @@
-import React from 'react';
-import BrowserView from './BrowserView';
-import SettingsView from './SettingsView';
-import DownloadsView from './DownloadsView';
-import LibraryView from './LibraryView';
-import { VkNode, VkConnectionStatus, DownloadItem } from '../types';
+import React from "react";
+import BrowserView from "./BrowserView";
+import SettingsView from "./SettingsView";
+import DownloadsView from "./DownloadsView";
+import LibraryView from "./LibraryView";
+import { VkNode, VkConnectionStatus, DownloadItem } from "../types";
 
 interface MainViewProps {
   searchQuery: string;
@@ -58,12 +58,11 @@ const MainView: React.FC<MainViewProps> = ({
   resumeDownload,
   cancelDownload,
   retryDownload,
-  clearDownloads
+  clearDownloads,
 }) => {
-
   const renderContent = () => {
     switch (activeTab) {
-      case 'settings':
+      case "settings":
         return (
           <SettingsView
             vkToken={vkToken}
@@ -80,7 +79,7 @@ const MainView: React.FC<MainViewProps> = ({
             }}
           />
         );
-      case 'home':
+      case "home":
         // BrowserView a besoin des données synchronisées et de la recherche
         return (
           <BrowserView
@@ -102,7 +101,7 @@ const MainView: React.FC<MainViewProps> = ({
             retryDownload={retryDownload}
           />
         );
-      case 'downloads':
+      case "downloads":
         return (
           <DownloadsView
             downloads={downloads}
@@ -115,11 +114,11 @@ const MainView: React.FC<MainViewProps> = ({
             clearDownloads={clearDownloads}
           />
         );
-      case 'library':
+      case "library":
         return (
           <LibraryView
             downloadPath={downloadPath}
-            onNavigateToSettings={() => setActiveTab('settings')}
+            onNavigateToSettings={() => setActiveTab("settings")}
           />
         );
       default:
@@ -127,11 +126,7 @@ const MainView: React.FC<MainViewProps> = ({
     }
   };
 
-  return (
-    <>
-      {renderContent()}
-    </>
-  );
+  return <>{renderContent()}</>;
 };
 
 export default MainView;
