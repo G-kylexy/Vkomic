@@ -61,7 +61,7 @@ export const fr = {
   // Library
   library: {
     empty: 'Bibliothèque vide',
-    emptyDescription: "Synchronisez l'application avec l’index VK pour accéder aux BDs.",
+    emptyDescription: "Veuillez configurer votre token dans les Paramètres, puis synchronisez l'application avec l’index VK pour accéder aux BDs.",
     syncButton: 'Synchroniser depuis VK',
     syncAllButton: 'Tout synchroniser',
     syncAllWarning: "Attention : cette opération va précharger tous les dossiers. Selon votre connexion et la charge des serveurs VK, cela peut prendre plusieurs secondes. Idéal si vous comptez utiliser la barre de recherche.",

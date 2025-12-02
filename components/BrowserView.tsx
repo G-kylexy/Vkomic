@@ -381,35 +381,6 @@ const BrowserView: React.FC<BrowserViewProps> = ({
             <RefreshCw size={18} className={isLoading ? 'animate-spin' : ''} />
             {isLoading ? t.library.syncing : t.library.syncButton}
           </button>
-
-          {!hasFullSynced && (
-            <div className="mt-8 flex flex-col items-center animate-fade-in">
-              <div className="flex items-center gap-2 text-amber-500 mb-2">
-                <AlertTriangle size={16} />
-                <span className="text-xs font-medium uppercase tracking-wider">Option Avancée</span>
-              </div>
-              <p className="text-slate-500 text-sm text-center max-w-md mb-4">
-                {t.library.syncAllWarning.split('.')[0]}.
-              </p>
-              <button
-                onClick={handleFullSync}
-                disabled={isLoading}
-                className="group relative overflow-hidden rounded-lg transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] shadow-lg hover:shadow-amber-500/20 border border-amber-500/30"
-              >
-                <div className="absolute inset-0 bg-gradient-to-r from-amber-500/10 to-orange-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                <div className="relative flex items-center">
-                  <div className="px-4 py-3 bg-amber-500/10 border-r border-amber-500/20 group-hover:bg-amber-500/20 transition-colors">
-                    <AlertCircle size={18} className={`text-amber-500 ${isLoading ? 'animate-pulse' : ''}`} />
-                  </div>
-                  <div className="px-6 py-3 bg-amber-500/5 group-hover:bg-amber-500/10 transition-colors">
-                    <span className="text-amber-500 font-semibold text-sm tracking-wide">
-                      TOUT SYNCHRONISER
-                    </span>
-                  </div>
-                </div>
-              </button>
-            </div>
-          )}
         </div>
       </div>
     );
