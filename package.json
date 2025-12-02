@@ -25,11 +25,14 @@
       "electron/**/*",
       "package.json"
     ],
+    "icon": "public/icon.png",
     "win": {
       "target": [
         "nsis",
         "zip"
-      ]
+      ],
+      "icon": "public/icon.ico",
+      "verifyUpdateCodeSignature": false
     },
     "nsis": {
       "oneClick": false,
@@ -37,6 +40,7 @@
       "createDesktopShortcut": true
     },
     "linux": {
+      "icon": "public/icon-512.png",
       "target": [
         "AppImage",
         "tar.gz"
@@ -55,6 +59,7 @@
     "concurrently": "^9.2.1",
     "electron": "^39.2.4",
     "electron-builder": "^25.1.8",
+    "to-ico": "^1.1.5",
     "typescript": "~5.8.2",
     "vite": "^6.2.0",
     "wait-on": "^9.0.3"
