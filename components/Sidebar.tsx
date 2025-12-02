@@ -163,13 +163,22 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, vkStatus }) 
       <div className="pb-6 mt-4">
         <div className="mx-6 h-px bg-slate-800/50 mb-6"></div>
         <div className="px-6 flex flex-col gap-2 text-xs">
-          <div className="flex items-center gap-2 text-emerald-400 font-medium">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping-slow absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500 shadow-[0_0_8px_rgba(52,211,153,0.8)]"></span>
-            </span>
-            {t.sidebar.connectedToVK}
-          </div>
+          {vkStatus.connected ? (
+            <div className="flex items-center gap-2 text-emerald-400 font-medium">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping-slow absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500 shadow-[0_0_8px_rgba(52,211,153,0.8)]"></span>
+              </span>
+              {t.sidebar.connectedToVK}
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-rose-400 font-medium">
+              <span className="relative flex h-2 w-2">
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.8)]"></span>
+              </span>
+              {t.sidebar.disconnected}
+            </div>
+          )}
           <div className="text-slate-500 mt-1 pl-4 space-y-1">
             <p>{t.sidebar.latency}: {vkStatus.latencyMs !== null ? `${vkStatus.latencyMs}ms` : '--'}</p>
             <p>{t.sidebar.region}: {displayRegion}</p>

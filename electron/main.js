@@ -306,12 +306,20 @@ app.whenReady().then(() => {
 
   // Ping VK depuis le processus principal (évite les erreurs CORB côté renderer)
   ipcMain.handle('vk:ping', async (_, token) => {
+    if (!token) {
+      return { ok: false, latency: null };
+    }
     const start = Date.now();
     try {
-      const url = token
-        ? `https://api.vk.com/method/utils.getServerTime?access_token=${token}&v=5.131`
-        : 'https://vk.com/favicon.ico';
-      await fetch(url, { method: 'HEAD', cache: 'no-store' });
+      const url = `https://api.vk.com/method/utils.getServerTime?access_token=${token}&v=5.131`;
+      const res = await fetch(url, { method: 'GET', cache: 'no-store' });
+      const data = await res.json();
+
+      // Si l'API retourne une erreur (ex: token invalide), on considère le ping comme échoué
+      if (data.error) {
+        return { ok: false, latency: null };
+      }
+
       return { ok: true, latency: Date.now() - start };
     } catch (err) {
       return { ok: false, latency: null };

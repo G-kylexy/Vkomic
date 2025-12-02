@@ -538,7 +538,7 @@ const App: React.FC = () => {
     };
 
     measurePing();
-    const id = setInterval(measurePing, 1000);
+    const id = setInterval(measurePing, 3000);
     return () => clearInterval(id);
   }, [vkToken]);
 
