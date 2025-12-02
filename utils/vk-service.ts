@@ -343,15 +343,14 @@ export const fetchNodeContent = async (token: string, node: VkNode): Promise<VkN
   }
 
   try {
-    const response = await fetchVkTopic(token, node.vkGroupId, node.vkTopicId);
+    // Récupère toutes les pages pour éviter de manquer des sous-dossiers ou fichiers
+    const items = await fetchAllComments(token, node.vkGroupId, node.vkTopicId);
 
-    if (!response.response || !response.response.items) {
+    if (!items || items.length === 0) {
       throw new Error('Failed to fetch node content');
     }
 
-    const items = response.response.items;
-
-    // Etape 1 : Sous-dossiers (autres topics cites)
+    // Etape 1 : Sous-dossiers (autres topics cités)
     const fullText = items.map((i: any) => i.text).join('\n');
     const subTopics = parseTopicBody(fullText, node.vkTopicId);
 
