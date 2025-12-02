@@ -343,14 +343,15 @@ export const fetchNodeContent = async (token: string, node: VkNode): Promise<VkN
   }
 
   try {
-    // Récupère toutes les pages pour éviter de manquer des sous-dossiers ou fichiers
-    const items = await fetchAllComments(token, node.vkGroupId, node.vkTopicId);
+    const response = await fetchVkTopic(token, node.vkGroupId, node.vkTopicId);
 
-    if (!items || items.length === 0) {
+    if (!response.response || !response.response.items) {
       throw new Error('Failed to fetch node content');
     }
 
-    // Etape 1 : Sous-dossiers (autres topics cités)
+    const items = response.response.items;
+
+    // Etape 1 : Sous-dossiers (autres topics cites)
     const fullText = items.map((i: any) => i.text).join('\n');
     const subTopics = parseTopicBody(fullText, node.vkTopicId);
 
@@ -472,7 +473,7 @@ export const fetchFolderTreeUpToDepth = async (
   token: string,
   groupId?: string,
   topicId?: string,
-  maxDepth: number = 4
+  maxDepth: number = 3
 ): Promise<VkNode[]> => {
   // Helper de parallelisation limitee
   const runWithConcurrency = async <T, R>(
@@ -579,56 +580,5 @@ export const fetchFolderTreeUpToDepth = async (
     children: (root.children || []).map((child) => level2Map.get(child.id) || child),
   }));
 
-  if (maxDepth <= 3) {
-    return finalRoots;
-  }
-
-  // Niveau 4 : dossiers finaux dans chaque série (niveau 3 de l'arbre)
-  const level3Nodes: VkNode[] = [];
-  level2Expanded.forEach((serie) => {
-    (serie.children || []).forEach((child) => {
-      if (child.vkGroupId && child.vkTopicId) {
-        level3Nodes.push(child);
-      }
-    });
-  });
-
-  if (level3Nodes.length === 0) {
-    return finalRoots;
-  }
-
-  const level3Expanded = await runWithConcurrency(
-    level3Nodes,
-    CONCURRENCY_LIMIT,
-    async (node, idx) => {
-      try {
-        const children = await fetchTopicStructure(
-          token,
-          node.vkGroupId as string,
-          node.vkTopicId as string
-        );
-        return {
-          ...node,
-          children,
-          isLoaded: true,
-        };
-      } catch (e) {
-        console.error(`    ⚠️ Failed to fetch final folders for "${node.title}":`, e);
-        return node;
-      }
-    }
-  );
-
-  const level3Map = new Map<string, VkNode>();
-  level3Expanded.forEach((node) => level3Map.set(node.id, node));
-
-  const finalRootsDepth4 = finalRoots.map((root) => ({
-    ...root,
-    children: (root.children || []).map((lvl2) => ({
-      ...lvl2,
-      children: (lvl2.children || []).map((lvl3) => level3Map.get(lvl3.id) || lvl3),
-    })),
-  }));
-
-  return finalRootsDepth4;
+  return finalRoots;
 };
