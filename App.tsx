@@ -151,6 +151,33 @@ const App: React.FC = () => {
   const addDownload = (node: VkNode, subFolder?: string) => {
     if (!node.url) return;
 
+    // Vérifier si un dossier de téléchargement est configuré
+    if (!downloadPath || downloadPath === DEFAULT_DOWNLOAD_PATH) {
+      // Ajouter un téléchargement avec statut "error" pour informer l'utilisateur
+      const id = node.id || Math.random().toString(36).substr(2, 9);
+      const formattedSize = formatBytes(node.sizeBytes);
+
+      setDownloads((prev) => {
+        const existingIndex = prev.findIndex((d) => d.id === id);
+        if (existingIndex >= 0) return prev; // Ne pas créer de doublon
+
+        const errorDownload: DownloadItem = {
+          id,
+          title: node.title,
+          url: node.url,
+          progress: 0,
+          status: 'error',
+          extension: node.extension,
+          speed: 'Dossier non configuré',
+          createdAt: new Date().toISOString(),
+          size: formattedSize,
+        };
+
+        return [errorDownload, ...prev];
+      });
+      return;
+    }
+
     const id = node.id || Math.random().toString(36).substr(2, 9);
 
     const formattedSize = formatBytes(node.sizeBytes);
