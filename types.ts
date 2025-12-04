@@ -29,6 +29,7 @@ export interface VkNode {
   count?: number;
   extension?: string; // Extension du fichier (PDF, CBZ, etc.) pour l'affichage
   isLoaded?: boolean; // Indique si on a déjà chargé le contenu de ce dossier
+  structureOnly?: boolean; // Indique que ce nœud a été chargé via "Tout Sync" (structure seulement, pas les docs)
   vkGroupId?: string; // ID du groupe VK (nécessaire pour l'API)
   vkTopicId?: string; // ID du topic VK (nécessaire pour l'API)
   sizeBytes?: number; // Taille du fichier (en octets) pour les noeuds de type "file"

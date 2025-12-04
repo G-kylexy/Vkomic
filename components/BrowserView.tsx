@@ -179,12 +179,12 @@ const BrowserView: React.FC<BrowserViewProps> = ({
     setNavPath([]);
     try {
       const start = performance.now();
-      // Full sync sur 3 niveaux (structure uniquement)
+      // Full sync sur tous les niveaux (structure uniquement, les docs sont chargés en lazy)
+      // Profondeur par défaut = 5 niveaux (suffisant pour l'arborescence VK)
       const data = await fetchFolderTreeUpToDepth(
         vkToken,
         vkGroupId,
         vkTopicId,
-        3,
       );
       setSyncedData(data);
       setHasFullSynced(true); // Mark as fully synced
@@ -215,19 +215,38 @@ const BrowserView: React.FC<BrowserViewProps> = ({
       return;
     }
 
-    if (node.children && node.children.length > 0) {
+    // Si le nœud a des enfants ET n'est pas marqué "structureOnly", on peut naviguer directement
+    if (node.children && node.children.length > 0 && !node.structureOnly) {
       setNavPath((prev) => [...prev, node]);
       return;
     }
 
-    if (!node.isLoaded) {
+    // Si le nœud n'est pas chargé OU est marqué "structureOnly" (sync structure sans docs),
+    // on doit faire un appel API pour récupérer le contenu complet (y compris les documents)
+    if (!node.isLoaded || node.structureOnly) {
       setIsLoading(true);
       try {
         const updatedNode = await fetchNodeContent(vkToken, node);
 
+        // Si on avait des enfants "structure only", on les fusionne avec les nouveaux
+        // Pour garder les sous-dossiers déjà synchronisés tout en ajoutant les documents
+        let finalNode = updatedNode;
+        if (node.structureOnly && node.children && node.children.length > 0) {
+          const existingChildIds = new Set(node.children.map((c) => c.id));
+          const newChildren = (updatedNode.children || []).filter(
+            (c) => !existingChildIds.has(c.id),
+          );
+          // On garde les enfants existants (structure) et on ajoute les nouveaux (documents principalement)
+          finalNode = {
+            ...updatedNode,
+            children: [...node.children, ...newChildren],
+            structureOnly: false, // Maintenant on a le contenu complet
+          };
+        }
+
         const updateTree = (nodes: VkNode[]): VkNode[] =>
           nodes.map((n) => {
-            if (n.id === node.id) return updatedNode;
+            if (n.id === node.id) return finalNode;
             if (n.children) return { ...n, children: updateTree(n.children) };
             return n;
           });
@@ -235,7 +254,7 @@ const BrowserView: React.FC<BrowserViewProps> = ({
         if (syncedData) {
           setSyncedData(updateTree(syncedData));
         }
-        setNavPath((prev) => [...prev, updatedNode]);
+        setNavPath((prev) => [...prev, finalNode]);
       } catch (err) {
         console.error(err);
         setError("Impossible de charger le contenu.");
@@ -418,11 +437,10 @@ const BrowserView: React.FC<BrowserViewProps> = ({
                 <>
                   <button
                     onClick={clearNav}
-                    className={`flex items-center justify-center w-8 h-8 rounded-lg transition-colors ${
-                      navPath.length === 0
-                        ? "bg-blue-600 text-white shadow-lg shadow-blue-900/40"
-                        : "bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white"
-                    }`}
+                    className={`flex items-center justify-center w-8 h-8 rounded-lg transition-colors ${navPath.length === 0
+                      ? "bg-blue-600 text-white shadow-lg shadow-blue-900/40"
+                      : "bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white"
+                      }`}
                     title="Accueil"
                   >
                     <Home size={16} />
@@ -456,11 +474,10 @@ const BrowserView: React.FC<BrowserViewProps> = ({
                               ? undefined
                               : navigateUp(index)
                           }
-                          className={`font-medium transition-colors max-w-[180px] truncate text-left ${
-                            index === navPath.length - 1
-                              ? "text-white cursor-default"
-                              : "text-slate-500 hover:text-slate-300"
-                          }`}
+                          className={`font-medium transition-colors max-w-[180px] truncate text-left ${index === navPath.length - 1
+                            ? "text-white cursor-default"
+                            : "text-slate-500 hover:text-slate-300"
+                            }`}
                         >
                           {getDisplayTitle(node)}
                         </button>
@@ -482,11 +499,10 @@ const BrowserView: React.FC<BrowserViewProps> = ({
               {fileNodes.length > 0 && (
                 <button
                   onClick={handleGlobalAction}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-lg ${
-                    hasActiveDownloads
-                      ? "bg-rose-600 hover:bg-rose-500 text-white shadow-rose-900/20"
-                      : "bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/20"
-                  }`}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-lg ${hasActiveDownloads
+                    ? "bg-rose-600 hover:bg-rose-500 text-white shadow-rose-900/20"
+                    : "bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/20"
+                    }`}
                   title={
                     hasActiveDownloads
                       ? t.library.cancelAll
@@ -683,11 +699,10 @@ const BrowserView: React.FC<BrowserViewProps> = ({
                             <div className="mt-2 flex items-center gap-3">
                               <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
                                 <div
-                                  className={`h-full ${
-                                    activeDownload?.status === "paused"
-                                      ? "bg-amber-500"
-                                      : "bg-blue-500"
-                                  }`}
+                                  className={`h-full ${activeDownload?.status === "paused"
+                                    ? "bg-amber-500"
+                                    : "bg-blue-500"
+                                    }`}
                                   style={{ width: `${progress}%` }}
                                 />
                               </div>
