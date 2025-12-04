@@ -1,4 +1,4 @@
-﻿import { VkNode } from '../types';
+import { VkNode } from '../types';
 
 const API_VERSION = '5.131';
 
@@ -41,7 +41,7 @@ const MOCK_ROOT_NODES: VkNode[] = [
 // --- HACK JSONP + Limiteur ---
 // L'API VK ne supporte pas le CORS pour les appels frontend directs.
 // JSONP permet de contourner cela en injectant une balise <script>.
-// On ajoute en plus un petit limiteur global pour ´┐¢viter de spammer l'API.
+// On ajoute en plus un petit limiteur global pour �viter de spammer l'API.
 
 const RATE_LIMIT_DELAY_MS = 350; // ~3 req/s
 type QueueItem<T> = { fn: () => Promise<T>; resolve: (v: T) => void; reject: (e: any) => void };
@@ -107,7 +107,7 @@ export const fetchVkTopic = async (
   return jsonp(url);
 };
 
-// Version batch pour plusieurs offsets d'un m├¬me topic via VK execute (max 25 sous-appels)
+// Version batch pour plusieurs offsets d'un même topic via VK execute (max 25 sous-appels)
 const fetchVkTopicBatch = async (
   token: string,
   groupId: string,
@@ -186,8 +186,8 @@ export const searchVkBoard = async (
 const cleanTitle = (text: string) => {
   return text
     .replace(/[:\-]+$/, '')
-    .replace(/^\s*[-"┬╗┬½]+\s*/, '')
-    .replace(/\s*[-"┬╗┬½]+\s*$/, '')
+    .replace(/^\s*[-"»«]+\s*/, '')
+    .replace(/\s*[-"»«]+\s*$/, '')
     .replace(/\(lien\)/gi, '')
     .trim();
 };
@@ -309,7 +309,7 @@ export const fetchRootIndex = async (
     const effectiveGroupId = groupId && groupId.trim().length > 0 ? groupId.trim() : '203785966';
     const effectiveTopicId = topicId && topicId.trim().length > 0 ? topicId.trim() : '47515406';
 
-    // Utilisation de fetchAllComments pour r├®cup├®rer TOUS les messages du topic index
+    // Utilisation de fetchAllComments pour récupérer TOUS les messages du topic index
     // et pas seulement les 100 premiers.
     const items = await fetchAllComments(token, effectiveGroupId, effectiveTopicId);
 
@@ -324,8 +324,8 @@ export const fetchRootIndex = async (
       return MOCK_ROOT_NODES;
     }
 
-    // Filtrage pour ne garder que les cat├®gories principales (ex: "BDs EN FRANCAIS")
-    // Cela ├®vite d'afficher des liens "parasites" (comme "Howard Flynn") qui se trouvent dans l'index.
+    // Filtrage pour ne garder que les catégories principales (ex: "BDs EN FRANCAIS")
+    // Cela évite d'afficher des liens "parasites" (comme "Howard Flynn") qui se trouvent dans l'index.
     const filteredNodes = nodes.filter((n) => n.title.toUpperCase().includes('EN FRANCAIS'));
     const finalNodes = filteredNodes.length > 0 ? filteredNodes : nodes;
 
@@ -336,20 +336,20 @@ export const fetchRootIndex = async (
   }
 };
 
-// Fonction appelee pour charger le contenu d'un dossier (lazy)
-// UTILISE fetchAllComments pour paginer TOUS les commentaires
+// Fonction appelee pour charger le contenu d'un dossier (lazy, un seul appel)
 export const fetchNodeContent = async (token: string, node: VkNode): Promise<VkNode> => {
   if (!node.vkGroupId || !node.vkTopicId) {
     return { ...node, isLoaded: true, children: [] };
   }
 
   try {
-    // Utilise fetchAllComments pour récupérer TOUS les messages (pas juste 100)
-    const items = await fetchAllComments(token, node.vkGroupId, node.vkTopicId);
+    const response = await fetchVkTopic(token, node.vkGroupId, node.vkTopicId);
 
-    if (!items || items.length === 0) {
-      return { ...node, isLoaded: true, children: [] };
+    if (!response.response || !response.response.items) {
+      throw new Error('Failed to fetch node content');
     }
+
+    const items = response.response.items;
 
     // Etape 1 : Sous-dossiers (autres topics cites)
     const fullText = items.map((i: any) => i.text).join('\n');
@@ -365,7 +365,6 @@ export const fetchNodeContent = async (token: string, node: VkNode): Promise<VkN
         ...node,
         children: allChildren,
         isLoaded: true,
-        structureOnly: false,
         type: documents.length > 0 ? 'series' : 'genre',
       };
     }
@@ -387,7 +386,7 @@ export const fetchNodeContent = async (token: string, node: VkNode): Promise<VkN
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 // Paginer tous les commentaires d'un topic (tant que VK renvoie des pages pleines)
-// Avec retry automatique en cas d'├®chec
+// Avec retry automatique en cas d'échec
 const fetchAllComments = async (
   token: string,
   groupId: string,
@@ -397,7 +396,7 @@ const fetchAllComments = async (
   const allItems: any[] = [];
   let offset = 0;
   const count = 100;
-  const BATCH_SIZE = 10; // <=25 sous-appels autoris├®s dans execute, marge de s├®curit├®
+  const BATCH_SIZE = 10; // <=25 sous-appels autorisés dans execute, marge de sécurité
 
   while (true) {
     const offsets: number[] = [];
@@ -447,7 +446,7 @@ const fetchAllComments = async (
     offset += count * BATCH_SIZE;
     if (reachedEnd) break;
 
-    // Petit d├®lai entre les batches pour ├®viter de surcharger l'API
+    // Petit délai entre les batches pour éviter de surcharger l'API
     await sleep(200);
   }
 
@@ -523,10 +522,9 @@ export const fetchFolderTreeUpToDepth = async (
         ...root,
         children,
         isLoaded: true,
-        structureOnly: true,
       };
     } catch (e) {
-      console.error(`    ÔØî Failed to fetch subcategories for "${root.title}":`, e);
+      console.error(`    ❌ Failed to fetch subcategories for "${root.title}":`, e);
       return root;
     }
   });
@@ -563,10 +561,9 @@ export const fetchFolderTreeUpToDepth = async (
           ...node,
           children,
           isLoaded: true,
-          structureOnly: true,
         };
       } catch (e) {
-        console.error(`    ÔØî Failed to fetch series for "${node.title}":`, e);
+        console.error(`    ❌ Failed to fetch series for "${node.title}":`, e);
         return node;
       }
     }
