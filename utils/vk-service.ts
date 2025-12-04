@@ -94,6 +94,27 @@ const jsonp = (url: string): Promise<any> => {
   });
 };
 
+// Helper générique pour paralléliser des tâches avec une limite de concurrence
+const runParallel = async <T, R>(
+  items: T[],
+  limit: number,
+  worker: (item: T, index: number) => Promise<R>
+): Promise<R[]> => {
+  if (items.length === 0) return [];
+  const results: R[] = new Array(items.length);
+  let currentIndex = 0;
+  const runner = async (): Promise<void> => {
+    while (true) {
+      const index = currentIndex++;
+      if (index >= items.length) break;
+      results[index] = await worker(items[index], index);
+    }
+  };
+  const workers = Array(Math.min(limit, items.length)).fill(0).map(() => runner());
+  await Promise.all(workers);
+  return results;
+};
+
 // --- API Calls ---
 
 // Recupere les commentaires d'un topic VK (une seule page, 100 messages)
@@ -141,6 +162,84 @@ const fetchVkTopicBatch = async (
     return [];
   }
   return data.response;
+};
+
+// Récupère les premiers commentaires de PLUSIEURS topics différents en UN seul appel execute
+// Permet de charger jusqu'à 25 topics à la fois (limite VK execute)
+const fetchMultipleTopics = async (
+  token: string,
+  topics: { groupId: string; topicId: string }[]
+): Promise<any[]> => {
+  if (!token || token.length < 10) throw new Error('Invalid Token');
+  if (topics.length === 0) return [];
+  if (topics.length > 25) throw new Error('Max 25 topics per execute call');
+
+  // Construire le code VKScript pour récupérer tous les topics
+  const calls = topics.map(t =>
+    `API.board.getComments({group_id:${t.groupId},topic_id:${t.topicId},count:100,extended:1})`
+  ).join(',');
+
+  const code = `return [${calls}];`;
+  const url = `https://api.vk.com/method/execute?access_token=${token}&v=${API_VERSION}&code=${encodeURIComponent(code)}`;
+
+  const data = await jsonp(url);
+  if (data.error) {
+    console.error('VK execute error:', data.error);
+    return topics.map(() => null);
+  }
+  return data.response || [];
+};
+
+/**
+ * Récupère la structure de plusieurs nœuds en parallèle par lots de 25.
+ * Remplace les boucles manuelles pour une vitesse maximale.
+ */
+const fetchNodesStructureBatch = async (
+  token: string,
+  nodes: VkNode[]
+): Promise<VkNode[]> => {
+  if (nodes.length === 0) return [];
+
+  // 1. Préparer les lots de 25
+  const batches: VkNode[][] = [];
+  for (let i = 0; i < nodes.length; i += 25) {
+    batches.push(nodes.slice(i, i + 25));
+  }
+
+  // 2. Traiter les lots en parallèle (max 5 lots simultanés = 125 topics)
+  const results = await runParallel(batches, 5, async (batch) => {
+    const topicsToFetch = batch.map(n => ({
+      groupId: n.vkGroupId as string,
+      topicId: n.vkTopicId as string
+    }));
+
+    try {
+      const responses = await fetchMultipleTopics(token, topicsToFetch);
+
+      return batch.map((node, index) => {
+        const resp = responses[index];
+        if (resp && resp.items) {
+          const text = resp.items.map((it: any) => it.text || '').join('\n');
+          const children = parseTopicBody(text, node.vkTopicId);
+          return {
+            ...node,
+            children,
+            isLoaded: true,
+            structureOnly: true,
+          };
+        }
+        // Si pas de réponse ou vide, on retourne le node tel quel mais chargé
+        return { ...node, children: [], isLoaded: true, structureOnly: true };
+      });
+    } catch (e) {
+      console.error('Batch fetch error:', e);
+      // En cas d'erreur de batch, on retourne les nodes vides pour ne pas bloquer
+      return batch.map(n => ({ ...n, children: [], isLoaded: true, structureOnly: true }));
+    }
+  });
+
+  // 3. Aplatir les résultats
+  return results.flat();
 };
 
 // Recherche globale dans les topics du groupe
@@ -468,15 +567,17 @@ const fetchTopicStructure = async (
 
 // Synchronise uniquement la structure de dossiers (sans documents)
 // jusqu'a une profondeur maximale (par defaut 3 niveaux).
-// Utilisee par le bouton "Tout synchroniser (3 niveaux)".
+// Utilisee par le bouton "Tout synchroniser".
 export const fetchFolderTreeUpToDepth = async (
   token: string,
   groupId?: string,
   topicId?: string,
   maxDepth: number = 3
 ): Promise<VkNode[]> => {
-  // Helper de parallelisation limitee
-  const runWithConcurrency = async <T, R>(
+  console.log('[Sync] Starting fetchFolderTreeUpToDepth...');
+
+  // Helper de parallelisation limitee (si pas deja defini globalement)
+  const runParallel = async <T, R>(
     items: T[],
     limit: number,
     worker: (item: T, index: number) => Promise<R>
@@ -484,7 +585,6 @@ export const fetchFolderTreeUpToDepth = async (
     if (items.length === 0) return [];
     const results: R[] = new Array(items.length);
     let currentIndex = 0;
-
     const runner = async (): Promise<void> => {
       while (true) {
         const index = currentIndex++;
@@ -492,48 +592,53 @@ export const fetchFolderTreeUpToDepth = async (
         results[index] = await worker(items[index], index);
       }
     };
-
-    const workers = Array(Math.min(limit, items.length))
-      .fill(0)
-      .map(() => runner());
-
+    const workers = Array(Math.min(limit, items.length)).fill(0).map(() => runner());
     await Promise.all(workers);
     return results;
   };
 
-  const CONCURRENCY_LIMIT = 5;
+  // Helper local pour batcher si fetchNodesStructureBatch n'a pas acces a runParallel
+  const fetchNodesBatchLocal = async (nodes: VkNode[]): Promise<VkNode[]> => {
+    if (nodes.length === 0) return [];
+    const batches: VkNode[][] = [];
+    for (let i = 0; i < nodes.length; i += 25) {
+      batches.push(nodes.slice(i, i + 25));
+    }
+    const results = await runParallel(batches, 5, async (batch) => {
+      const topicsToFetch = batch.map(n => ({
+        groupId: n.vkGroupId as string,
+        topicId: n.vkTopicId as string
+      }));
+      try {
+        const responses = await fetchMultipleTopics(token, topicsToFetch);
+        return batch.map((node, index) => {
+          const resp = responses[index];
+          if (resp && resp.items) {
+            const text = resp.items.map((it: any) => it.text || '').join('\n');
+            const children = parseTopicBody(text, node.vkTopicId);
+            return { ...node, children, isLoaded: true, structureOnly: true };
+          }
+          return { ...node, children: [], isLoaded: true, structureOnly: true };
+        });
+      } catch (e) {
+        return batch.map(n => ({ ...n, children: [], isLoaded: true, structureOnly: true }));
+      }
+    });
+    return results.flat();
+  };
 
-  // Niveau 1 : categories racine (index -> topics principaux)
+  // Niveau 1 : categories racine
   const rootNodes = await fetchRootIndex(token, groupId, topicId);
 
-  if (maxDepth <= 1) {
-    return rootNodes;
-  }
+  if (maxDepth <= 1) return rootNodes;
 
-  // Niveau 2 : sous-topics des categories (ex: Adulte, Jeunesse, etc.)
-  const level1Expanded = await runWithConcurrency(rootNodes, CONCURRENCY_LIMIT, async (root, idx) => {
-    if (!root.vkGroupId || !root.vkTopicId) {
-      return root;
-    }
+  // Niveau 2 : sous-topics des categories (OPTIMISÉ BATCH)
+  console.log(`[Sync] Loading Level 2 (Categories) for ${rootNodes.length} roots...`);
+  const level1Expanded = await fetchNodesBatchLocal(rootNodes);
 
-    try {
-      const children = await fetchTopicStructure(token, root.vkGroupId, root.vkTopicId);
-      return {
-        ...root,
-        children,
-        isLoaded: true,
-      };
-    } catch (e) {
-      console.error(`    ❌ Failed to fetch subcategories for "${root.title}":`, e);
-      return root;
-    }
-  });
+  if (maxDepth <= 2) return level1Expanded;
 
-  if (maxDepth <= 2) {
-    return level1Expanded;
-  }
-
-  // Niveau 3 : series a l'interieur de chaque sous-topic
+  // Niveau 3 : series a l'interieur de chaque sous-topic (OPTIMISÉ BATCH)
   const level2Nodes: VkNode[] = [];
   level1Expanded.forEach((root) => {
     (root.children || []).forEach((child) => {
@@ -543,42 +648,25 @@ export const fetchFolderTreeUpToDepth = async (
     });
   });
 
-  if (level2Nodes.length === 0) {
-    return level1Expanded;
-  }
+  if (level2Nodes.length === 0) return level1Expanded;
 
-  const level2Expanded = await runWithConcurrency(
-    level2Nodes,
-    CONCURRENCY_LIMIT,
-    async (node, idx) => {
-      try {
-        const children = await fetchTopicStructure(
-          token,
-          node.vkGroupId as string,
-          node.vkTopicId as string
-        );
-        return {
-          ...node,
-          children,
-          isLoaded: true,
-        };
-      } catch (e) {
-        console.error(`    ❌ Failed to fetch series for "${node.title}":`, e);
-        return node;
-      }
-    }
-  );
+  console.log(`[Sync] Loading Level 3 (Series) for ${level2Nodes.length} sub-categories...`);
+  const level2Expanded = await fetchNodesBatchLocal(level2Nodes);
 
+  // Indexer pour mise à jour rapide
   const level2Map = new Map<string, VkNode>();
-  level2Expanded.forEach((node) => {
-    level2Map.set(node.id, node);
+  level2Expanded.forEach((node) => level2Map.set(node.id, node));
+
+  // Mise a jour niveau 2 dans l'arbre
+  level1Expanded.forEach((root) => {
+    if (root.children) {
+      root.children = root.children.map((child) => level2Map.get(child.id) || child);
+    }
   });
 
-  // On reconstruit l'arbre complet avec les niveaux 2 mis a jour
-  const finalRoots = level1Expanded.map((root) => ({
-    ...root,
-    children: (root.children || []).map((child) => level2Map.get(child.id) || child),
-  }));
+  // NIVEAU 4 DÉSACTIVÉ - Trop lent, on utilise le lazy loading à la place
+  // Les sous-dossiers Comics seront chargés quand l'utilisateur clique dessus
 
-  return finalRoots;
+  console.log('[Sync] Done! 3 levels loaded successfully.');
+  return level1Expanded;
 };

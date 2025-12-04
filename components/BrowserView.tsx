@@ -169,6 +169,7 @@ const BrowserView: React.FC<BrowserViewProps> = ({
   };
 
   const handleFullSync = async () => {
+    console.log('[BrowserView] handleFullSync clicked');
     if (!vkToken) {
       setError("Veuillez configurer un Token VK dans les paramètres.");
       onVkStatusChange({ connected: false, latencyMs: null, lastSync: null });
