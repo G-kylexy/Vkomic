@@ -13,4 +13,4 @@ root.render(
     <App />
   </React.StrictMode>,
 );
-// Updated
+

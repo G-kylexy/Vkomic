@@ -26,6 +26,7 @@ import {
   fetchNodeContent,
   fetchFolderTreeUpToDepth,
 } from "../utils/vk-service";
+import { normalizeText } from "../utils/text";
 
 interface BrowserViewProps {
   vkToken: string;
@@ -75,17 +76,6 @@ const BrowserView: React.FC<BrowserViewProps> = ({
   const currentFolder = navPath.length > 0 ? navPath[navPath.length - 1] : null;
   const currentNodes = currentFolder ? currentFolder.children : syncedData;
   const isSearching = debouncedQuery.trim().length > 0;
-
-  // Fonction pour normaliser le texte (enlever accents, caractères spéciaux)
-  const normalizeText = (text: string): string => {
-    return text
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^a-z0-9\s]/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-  };
 
   // Fonction de recherche optimisée avec useMemo
   const displayedNodes = React.useMemo(() => {
@@ -162,7 +152,6 @@ const BrowserView: React.FC<BrowserViewProps> = ({
   };
 
   const handleFullSync = async () => {
-    console.log('[BrowserView] handleFullSync clicked');
     if (!vkToken) {
       setError("Veuillez configurer un Token VK dans les paramètres.");
       onVkStatusChange({ connected: false, latencyMs: null, lastSync: null });

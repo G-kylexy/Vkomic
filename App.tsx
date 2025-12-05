@@ -4,41 +4,11 @@ import TopBar from "./components/TopBar";
 import MainView from "./components/MainView";
 import { VkNode, VkConnectionStatus, DownloadItem } from "./types";
 import { TranslationProvider } from "./i18n";
-import { DEFAULT_DOWNLOAD_PATH } from "./utils/constants";
+import { DEFAULT_DOWNLOAD_PATH, MAX_CONCURRENT_DOWNLOADS, GITHUB_REPO, UI } from "./utils/constants";
+import { formatBytes, formatSpeed } from "./utils/formatters";
+import { mapRegion } from "./utils/region";
 import UpdateModal from "./components/UpdateModal";
 
-// REMPLACER PAR VOTRE DEPOT GITHUB (ex: 'username/repo')
-const GITHUB_REPO = "G-kylexy/Vkomic";
-
-const MAX_CONCURRENT_DOWNLOADS = 5;
-
-const formatBytes = (bytes?: number): string | undefined => {
-  if (bytes === undefined || bytes === null || isNaN(bytes)) return undefined;
-  if (bytes < 1024) return `${bytes} B`;
-  const kb = bytes / 1024;
-  if (kb < 1024) return `${kb.toFixed(1)} KB`;
-  const mb = kb / 1024;
-  if (mb < 1024) return `${mb.toFixed(1)} MB`;
-  const gb = mb / 1024;
-  return `${gb.toFixed(1)} GB`;
-};
-
-const formatSpeed = (bytesPerSecond?: number | null): string => {
-  if (
-    !bytesPerSecond ||
-    !Number.isFinite(bytesPerSecond) ||
-    bytesPerSecond <= 0
-  ) {
-    return "0 MB/s";
-  }
-  if (bytesPerSecond >= 1024 * 1024) {
-    return `${(bytesPerSecond / (1024 * 1024)).toFixed(1)} MB/s`;
-  }
-  if (bytesPerSecond >= 1024) {
-    return `${(bytesPerSecond / 1024).toFixed(0)} KB/s`;
-  }
-  return `${bytesPerSecond.toFixed(0)} B/s`;
-};
 
 const App: React.FC = () => {
   // --- GESTION DE L'ÉTAT GLOBAL ---
@@ -79,7 +49,7 @@ const App: React.FC = () => {
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearchQuery(searchQuery);
-    }, 300);
+    }, UI.SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
@@ -159,7 +129,6 @@ const App: React.FC = () => {
       return [];
     }
   });
-  const downloadIntervalRef = useRef<NodeJS.Timeout | null>(null);
   // Avoid repeating the missing download path alert when batch-triggering downloads
   const missingDownloadPathAlertedRef = useRef(false);
 
@@ -389,9 +358,9 @@ const App: React.FC = () => {
     const pendingItems = downloads.filter((d) => d.status === "pending");
 
     // Si on a moins de 5 téléchargements actifs et qu'il y a des éléments en attente
-    if (activeCount < 5 && pendingItems.length > 0) {
+    if (activeCount < MAX_CONCURRENT_DOWNLOADS && pendingItems.length > 0) {
       // On lance les prochains éléments pour atteindre la limite de 5
-      const slotsAvailable = 5 - activeCount;
+      const slotsAvailable = MAX_CONCURRENT_DOWNLOADS - activeCount;
       // Traiter en priorité les plus anciens en attente (fin de liste) pour coller à l'ordre visuel
       const toStart = pendingItems.slice(-slotsAvailable);
 
@@ -418,7 +387,7 @@ const App: React.FC = () => {
       const now = Date.now();
 
       // Throttle : on ne met à jour l'état que toutes les 200ms max, sauf si fini
-      if (progress < 100 && now - lastUpdateRef.current < 200) {
+      if (progress < 100 && now - lastUpdateRef.current < UI.DOWNLOAD_THROTTLE_MS) {
         return;
       }
       lastUpdateRef.current = now;
@@ -483,7 +452,7 @@ const App: React.FC = () => {
         (d) => d.status === "downloading",
       ).length;
 
-      if (activeCount < 5) {
+      if (activeCount < MAX_CONCURRENT_DOWNLOADS) {
         // Démarrage immédiat pour éviter le délai visuel
         startRealDownload(
           download.id,
@@ -555,13 +524,12 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (!vkToken) {
-      setVkStatus({
+      setVkStatus((prev) => ({
+        ...prev,
         connected: false,
         latencyMs: null,
         lastSync: null,
-        region: vkStatus.region ?? null,
-        regionAggregate: vkStatus.regionAggregate ?? null,
-      });
+      }));
     }
   }, [vkToken]);
 
@@ -571,27 +539,6 @@ const App: React.FC = () => {
       Intl?.DateTimeFormat?.().resolvedOptions().timeZone ||
       (typeof navigator !== "undefined" ? navigator.language : null) ||
       null;
-
-    const mapRegion = (value: string | null): string | null => {
-      if (!value) return null;
-      const upper = value.toUpperCase();
-      if (upper.includes("EUROPE")) return "Europe West";
-      if (upper.includes("AMERICA")) {
-        if (
-          upper.includes("SOUTH") ||
-          upper.includes("ARGENTINA") ||
-          upper.includes("SAO_PAULO")
-        )
-          return "South America";
-        return "North America";
-      }
-      if (upper.includes("PACIFIC")) return "Pacific";
-      if (upper.includes("ASIA")) return "Asia";
-      if (upper.includes("AFRICA")) return "Africa";
-      if (upper.includes("AUSTRALIA") || upper.includes("OCEANIA"))
-        return "Oceania";
-      return "Global";
-    };
 
     const regionAggregate = mapRegion(rawRegion);
 
@@ -644,7 +591,7 @@ const App: React.FC = () => {
     };
 
     measurePing();
-    const id = setInterval(measurePing, 3000);
+    const id = setInterval(measurePing, UI.PING_INTERVAL_MS);
     return () => clearInterval(id);
   }, [vkToken]);
 
@@ -661,7 +608,7 @@ const App: React.FC = () => {
         {/* Contenu Principal */}
         <div className="content-wrapper flex-1 flex flex-col h-full relative">
           {/* Effet visuel d'arrière-plan (Lueur bleue) */}
-          <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-blue-900/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
+          <div className="absolute top-0 right-0 w-[500px] h-[500px]  pointer-events-none" />
 
           {/* Barre du haut (Recherche & Fenêtre) */}
           <TopBar searchQuery={searchQuery} setSearchQuery={setSearchQuery} />

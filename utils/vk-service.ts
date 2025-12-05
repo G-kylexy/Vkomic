@@ -1,6 +1,8 @@
 import { VkNode } from '../types';
+import { VK_API } from './constants';
+import { logSync, logWarn, logError } from './logger';
 
-const API_VERSION = '5.131';
+const API_VERSION = VK_API.VERSION;
 
 // --- DONNEES DE SECOURS (FALLBACK) ---
 // Utilisees si l'API VK echoue ou si le token est invalide,
@@ -184,7 +186,7 @@ const fetchMultipleTopics = async (
 
   const data = await jsonp(url);
   if (data.error) {
-    console.error('VK execute error:', data.error);
+    logError('VK execute error:', data.error);
     return topics.map(() => null);
   }
   return data.response || [];
@@ -229,7 +231,7 @@ const fetchNodesStructureBatch = async (
                 items = allItems;
               }
             } catch (err) {
-              console.warn(`[Sync] Failed to fetch full content for ${node.title}, using partial data.`);
+              logWarn(`Failed to fetch full content for ${node.title}, using partial data.`);
             }
           }
 
@@ -248,7 +250,7 @@ const fetchNodesStructureBatch = async (
 
       return processedNodes;
     } catch (e) {
-      console.error('Batch fetch error:', e);
+      logError('Batch fetch error:', e);
       // En cas d'erreur de batch, on retourne les nodes vides pour ne pas bloquer
       return batch.map(n => ({ ...n, children: [], isLoaded: true, structureOnly: true }));
     }
@@ -291,7 +293,7 @@ export const searchVkBoard = async (
     }
     return [];
   } catch (e) {
-    console.error('Search Error', e);
+    logError('Search Error', e);
     return [];
   }
 };
@@ -444,7 +446,7 @@ const fetchAllComments = async (
         responses = await fetchVkTopicBatch(token, groupId, topicId, offsets);
         const hasError = responses.some((r) => r?.error);
         if (hasError) {
-          console.warn(`VK execute error for topic ${topicId} (attempt ${retries + 1}/${maxRetries})`);
+          logWarn(`VK execute error for topic ${topicId} (attempt ${retries + 1}/${maxRetries})`);
           retries++;
           if (retries < maxRetries) {
             await sleep(1000 * retries);
@@ -453,7 +455,7 @@ const fetchAllComments = async (
         }
         break;
       } catch (error) {
-        console.warn(`Network/execute error for topic ${topicId} (attempt ${retries + 1}/${maxRetries}):`, error);
+        logWarn(`Network/execute error for topic ${topicId} (attempt ${retries + 1}/${maxRetries}):`, error);
         retries++;
         if (retries < maxRetries) {
           await sleep(1000 * retries);
@@ -517,7 +519,7 @@ export const fetchRootIndex = async (
 
     return finalNodes.map((n) => ({ ...n, type: 'category' }));
   } catch (error) {
-    console.error('VK API Error (Root):', error);
+    logError('VK API Error (Root):', error);
     return MOCK_ROOT_NODES;
   }
 };
@@ -556,7 +558,7 @@ export const fetchNodeContent = async (token: string, node: VkNode): Promise<VkN
 
     return { ...node, isLoaded: true, children: [] };
   } catch (error) {
-    console.error('VK API Error (Node):', error);
+    logError('VK API Error (Node):', error);
     return {
       ...node,
       isLoaded: true,
@@ -589,76 +591,7 @@ export const fetchFolderTreeUpToDepth = async (
   topicId?: string,
   maxDepth: number = 4
 ): Promise<VkNode[]> => {
-  console.log('[Sync] Starting fetchFolderTreeUpToDepth...');
-
-  // Helper de parallelisation limitee (si pas deja defini globalement)
-  const runParallel = async <T, R>(
-    items: T[],
-    limit: number,
-    worker: (item: T, index: number) => Promise<R>
-  ): Promise<R[]> => {
-    if (items.length === 0) return [];
-    const results: R[] = new Array(items.length);
-    let currentIndex = 0;
-    const runner = async (): Promise<void> => {
-      while (true) {
-        const index = currentIndex++;
-        if (index >= items.length) break;
-        results[index] = await worker(items[index], index);
-      }
-    };
-    const workers = Array(Math.min(limit, items.length)).fill(0).map(() => runner());
-    await Promise.all(workers);
-    return results;
-  };
-
-  // Helper local pour batcher si fetchNodesStructureBatch n'a pas acces a runParallel
-  const fetchNodesBatchLocal = async (nodes: VkNode[]): Promise<VkNode[]> => {
-    if (nodes.length === 0) return [];
-    const batches: VkNode[][] = [];
-    for (let i = 0; i < nodes.length; i += 25) {
-      batches.push(nodes.slice(i, i + 25));
-    }
-    const results = await runParallel(batches, 5, async (batch) => {
-      const topicsToFetch = batch.map(n => ({
-        groupId: n.vkGroupId as string,
-        topicId: n.vkTopicId as string
-      }));
-      try {
-        const responses = await fetchMultipleTopics(token, topicsToFetch);
-
-        const processedNodes = await Promise.all(batch.map(async (node, index) => {
-          const resp = responses[index];
-          if (resp && resp.items) {
-            let items = resp.items;
-
-            // Si le topic contient plus de 100 messages, on doit tout récupérer
-            if (resp.count > 100) {
-              try {
-                const allItems = await fetchAllComments(token, node.vkGroupId as string, node.vkTopicId as string);
-                if (allItems && allItems.length > 0) {
-                  items = allItems;
-                }
-              } catch (err) {
-                console.warn(`[Sync] Failed to fetch full content for ${node.title}, using partial data.`);
-              }
-            }
-
-            const text = items.map((it: any) => it.text || '').join('\n');
-            const children = parseTopicBody(text, node.vkTopicId);
-            return { ...node, children, isLoaded: true, structureOnly: true };
-          }
-          return { ...node, children: [], isLoaded: true, structureOnly: true };
-        }));
-
-        return processedNodes;
-      } catch (e) {
-        console.error('[Sync] Batch error:', e);
-        return batch.map(n => ({ ...n, children: [], isLoaded: true, structureOnly: true }));
-      }
-    });
-    return results.flat();
-  };
+  logSync('Starting fetchFolderTreeUpToDepth...');
 
   // Niveau 1 : categories racine
   const rootNodes = await fetchRootIndex(token, groupId, topicId);
@@ -666,8 +599,8 @@ export const fetchFolderTreeUpToDepth = async (
   if (maxDepth <= 1) return rootNodes;
 
   // Niveau 2 : sous-topics des categories (OPTIMISÉ BATCH)
-  console.log(`[Sync] Loading Level 2 (Categories) for ${rootNodes.length} roots...`);
-  const level1Expanded = await fetchNodesBatchLocal(rootNodes);
+  logSync(`Loading Level 2 (Categories) for ${rootNodes.length} roots...`);
+  const level1Expanded = await fetchNodesStructureBatch(token, rootNodes);
 
   if (maxDepth <= 2) return level1Expanded;
 
@@ -683,14 +616,13 @@ export const fetchFolderTreeUpToDepth = async (
 
   if (level2Nodes.length === 0) return level1Expanded;
 
-  console.log(`[Sync] Loading Level 3 (Series) for ${level2Nodes.length} sub-categories...`);
-  const level2Expanded = await fetchNodesBatchLocal(level2Nodes);
+  logSync(`Loading Level 3 (Series) for ${level2Nodes.length} sub-categories...`);
+  const level2Expanded = await fetchNodesStructureBatch(token, level2Nodes);
 
   // Indexer pour mise à jour rapide
   const level2Map = new Map<string, VkNode>();
   level2Expanded.forEach((node) => level2Map.set(node.id, node));
 
-  // Mise a jour niveau 2 dans l'arbre
   // Mise a jour niveau 2 dans l'arbre
   level1Expanded.forEach((root) => {
     if (root.children) {
@@ -700,15 +632,13 @@ export const fetchFolderTreeUpToDepth = async (
 
   if (maxDepth <= 3) return level1Expanded;
 
-
-  // OPTIMISATION : On ne descend au niveau 4 que pour les Comics et Mangas qui utilisent des tranches (A-C, D-F).
-  // Les BDs Européennes ont leurs séries directement au niveau 3, donc pas besoin de descendre plus bas (ce sont des fichiers).
+  // OPTIMISATION : On ne descend au niveau 4 que pour les Comics qui utilisent des tranches (A-C, D-F).
+  // Les BDs Européennes ont leurs séries directement au niveau 3.
   const level3Nodes: VkNode[] = [];
 
   level1Expanded.forEach((root) => {
     // Filtrage par ID de topic pour cibler spécifiquement "Comics en Français"
     // ID connu : 203785966_47543940 (Comics en français / Comics in french)
-    // Mangas n'a pas de niveau 4, donc on ne le scanne pas ici.
     const isTargetTopic = root.vkTopicId === '47543940';
 
     if (isTargetTopic) {
@@ -728,8 +658,8 @@ export const fetchFolderTreeUpToDepth = async (
 
   if (level3Nodes.length === 0) return level1Expanded;
 
-  console.log(`[Sync] Loading Level 4 (Deep Content) for ${level3Nodes.length} items (Comics/Mangas only)...`);
-  const level3Expanded = await fetchNodesBatchLocal(level3Nodes);
+  logSync(`Loading Level 4 (Deep Content) for ${level3Nodes.length} items (Comics only)...`);
+  const level3Expanded = await fetchNodesStructureBatch(token, level3Nodes);
 
   // Indexer
   const level3Map = new Map<string, VkNode>();
@@ -746,7 +676,7 @@ export const fetchFolderTreeUpToDepth = async (
     }
   });
 
-  console.log('[Sync] Done! 4 levels loaded successfully.');
+  logSync('Done! 4 levels loaded successfully.');
   return level1Expanded;
 };
 

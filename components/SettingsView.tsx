@@ -35,6 +35,7 @@ const SettingsView: React.FC<
     const [localTopicId, setLocalTopicId] = useState(vkTopicId);
     const [localDownloadPath, setLocalDownloadPath] = useState(downloadPath);
     const [isSaved, setIsSaved] = useState(false);
+    const [showResetConfirm, setShowResetConfirm] = useState(false);
 
     useEffect(() => {
       setLocalToken(vkToken);
@@ -118,205 +119,229 @@ const SettingsView: React.FC<
     };
 
     return (
-      <div className="flex-1 p-8 flex flex-col pt-6 animate-fade-in overflow-y-auto custom-scrollbar pb-24">
-        {/* En-tete */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2 tracking-tight">
-            {t.settings.title}
-          </h1>
-          <p className="text-slate-400 text-sm">{t.settings.subtitle}</p>
+      <>
+        <div className="flex-1 p-8 flex flex-col pt-6 animate-fade-in overflow-y-auto custom-scrollbar pb-24">
+          {/* En-tete */}
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold text-white mb-2 tracking-tight">
+              {t.settings.title}
+            </h1>
+            <p className="text-slate-400 text-sm">{t.settings.subtitle}</p>
+          </div>
+
+          <div className="w-full max-w-4xl space-y-6">
+            {/* Carte 1: Connexion VK */}
+            <div className="bg-[#0f1523] border border-slate-800/60 rounded-xl p-8 shadow-sm">
+              <h2 className="text-lg font-bold text-white mb-6">
+                {t.settings.vkConnection}
+              </h2>
+
+              <div className="space-y-8">
+                {/* Champ Token */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-400 mb-2.5">
+                    {t.settings.accessToken}
+                  </label>
+                  <input
+                    type="password"
+                    value={localToken}
+                    onChange={(e) => handleTokenChange(e.target.value)}
+                    className="w-full bg-[#161f32] text-slate-200 text-sm rounded-lg px-4 py-3 focus:outline-none focus:ring-1 focus:ring-blue-500 border border-slate-700/50 placeholder-slate-600 font-mono tracking-widest transition-all"
+                  />
+                  <p className="mt-3 text-xs text-slate-500 leading-relaxed">
+                    {t.settings.tokenHelper}{" "}
+                    <button
+                      onClick={openAuthLink}
+                      className="text-blue-500 hover:text-blue-400 font-medium hover:underline transition-colors"
+                    >
+                      {t.settings.clickHere}
+                    </button>
+                    {t.settings.tokenInstructions}
+                    <span className="mx-1.5 inline-block bg-slate-800 border border-slate-700 text-emerald-400 px-2 py-0.5 rounded font-mono font-bold shadow-sm">
+                      access_token=
+                    </span>
+                    {t.settings.and}
+                    <span className="mx-1.5 inline-block bg-slate-800 border border-slate-700 text-emerald-400 px-2 py-0.5 rounded font-mono font-bold shadow-sm">
+                      &expires
+                    </span>
+                  </p>
+                </div>
+
+                {/* Champs ID (Groupe / Topic) */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-400 mb-2.5">
+                      {t.settings.groupId}
+                    </label>
+                    <input
+                      type="text"
+                      value={localGroupId}
+                      onChange={(e) => handleGroupIdChange(e.target.value)}
+                      className="w-full bg-[#161f32] text-slate-200 text-sm rounded-lg px-4 py-3 border border-slate-700/50 focus:outline-none font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-400 mb-2.5">
+                      {t.settings.topicId}
+                    </label>
+                    <input
+                      type="text"
+                      value={localTopicId}
+                      onChange={(e) => handleTopicIdChange(e.target.value)}
+                      className="w-full bg-[#161f32] text-slate-200 text-sm rounded-lg px-4 py-3 border border-slate-700/50 focus:outline-none font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={resetGroupAndTopic}
+                    className="bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-2 rounded-lg border border-slate-700/50 transition-colors font-medium text-xs"
+                  >
+                    {t.settings.resetGroupDefaults}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Carte 2: Preferences Generales */}
+            <div className="bg-[#0f1523] border border-slate-800/60 rounded-xl p-8 shadow-sm">
+              <h2 className="text-lg font-bold text-white mb-6">
+                {t.settings.generalPreferences}
+              </h2>
+
+              <div className="space-y-8">
+                {/* Selection Langue */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-400 mb-2.5">
+                    {t.settings.language}
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={language}
+                      onChange={(e) =>
+                        handleLanguageChange(e.target.value as Language)
+                      }
+                      className="w-full bg-[#161f32] text-slate-200 text-sm rounded-lg px-4 py-3 focus:outline-none focus:ring-1 focus:ring-blue-500 border border-slate-700/50 appearance-none cursor-pointer"
+                    >
+                      <option value="fr">{t.languages.fr}</option>
+                      <option value="en">{t.languages.en}</option>
+                    </select>
+                    <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">
+                      <ChevronDown size={18} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Selection Dossier */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-400 mb-2.5">
+                    {t.settings.downloadFolder}
+                  </label>
+                  <div className="flex gap-4">
+                    <input
+                      type="text"
+                      value={localDownloadPath}
+                      onChange={(e) => handleDownloadPathChange(e.target.value)}
+                      className="flex-1 bg-[#161f32] text-slate-200 text-sm rounded-lg px-4 py-3 focus:outline-none focus:ring-1 focus:ring-blue-500 border border-slate-700/50 font-mono truncate"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleBrowseFolder}
+                      className="bg-slate-800 hover:bg-slate-700 text-slate-200 px-6 rounded-lg border border-slate-700/50 transition-colors font-medium text-sm flex items-center gap-2 whitespace-nowrap"
+                    >
+                      <Folder size={18} />
+                      {t.settings.browse}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Carte 3: Gestion des données */}
+            <div className="bg-[#0f1523] border border-slate-800/60 rounded-xl p-8 shadow-sm">
+              <h2 className="text-lg font-bold text-white mb-6">
+                {t.settings.dataManagement}
+              </h2>
+
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                <div className="flex-1">
+                  <h3 className="text-sm font-medium text-slate-200 mb-2 flex items-center gap-2">
+                    <Trash2 size={16} className="text-rose-500" />
+                    {t.settings.resetDatabase}
+                  </h3>
+                  <p className="text-slate-400 text-xs leading-relaxed mb-3">
+                    {t.settings.resetDatabaseDescription}
+                  </p>
+                  <div className="flex items-start gap-2 text-amber-500 bg-amber-500/10 px-3 py-2 rounded-lg border border-amber-500/20">
+                    <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />
+                    <span className="text-[11px] font-medium">
+                      {t.settings.resetWarning}
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setShowResetConfirm(true)}
+                  className="bg-rose-900/20 hover:bg-rose-900/40 text-rose-400 border border-rose-900/50 px-6 py-3 rounded-lg transition-all font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 whitespace-nowrap shadow-lg shadow-rose-900/10"
+                >
+                  <Trash2 size={16} />
+                  {t.settings.resetButton}
+                </button>
+              </div>
+            </div>
+
+            {/* Bouton de sauvegarde global */}
+            <div className="pt-4 flex justify-end sticky bottom-0 bg-[#050B14]/80 p-4 backdrop-blur-sm border-t border-slate-800/50 -mx-8 -mb-8 mt-8">
+              <button
+                onClick={handleSave}
+                className={`flex items-center gap-2 px-8 py-3 rounded-md font-semibold text-sm transition-all duration-300 shadow-lg ${isSaved
+                  ? "bg-emerald-600 text-white shadow-emerald-900/20"
+                  : "bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/20"
+                  }`}
+              >
+                <Save size={18} />
+                {isSaved ? t.settings.saved : t.settings.saveAll}
+              </button>
+            </div>
+          </div>
         </div>
 
-        <div className="w-full max-w-4xl space-y-6">
-          {/* Carte 1: Connexion VK */}
-          <div className="bg-[#0f1523] border border-slate-800/60 rounded-xl p-8 shadow-sm">
-            <h2 className="text-lg font-bold text-white mb-6">
-              {t.settings.vkConnection}
-            </h2>
-
-            <div className="space-y-8">
-              {/* Champ Token */}
-              <div>
-                <label className="block text-sm font-medium text-slate-400 mb-2.5">
-                  {t.settings.accessToken}
-                </label>
-                <input
-                  type="password"
-                  value={localToken}
-                  onChange={(e) => handleTokenChange(e.target.value)}
-                  className="w-full bg-[#161f32] text-slate-200 text-sm rounded-lg px-4 py-3 focus:outline-none focus:ring-1 focus:ring-blue-500 border border-slate-700/50 placeholder-slate-600 font-mono tracking-widest transition-all"
-                />
-                <p className="mt-3 text-xs text-slate-500 leading-relaxed">
-                  {t.settings.tokenHelper}{" "}
-                  <button
-                    onClick={openAuthLink}
-                    className="text-blue-500 hover:text-blue-400 font-medium hover:underline transition-colors"
-                  >
-                    {t.settings.clickHere}
-                  </button>
-                  {t.settings.tokenInstructions}
-                  <span className="mx-1.5 inline-block bg-slate-800 border border-slate-700 text-emerald-400 px-2 py-0.5 rounded font-mono font-bold shadow-sm">
-                    access_token=
-                  </span>
-                  {t.settings.and}
-                  <span className="mx-1.5 inline-block bg-slate-800 border border-slate-700 text-emerald-400 px-2 py-0.5 rounded font-mono font-bold shadow-sm">
-                    &expires
-                  </span>
-                </p>
-              </div>
-
-              {/* Champs ID (Groupe / Topic) */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-slate-400 mb-2.5">
-                    {t.settings.groupId}
-                  </label>
-                  <input
-                    type="text"
-                    value={localGroupId}
-                    onChange={(e) => handleGroupIdChange(e.target.value)}
-                    className="w-full bg-[#161f32] text-slate-200 text-sm rounded-lg px-4 py-3 border border-slate-700/50 focus:outline-none font-mono"
-                  />
+        {/* Modal de confirmation personnalisé (évite le bug de focus Electron) */}
+        {showResetConfirm && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+            <div className="bg-[#0f1523] border border-slate-700 rounded-xl p-6 max-w-md w-full shadow-2xl">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full bg-rose-500/20 flex items-center justify-center">
+                  <AlertCircle className="text-rose-400" size={20} />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-400 mb-2.5">
-                    {t.settings.topicId}
-                  </label>
-                  <input
-                    type="text"
-                    value={localTopicId}
-                    onChange={(e) => handleTopicIdChange(e.target.value)}
-                    className="w-full bg-[#161f32] text-slate-200 text-sm rounded-lg px-4 py-3 border border-slate-700/50 focus:outline-none font-mono"
-                  />
-                </div>
+                <h3 className="text-lg font-bold text-white">{t.settings.resetDatabase}</h3>
               </div>
-
-              <div className="flex justify-end">
+              <p className="text-slate-400 text-sm mb-6">{t.settings.resetWarning}</p>
+              <div className="flex gap-3 justify-end">
                 <button
-                  type="button"
-                  onClick={resetGroupAndTopic}
-                  className="bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-2 rounded-lg border border-slate-700/50 transition-colors font-medium text-xs"
+                  onClick={() => setShowResetConfirm(false)}
+                  className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium transition-colors"
                 >
-                  {t.settings.resetGroupDefaults}
+                  Annuler
+                </button>
+                <button
+                  onClick={() => {
+                    onResetDatabase();
+                    setShowResetConfirm(false);
+                    setIsSaved(true);
+                    setTimeout(() => setIsSaved(false), 2000);
+                  }}
+                  className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-sm font-bold transition-colors"
+                >
+                  Confirmer
                 </button>
               </div>
             </div>
           </div>
-
-          {/* Carte 2: Preferences Generales */}
-          <div className="bg-[#0f1523] border border-slate-800/60 rounded-xl p-8 shadow-sm">
-            <h2 className="text-lg font-bold text-white mb-6">
-              {t.settings.generalPreferences}
-            </h2>
-
-            <div className="space-y-8">
-              {/* Selection Langue */}
-              <div>
-                <label className="block text-sm font-medium text-slate-400 mb-2.5">
-                  {t.settings.language}
-                </label>
-                <div className="relative">
-                  <select
-                    value={language}
-                    onChange={(e) =>
-                      handleLanguageChange(e.target.value as Language)
-                    }
-                    className="w-full bg-[#161f32] text-slate-200 text-sm rounded-lg px-4 py-3 focus:outline-none focus:ring-1 focus:ring-blue-500 border border-slate-700/50 appearance-none cursor-pointer"
-                  >
-                    <option value="fr">{t.languages.fr}</option>
-                    <option value="en">{t.languages.en}</option>
-                  </select>
-                  <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">
-                    <ChevronDown size={18} />
-                  </div>
-                </div>
-              </div>
-
-              {/* Selection Dossier */}
-              <div>
-                <label className="block text-sm font-medium text-slate-400 mb-2.5">
-                  {t.settings.downloadFolder}
-                </label>
-                <div className="flex gap-4">
-                  <input
-                    type="text"
-                    value={localDownloadPath}
-                    onChange={(e) => handleDownloadPathChange(e.target.value)}
-                    className="flex-1 bg-[#161f32] text-slate-200 text-sm rounded-lg px-4 py-3 focus:outline-none focus:ring-1 focus:ring-blue-500 border border-slate-700/50 font-mono truncate"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleBrowseFolder}
-                    className="bg-slate-800 hover:bg-slate-700 text-slate-200 px-6 rounded-lg border border-slate-700/50 transition-colors font-medium text-sm flex items-center gap-2 whitespace-nowrap"
-                  >
-                    <Folder size={18} />
-                    {t.settings.browse}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Carte 3: Gestion des données */}
-          <div className="bg-[#0f1523] border border-slate-800/60 rounded-xl p-8 shadow-sm">
-            <h2 className="text-lg font-bold text-white mb-6">
-              {t.settings.dataManagement}
-            </h2>
-
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-              <div className="flex-1">
-                <h3 className="text-sm font-medium text-slate-200 mb-2 flex items-center gap-2">
-                  <Trash2 size={16} className="text-rose-500" />
-                  {t.settings.resetDatabase}
-                </h3>
-                <p className="text-slate-400 text-xs leading-relaxed mb-3">
-                  {t.settings.resetDatabaseDescription}
-                </p>
-                <div className="flex items-start gap-2 text-amber-500 bg-amber-500/10 px-3 py-2 rounded-lg border border-amber-500/20">
-                  <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />
-                  <span className="text-[11px] font-medium">
-                    {t.settings.resetWarning}
-                  </span>
-                </div>
-              </div>
-
-              <button
-                onClick={() => {
-                  if (window.confirm(t.settings.resetWarning)) {
-                    onResetDatabase();
-                    setIsSaved(true);
-                    setTimeout(() => setIsSaved(false), 2000);
-                  }
-                  // Fix Electron focus bug: après un confirm(), le focus peut être perdu
-                  // On force le focus à revenir au document
-                  setTimeout(() => {
-                    document.body.focus();
-                    window.focus();
-                  }, 50);
-                }}
-                className="bg-rose-900/20 hover:bg-rose-900/40 text-rose-400 border border-rose-900/50 px-6 py-3 rounded-lg transition-all font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 whitespace-nowrap shadow-lg shadow-rose-900/10"
-              >
-                <Trash2 size={16} />
-                {t.settings.resetButton}
-              </button>
-            </div>
-          </div>
-
-          {/* Bouton de sauvegarde global */}
-          <div className="pt-4 flex justify-end sticky bottom-0 bg-[#050B14]/80 p-4 backdrop-blur-sm border-t border-slate-800/50 -mx-8 -mb-8 mt-8">
-            <button
-              onClick={handleSave}
-              className={`flex items-center gap-2 px-8 py-3 rounded-md font-semibold text-sm transition-all duration-300 shadow-lg ${isSaved
-                ? "bg-emerald-600 text-white shadow-emerald-900/20"
-                : "bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/20"
-                }`}
-            >
-              <Save size={18} />
-              {isSaved ? t.settings.saved : t.settings.saveAll}
-            </button>
-          </div>
-        </div>
-      </div>
+        )}
+      </>
     );
   };
 

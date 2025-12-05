@@ -56,14 +56,12 @@ declare global {
     app?: {
       getVersion?: () => Promise<string>;
       checkUpdate?: (repo: string) => Promise<{
-        ok: boolean;
-        currentVersion: string;
-        latestVersion: string | null;
-        hasUpdate: boolean;
-        url: string | null;
+        updateAvailable: boolean;
+        version?: string;
+        url?: string;
+        notes?: string;
         error?: string | null;
       }>;
     };
   }
 }
-// Updated

@@ -8,6 +8,7 @@ import {
   Settings,
 } from "./Icons";
 import { useTranslation } from "../i18n";
+import { formatBytesWithFallback, formatDateTimestamp } from "../utils/formatters";
 
 interface FsEntry {
   name: string;
@@ -29,23 +30,6 @@ const joinPaths = (base: string, segment: string) => {
   if (base.endsWith("\\") || base.endsWith("/")) return `${base}${segment}`;
   const usesBackslash = base.includes("\\");
   return `${base}${usesBackslash ? "\\" : "/"}${segment}`;
-};
-
-const formatSize = (size: number | null) => {
-  if (size === null || size === undefined) return "--";
-  if (size < 1024) return `${size} B`;
-  const kb = size / 1024;
-  if (kb < 1024) return `${kb.toFixed(1)} KB`;
-  const mb = kb / 1024;
-  if (mb < 1024) return `${mb.toFixed(1)} MB`;
-  const gb = mb / 1024;
-  return `${gb.toFixed(1)} GB`;
-};
-
-const formatDate = (timestamp: number) => {
-  if (!timestamp) return "--";
-  const date = new Date(timestamp);
-  return date.toLocaleString();
 };
 
 const buildBreadcrumbs = (base: string, target: string, rootLabel: string) => {
@@ -225,8 +209,8 @@ const LibraryView: React.FC<LibraryViewProps> = ({
                 onClick={handleNavigateUp}
                 disabled={!canNavigateUp || isLoading}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-700/50 text-sm transition-colors ${canNavigateUp && !isLoading
-                    ? "text-slate-200 bg-slate-800 hover:bg-slate-700"
-                    : "text-slate-500 bg-slate-800/50 cursor-not-allowed"
+                  ? "text-slate-200 bg-slate-800 hover:bg-slate-700"
+                  : "text-slate-500 bg-slate-800/50 cursor-not-allowed"
                   }`}
               >
                 <ChevronLeft size={16} />
@@ -254,8 +238,8 @@ const LibraryView: React.FC<LibraryViewProps> = ({
                   <button
                     onClick={() => loadPath(crumb.path)}
                     className={`hover:text-white transition-colors ${index === breadcrumbs.length - 1
-                        ? "text-white font-semibold cursor-default"
-                        : ""
+                      ? "text-white font-semibold cursor-default"
+                      : ""
                       }`}
                     disabled={index === breadcrumbs.length - 1}
                   >
@@ -314,10 +298,10 @@ const LibraryView: React.FC<LibraryViewProps> = ({
                   <div className="text-xs text-slate-500 space-y-1 mb-4">
                     <p>
                       {t.library.size}:{" "}
-                      {isFolder ? "--" : formatSize(entry.size)}
+                      {isFolder ? "--" : formatBytesWithFallback(entry.size)}
                     </p>
                     <p>
-                      {t.library.modified}: {formatDate(entry.modifiedAt)}
+                      {t.library.modified}: {formatDateTimestamp(entry.modifiedAt)}
                     </p>
                   </div>
 

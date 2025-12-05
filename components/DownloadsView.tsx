@@ -12,6 +12,8 @@ import {
 } from "lucide-react";
 import { useTranslation } from "../i18n";
 import { DownloadItem, VkNode } from "../types";
+import { formatDateISO } from "../utils/formatters";
+import { extractVolumeLabel } from "../utils/text";
 
 interface DownloadsViewProps {
   downloads: DownloadItem[];
@@ -60,20 +62,22 @@ const DownloadsView: React.FC<DownloadsViewProps> = ({
     };
   }, [downloads, syncedData]);
 
-  const getVolumeLabel = (title: string) => {
-    const match =
-      title.match(/T(\d+)/i) ||
-      title.match(/#(\d+)/) ||
-      title.match(/Vol\.?(\d+)/i);
-    return match ? `#${match[1]}` : "#1";
-  };
+  const sortedDownloads = useMemo(() => {
+    const statusPriority: Record<DownloadItem["status"], number> = {
+      downloading: 1,
+      paused: 2,
+      pending: 3,
+      completed: 4,
+      canceled: 5,
+      error: 6,
+    };
 
-  const formatDate = (iso?: string) => {
-    if (!iso) return "--";
-    const date = new Date(iso);
-    if (isNaN(date.getTime())) return "--";
-    return date.toLocaleString();
-  };
+    return [...downloads].sort((a, b) => {
+      const priorityA = statusPriority[a.status] ?? 99;
+      const priorityB = statusPriority[b.status] ?? 99;
+      return priorityA - priorityB;
+    });
+  }, [downloads]);
 
   const getFolderFromPath = (p?: string) => {
     if (!p) return undefined;
@@ -177,29 +181,13 @@ const DownloadsView: React.FC<DownloadsViewProps> = ({
                   </tr>
                 </thead>
                 <tbody className="text-slate-300">
-                  {downloads
-                    .sort((a, b) => {
-                      const statusPriority = {
-                        downloading: 1,
-                        paused: 2,
-                        pending: 3,
-                        completed: 4,
-                        canceled: 5,
-                        error: 6,
-                      };
-
-                      const priorityA = statusPriority[a.status] || 99;
-                      const priorityB = statusPriority[b.status] || 99;
-
-                      return priorityA - priorityB;
-                    })
-                    .map((d) => {
+                  {sortedDownloads.map((d) => {
                       const isCompleted = d.status === "completed";
                       const isDownloading = d.status === "downloading";
                       const isPaused = d.status === "paused";
                       const isCanceled = d.status === "canceled";
-                      const dateLabel = formatDate(d.createdAt);
-                      const volumeLabel = getVolumeLabel(d.title);
+                      const dateLabel = formatDateISO(d.createdAt);
+                      const volumeLabel = extractVolumeLabel(d.title);
                       const displaySize = d.size || "--";
 
                       return (

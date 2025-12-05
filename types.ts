@@ -7,14 +7,6 @@ export interface NavItem {
   id: string;
 }
 
-// (Non utilisé actuellement) Structure pour un profil utilisateur
-export interface UserProfile {
-  initials: string;
-  status: "online" | "offline";
-  region: string;
-  latency: number;
-}
-
 // Types possibles pour un élément dans l'explorateur
 // category/genre/series = Dossiers | file = Fichiers (PDF/CBZ)
 export type NodeType = "category" | "genre" | "series" | "topic" | "file";
@@ -70,4 +62,4 @@ export interface DownloadItem {
   extension?: string;
   subFolder?: string;
 }
-// Updated
+
