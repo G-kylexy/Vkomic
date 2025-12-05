@@ -5,23 +5,41 @@ import { Github } from "lucide-react";
 interface UpdateModalProps {
   version: string;
   notes: string;
-  url: string;
+  status: "available" | "downloading" | "ready";
+  progress?: number;
+  onDownload: () => void;
+  onInstall: () => void;
   onClose: () => void;
 }
 
 const UpdateModal: React.FC<UpdateModalProps> = ({
   version,
   notes,
-  url,
+  status,
+  progress,
+  onDownload,
+  onInstall,
   onClose,
 }) => {
-  const handleDownload = () => {
-    if (window.shell?.openExternal) {
-      window.shell.openExternal(url);
+  const isReady = status === "ready";
+  const isDownloading = status === "downloading";
+  const percentValue =
+    typeof progress === "number"
+      ? Math.max(0, Math.min(Math.round(progress), 100))
+      : null;
+  const primaryLabel = isReady
+    ? "Redemarrer pour mettre a jour"
+    : isDownloading
+      ? percentValue !== null
+        ? `Telechargement... ${percentValue}%`
+        : "Telechargement..."
+      : "Telecharger et installer";
+  const handlePrimary = () => {
+    if (isReady) {
+      onInstall();
     } else {
-      window.open(url, "_blank");
+      onDownload();
     }
-    onClose();
   };
 
   return (
@@ -63,6 +81,21 @@ const UpdateModal: React.FC<UpdateModalProps> = ({
             </div>
           </div>
 
+          {isDownloading && (
+            <div className="mb-4">
+              <div className="h-2 rounded-full bg-slate-800 overflow-hidden">
+                <div
+                  className="h-full bg-blue-500 transition-all"
+                  style={{ width: `${percentValue ?? 0}%` }}
+                />
+              </div>
+              <p className="mt-2 text-xs text-slate-400">
+                Téléchargement de la mise à jour
+                {percentValue !== null ? ` • ${percentValue}%` : ""}
+              </p>
+            </div>
+          )}
+
           <div className="flex gap-3">
             <button
               onClick={onClose}
@@ -71,11 +104,12 @@ const UpdateModal: React.FC<UpdateModalProps> = ({
               Ignorer
             </button>
             <button
-              onClick={handleDownload}
-              className="flex-1 py-3 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold shadow-lg shadow-blue-900/20 transition-all flex items-center justify-center gap-2"
+              onClick={handlePrimary}
+              disabled={isDownloading && !isReady}
+              className="flex-1 py-3 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold shadow-lg shadow-blue-900/20 transition-all flex items-center justify-center gap-2"
             >
               <Download size={18} />
-              Télécharger
+              {primaryLabel}
             </button>
           </div>
         </div>

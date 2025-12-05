@@ -35,5 +35,32 @@ contextBridge.exposeInMainWorld("vk", {
 
 contextBridge.exposeInMainWorld("app", {
   getVersion: () => ipcRenderer.invoke("app:getVersion"),
-  checkUpdate: (repo) => ipcRenderer.invoke("app:checkUpdate", repo),
+  checkUpdate: () => ipcRenderer.invoke("app:checkUpdate"),
+  downloadUpdate: () => ipcRenderer.invoke("app:downloadUpdate"),
+  installUpdate: () => ipcRenderer.invoke("app:installUpdate"),
+  onUpdateAvailable: (callback) => {
+    if (typeof callback !== "function") return () => {};
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on("app:update-available", listener);
+    return () => ipcRenderer.removeListener("app:update-available", listener);
+  },
+  onUpdateProgress: (callback) => {
+    if (typeof callback !== "function") return () => {};
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on("app:update-progress", listener);
+    return () => ipcRenderer.removeListener("app:update-progress", listener);
+  },
+  onUpdateReady: (callback) => {
+    if (typeof callback !== "function") return () => {};
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on("app:update-downloaded", listener);
+    return () =>
+      ipcRenderer.removeListener("app:update-downloaded", listener);
+  },
+  onUpdateError: (callback) => {
+    if (typeof callback !== "function") return () => {};
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on("app:update-error", listener);
+    return () => ipcRenderer.removeListener("app:update-error", listener);
+  },
 });

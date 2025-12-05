@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain, shell, dialog } from "electron";
+import { autoUpdater } from "electron-updater";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
@@ -7,6 +8,27 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 let mainWindow;
+let updateFeedReady = false;
+
+const GITHUB_REPO = "G-kylexy/Vkomic";
+
+const normalizeReleaseNotes = (notes) => {
+  if (Array.isArray(notes)) {
+    return notes
+      .map((entry) =>
+        typeof entry === "string" ? entry : entry?.note ? entry.note : "",
+      )
+      .filter(Boolean)
+      .join("\n\n");
+  }
+  return typeof notes === "string" ? notes : "";
+};
+
+const sendToRenderer = (channel, payload) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(channel, payload);
+  }
+};
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -29,8 +51,60 @@ function createWindow() {
   }
 }
 
+const ensureUpdateFeed = () => {
+  if (updateFeedReady || !app.isPackaged) return;
+  try {
+    autoUpdater.setFeedURL({
+      provider: "github",
+      owner: "G-kylexy",
+      repo: "Vkomic",
+    });
+    updateFeedReady = true;
+  } catch (error) {
+    console.error("Failed to configure update feed:", error);
+  }
+};
+
+const setupAutoUpdater = () => {
+  if (!app.isPackaged) return;
+
+  ensureUpdateFeed();
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on("update-available", (info) => {
+    sendToRenderer("app:update-available", {
+      version: info.version,
+      notes: normalizeReleaseNotes(info.releaseNotes),
+    });
+  });
+
+  autoUpdater.on("download-progress", (progress) => {
+    sendToRenderer("app:update-progress", {
+      percent: Math.round(progress.percent),
+      bytesPerSecond: progress.bytesPerSecond,
+      transferred: progress.transferred,
+      total: progress.total,
+    });
+  });
+
+  autoUpdater.on("update-downloaded", (info) => {
+    sendToRenderer("app:update-downloaded", {
+      version: info.version,
+      notes: normalizeReleaseNotes(info.releaseNotes),
+    });
+  });
+
+  autoUpdater.on("error", (error) => {
+    sendToRenderer("app:update-error", {
+      message: error?.message || "Unknown update error",
+    });
+  });
+};
+
 app.whenReady().then(() => {
   createWindow();
+  setupAutoUpdater();
 
   // IPC handlers for window controls
   ipcMain.on("win:min", () => mainWindow.minimize());
@@ -353,42 +427,52 @@ app.whenReady().then(() => {
     return app.getVersion();
   });
 
-  // Vérifie les mises à jour sur GitHub
-  ipcMain.handle("app:checkUpdate", async (_, repo) => {
-    if (!repo) return { updateAvailable: false };
+  // Vérifie et prépare les mises à jour via electron-updater (GitHub)
+  ipcMain.handle("app:checkUpdate", async () => {
+    if (!app.isPackaged) return { updateAvailable: false };
 
     try {
-      const response = await fetch(
-        `https://api.github.com/repos/${repo}/releases/latest`,
-        {
-          headers: {
-            "User-Agent": "Vkomic-App",
-          },
-        },
-      );
-
-      if (!response.ok) {
-        return { updateAvailable: false, error: "Failed to fetch releases" };
-      }
-
-      const data = await response.json();
-      const latestVersion = data.tag_name.replace(/^v/, "");
+      ensureUpdateFeed();
+      const result = await autoUpdater.checkForUpdates();
+      const info = result?.updateInfo;
+      const latestVersion = info?.version;
       const currentVersion = app.getVersion();
+      const updateAvailable =
+        Boolean(latestVersion) && latestVersion !== currentVersion;
 
-      // Comparaison simple de version (suppose format x.y.z)
-      if (latestVersion !== currentVersion) {
-        return {
-          updateAvailable: true,
-          version: latestVersion,
-          url: data.html_url,
-          notes: data.body,
-        };
-      }
-
-      return { updateAvailable: false };
+      return {
+        updateAvailable,
+        version: latestVersion,
+        notes: normalizeReleaseNotes(info?.releaseNotes),
+        url: `https://github.com/${GITHUB_REPO}/releases`,
+      };
     } catch (error) {
       console.error("Update check failed:", error);
       return { updateAvailable: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle("app:downloadUpdate", async () => {
+    if (!app.isPackaged) return { ok: false, error: "Dev mode" };
+
+    try {
+      ensureUpdateFeed();
+      await autoUpdater.downloadUpdate();
+      return { ok: true };
+    } catch (error) {
+      console.error("Update download failed:", error);
+      return { ok: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle("app:installUpdate", () => {
+    if (!app.isPackaged) return false;
+    try {
+      autoUpdater.quitAndInstall(false, true);
+      return true;
+    } catch (error) {
+      console.error("Failed to install update:", error);
+      return false;
     }
   });
 

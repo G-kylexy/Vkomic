@@ -55,13 +55,32 @@ declare global {
     };
     app?: {
       getVersion?: () => Promise<string>;
-      checkUpdate?: (repo: string) => Promise<{
+      checkUpdate?: () => Promise<{
         updateAvailable: boolean;
         version?: string;
         url?: string;
         notes?: string;
         error?: string | null;
       }>;
+      downloadUpdate?: () => Promise<{ ok: boolean; error?: string }>;
+      installUpdate?: () => Promise<boolean>;
+      onUpdateAvailable?: (
+        callback: (payload: { version?: string; notes?: string }) => void,
+      ) => () => void;
+      onUpdateProgress?: (
+        callback: (payload: {
+          percent?: number;
+          bytesPerSecond?: number;
+          transferred?: number;
+          total?: number;
+        }) => void,
+      ) => () => void;
+      onUpdateReady?: (
+        callback: (payload: { version?: string; notes?: string }) => void,
+      ) => () => void;
+      onUpdateError?: (
+        callback: (payload: { message?: string }) => void,
+      ) => () => void;
     };
   }
 }
