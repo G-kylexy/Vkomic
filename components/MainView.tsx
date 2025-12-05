@@ -129,4 +129,4 @@ const MainView: React.FC<MainViewProps> = ({
   return <>{renderContent()}</>;
 };
 
-export default MainView;
+export default React.memo(MainView);

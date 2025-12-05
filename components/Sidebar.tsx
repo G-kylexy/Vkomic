@@ -223,10 +223,9 @@ const Sidebar: React.FC<SidebarProps> = ({
               key={item.id}
               onClick={() => setActiveTab(item.id)}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all text-sm font-medium border relative group
-                ${
-                  isActive
-                    ? "bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-900/40"
-                    : "text-slate-400 hover:text-white hover:bg-slate-800/50 border-transparent"
+                ${isActive
+                  ? "bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-900/40"
+                  : "text-slate-400 hover:text-white hover:bg-slate-800/50 border-transparent"
                 }
               `}
             >
@@ -279,4 +278,4 @@ const Sidebar: React.FC<SidebarProps> = ({
   );
 };
 
-export default Sidebar;
+export default React.memo(Sidebar);

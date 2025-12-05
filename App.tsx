@@ -73,6 +73,15 @@ const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState("home");
   // Barre de recherche
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
+
+  // Debounce global pour éviter de re-rendre BrowserView à chaque frappe
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   // Token VK : Initialisé depuis le LocalStorage du navigateur pour persister au rechargement
   const [vkToken, setVkToken] = useState(() => {
@@ -322,10 +331,10 @@ const App: React.FC = () => {
             prev.map((d) =>
               d.id === id
                 ? {
-                    ...d,
-                    path: pathFromResult,
-                    size: formattedSize || d.size,
-                  }
+                  ...d,
+                  path: pathFromResult,
+                  size: formattedSize || d.size,
+                }
                 : d,
             ),
           );
@@ -399,11 +408,20 @@ const App: React.FC = () => {
   }, [downloads]);
 
   // Écoute de la progression réelle des téléchargements depuis le processus principal
+  const lastUpdateRef = useRef<number>(0);
+
   useEffect(() => {
     if (!window.fs || !window.fs.onDownloadProgress) return;
 
     const removeListener = window.fs.onDownloadProgress((payload: any) => {
       const { id, progress, speedBytes } = payload;
+      const now = Date.now();
+
+      // Throttle : on ne met à jour l'état que toutes les 200ms max, sauf si fini
+      if (progress < 100 && now - lastUpdateRef.current < 200) {
+        return;
+      }
+      lastUpdateRef.current = now;
 
       setDownloads((prev) =>
         prev.map((d) => {
@@ -650,7 +668,7 @@ const App: React.FC = () => {
 
           {/* Vue dynamique (Change selon l'onglet actif) */}
           <MainView
-            searchQuery={searchQuery}
+            searchQuery={debouncedSearchQuery} // On passe la version debounced pour éviter les re-renders inutiles
             setSearchQuery={setSearchQuery}
             activeTab={activeTab}
             setActiveTab={setActiveTab}

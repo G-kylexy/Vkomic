@@ -347,4 +347,4 @@ const DownloadsView: React.FC<DownloadsViewProps> = ({
   );
 };
 
-export default DownloadsView;
+export default React.memo(DownloadsView);

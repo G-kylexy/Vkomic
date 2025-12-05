@@ -224,11 +224,10 @@ const LibraryView: React.FC<LibraryViewProps> = ({
               <button
                 onClick={handleNavigateUp}
                 disabled={!canNavigateUp || isLoading}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-700/50 text-sm transition-colors ${
-                  canNavigateUp && !isLoading
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-700/50 text-sm transition-colors ${canNavigateUp && !isLoading
                     ? "text-slate-200 bg-slate-800 hover:bg-slate-700"
                     : "text-slate-500 bg-slate-800/50 cursor-not-allowed"
-                }`}
+                  }`}
               >
                 <ChevronLeft size={16} />
                 {t.library.back}
@@ -254,11 +253,10 @@ const LibraryView: React.FC<LibraryViewProps> = ({
                   {index > 0 && <span className="text-slate-600">/</span>}
                   <button
                     onClick={() => loadPath(crumb.path)}
-                    className={`hover:text-white transition-colors ${
-                      index === breadcrumbs.length - 1
+                    className={`hover:text-white transition-colors ${index === breadcrumbs.length - 1
                         ? "text-white font-semibold cursor-default"
                         : ""
-                    }`}
+                      }`}
                     disabled={index === breadcrumbs.length - 1}
                   >
                     {crumb.label}
@@ -349,4 +347,4 @@ const LibraryView: React.FC<LibraryViewProps> = ({
   );
 };
 
-export default LibraryView;
+export default React.memo(LibraryView);

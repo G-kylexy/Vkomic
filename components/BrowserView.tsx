@@ -68,16 +68,9 @@ const BrowserView: React.FC<BrowserViewProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [navPath, setNavPath] = useState<VkNode[]>([]);
-  const [debouncedQuery, setDebouncedQuery] = useState("");
-
-  // Debounce la recherche pour éviter la surcharge
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedQuery(searchQuery);
-    }, 300); // Attend 300ms après la dernière frappe
-
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
+  // La recherche est maintenant debounced depuis App.tsx
+  // searchQuery ici est déjà "calme" (ne change pas à chaque frappe)
+  const debouncedQuery = searchQuery;
 
   const currentFolder = navPath.length > 0 ? navPath[navPath.length - 1] : null;
   const currentNodes = currentFolder ? currentFolder.children : syncedData;
@@ -208,7 +201,6 @@ const BrowserView: React.FC<BrowserViewProps> = ({
     // Si on est en mode recherche, on quitte la recherche pour naviguer dans le dossier
     if (isSearching) {
       setSearchQuery("");
-      setDebouncedQuery("");
     }
 
     if (node.type === "file" && node.url) {
@@ -837,4 +829,4 @@ const BrowserView: React.FC<BrowserViewProps> = ({
   );
 };
 
-export default BrowserView;
+export default React.memo(BrowserView);

@@ -11,12 +11,12 @@ const TopBar: React.FC<TopBarProps> = ({ searchQuery, setSearchQuery }) => {
   const { t } = useTranslation();
   return (
     <header
-      className="h-12 flex items-center justify-between pl-6 pr-0 relative bg-[#050B14]"
+      className="h-12 flex items-center justify-between pl-6 pr-0 relative bg-[#050B14] z-50"
       style={{ WebkitAppRegion: "drag" } as any}
     >
       {/* Search Input */}
       <div
-        className="relative flex-1 max-w-96 min-w-[150px]"
+        className="relative flex-1 max-w-96 min-w-[150px] z-50"
         style={{ WebkitAppRegion: "no-drag" } as any}
       >
         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -29,7 +29,7 @@ const TopBar: React.FC<TopBarProps> = ({ searchQuery, setSearchQuery }) => {
           onClick={(e) => e.currentTarget.focus()}
           placeholder={t.topbar.searchPlaceholder}
           style={{ WebkitAppRegion: "no-drag" } as any}
-          className="w-full bg-[#1e293b] text-slate-200 text-sm rounded-lg pl-10 pr-4 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500 border border-slate-700/50 placeholder-slate-500"
+          className="w-full bg-[#1e293b] text-slate-200 text-sm rounded-lg pl-10 pr-4 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500 border border-slate-700/50 placeholder-slate-500 cursor-text"
         />
       </div>
 
@@ -83,4 +83,4 @@ const TopBar: React.FC<TopBarProps> = ({ searchQuery, setSearchQuery }) => {
   );
 };
 
-export default TopBar;
+export default React.memo(TopBar);

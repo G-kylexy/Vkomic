@@ -216,10 +216,24 @@ const fetchNodesStructureBatch = async (
     try {
       const responses = await fetchMultipleTopics(token, topicsToFetch);
 
-      return batch.map((node, index) => {
+      const processedNodes = await Promise.all(batch.map(async (node, index) => {
         const resp = responses[index];
         if (resp && resp.items) {
-          const text = resp.items.map((it: any) => it.text || '').join('\n');
+          let items = resp.items;
+
+          // Si le topic contient plus de 100 messages, on doit tout récupérer
+          if (resp.count > 100) {
+            try {
+              const allItems = await fetchAllComments(token, node.vkGroupId as string, node.vkTopicId as string);
+              if (allItems && allItems.length > 0) {
+                items = allItems;
+              }
+            } catch (err) {
+              console.warn(`[Sync] Failed to fetch full content for ${node.title}, using partial data.`);
+            }
+          }
+
+          const text = items.map((it: any) => it.text || '').join('\n');
           const children = parseTopicBody(text, node.vkTopicId);
           return {
             ...node,
@@ -230,7 +244,9 @@ const fetchNodesStructureBatch = async (
         }
         // Si pas de réponse ou vide, on retourne le node tel quel mais chargé
         return { ...node, children: [], isLoaded: true, structureOnly: true };
-      });
+      }));
+
+      return processedNodes;
     } catch (e) {
       console.error('Batch fetch error:', e);
       // En cas d'erreur de batch, on retourne les nodes vides pour ne pas bloquer
@@ -398,89 +414,6 @@ const extractDocuments = (items: any[]): VkNode[] => {
 
 // --- SERVICES PRINCIPAUX ---
 
-// Fonction appelee par le bouton "Synchroniser" (simple)
-export const fetchRootIndex = async (
-  token: string,
-  groupId?: string,
-  topicId?: string
-): Promise<VkNode[]> => {
-  try {
-    const effectiveGroupId = groupId && groupId.trim().length > 0 ? groupId.trim() : '203785966';
-    const effectiveTopicId = topicId && topicId.trim().length > 0 ? topicId.trim() : '47515406';
-
-    // Utilisation de fetchAllComments pour récupérer TOUS les messages du topic index
-    // et pas seulement les 100 premiers.
-    const items = await fetchAllComments(token, effectiveGroupId, effectiveTopicId);
-
-    if (!items || items.length === 0) {
-      return MOCK_ROOT_NODES;
-    }
-
-    const fullText = items.map((i: any) => i.text).join('\n');
-    const nodes = parseTopicBody(fullText);
-
-    if (nodes.length === 0) {
-      return MOCK_ROOT_NODES;
-    }
-
-    // Filtrage pour ne garder que les catégories principales (ex: "BDs EN FRANCAIS")
-    // Cela évite d'afficher des liens "parasites" (comme "Howard Flynn") qui se trouvent dans l'index.
-    const filteredNodes = nodes.filter((n) => n.title.toUpperCase().includes('EN FRANCAIS'));
-    const finalNodes = filteredNodes.length > 0 ? filteredNodes : nodes;
-
-    return finalNodes.map((n) => ({ ...n, type: 'category' }));
-  } catch (error) {
-    console.error('VK API Error (Root):', error);
-    return MOCK_ROOT_NODES;
-  }
-};
-
-// Fonction appelee pour charger le contenu d'un dossier (lazy, un seul appel)
-export const fetchNodeContent = async (token: string, node: VkNode): Promise<VkNode> => {
-  if (!node.vkGroupId || !node.vkTopicId) {
-    return { ...node, isLoaded: true, children: [] };
-  }
-
-  try {
-    const response = await fetchVkTopic(token, node.vkGroupId, node.vkTopicId);
-
-    if (!response.response || !response.response.items) {
-      throw new Error('Failed to fetch node content');
-    }
-
-    const items = response.response.items;
-
-    // Etape 1 : Sous-dossiers (autres topics cites)
-    const fullText = items.map((i: any) => i.text).join('\n');
-    const subTopics = parseTopicBody(fullText, node.vkTopicId);
-
-    // Etape 2 : Fichiers (documents)
-    const documents = extractDocuments(items);
-
-    const allChildren = [...subTopics, ...documents];
-
-    if (allChildren.length > 0) {
-      return {
-        ...node,
-        children: allChildren,
-        isLoaded: true,
-        type: documents.length > 0 ? 'series' : 'genre',
-      };
-    }
-
-    return { ...node, isLoaded: true, children: [] };
-  } catch (error) {
-    console.error('VK API Error (Node):', error);
-    return {
-      ...node,
-      isLoaded: true,
-      children: [{ id: 'err1', title: 'Erreur (API)', type: 'category', isLoaded: true }],
-    };
-  }
-};
-
-// --- Helpers pour la synchro profonde ---
-
 // Fonction utilitaire pour attendre (delay)
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -552,6 +485,88 @@ const fetchAllComments = async (
   return allItems;
 };
 
+// Fonction appelee par le bouton "Synchroniser" (simple)
+export const fetchRootIndex = async (
+  token: string,
+  groupId?: string,
+  topicId?: string
+): Promise<VkNode[]> => {
+  try {
+    const effectiveGroupId = groupId && groupId.trim().length > 0 ? groupId.trim() : '203785966';
+    const effectiveTopicId = topicId && topicId.trim().length > 0 ? topicId.trim() : '47515406';
+
+    // Utilisation de fetchAllComments pour récupérer TOUS les messages du topic index
+    // et pas seulement les 100 premiers.
+    const items = await fetchAllComments(token, effectiveGroupId, effectiveTopicId);
+
+    if (!items || items.length === 0) {
+      return MOCK_ROOT_NODES;
+    }
+
+    const fullText = items.map((i: any) => i.text).join('\n');
+    const nodes = parseTopicBody(fullText);
+
+    if (nodes.length === 0) {
+      return MOCK_ROOT_NODES;
+    }
+
+    // Filtrage pour ne garder que les catégories principales (ex: "BDs EN FRANCAIS")
+    // Cela évite d'afficher des liens "parasites" (comme "Howard Flynn") qui se trouvent dans l'index.
+    const filteredNodes = nodes.filter((n) => n.title.toUpperCase().includes('EN FRANCAIS'));
+    const finalNodes = filteredNodes.length > 0 ? filteredNodes : nodes;
+
+    return finalNodes.map((n) => ({ ...n, type: 'category' }));
+  } catch (error) {
+    console.error('VK API Error (Root):', error);
+    return MOCK_ROOT_NODES;
+  }
+};
+
+// Fonction appelee pour charger le contenu d'un dossier (lazy, un seul appel)
+export const fetchNodeContent = async (token: string, node: VkNode): Promise<VkNode> => {
+  if (!node.vkGroupId || !node.vkTopicId) {
+    return { ...node, isLoaded: true, children: [] };
+  }
+
+  try {
+    // Utilisation de fetchAllComments pour récupérer TOUS les messages, pas juste les 100 premiers
+    const items = await fetchAllComments(token, node.vkGroupId, node.vkTopicId);
+
+    if (!items) {
+      throw new Error('Failed to fetch node content');
+    }
+
+    // Etape 1 : Sous-dossiers (autres topics cites)
+    const fullText = items.map((i: any) => i.text).join('\n');
+    const subTopics = parseTopicBody(fullText, node.vkTopicId);
+
+    // Etape 2 : Fichiers (documents)
+    const documents = extractDocuments(items);
+
+    const allChildren = [...subTopics, ...documents];
+
+    if (allChildren.length > 0) {
+      return {
+        ...node,
+        children: allChildren,
+        isLoaded: true,
+        type: documents.length > 0 ? 'series' : 'genre',
+      };
+    }
+
+    return { ...node, isLoaded: true, children: [] };
+  } catch (error) {
+    console.error('VK API Error (Node):', error);
+    return {
+      ...node,
+      isLoaded: true,
+      children: [{ id: 'err1', title: 'Erreur (API)', type: 'category', isLoaded: true }],
+    };
+  }
+};
+
+// --- Helpers pour la synchro profonde ---
+
 // Recupere uniquement la STRUCTURE (sous-topics) d'un topic, sans documents,
 // en lisant toutes les pages de commentaires.
 const fetchTopicStructure = async (
@@ -572,7 +587,7 @@ export const fetchFolderTreeUpToDepth = async (
   token: string,
   groupId?: string,
   topicId?: string,
-  maxDepth: number = 3
+  maxDepth: number = 4
 ): Promise<VkNode[]> => {
   console.log('[Sync] Starting fetchFolderTreeUpToDepth...');
 
@@ -611,16 +626,34 @@ export const fetchFolderTreeUpToDepth = async (
       }));
       try {
         const responses = await fetchMultipleTopics(token, topicsToFetch);
-        return batch.map((node, index) => {
+
+        const processedNodes = await Promise.all(batch.map(async (node, index) => {
           const resp = responses[index];
           if (resp && resp.items) {
-            const text = resp.items.map((it: any) => it.text || '').join('\n');
+            let items = resp.items;
+
+            // Si le topic contient plus de 100 messages, on doit tout récupérer
+            if (resp.count > 100) {
+              try {
+                const allItems = await fetchAllComments(token, node.vkGroupId as string, node.vkTopicId as string);
+                if (allItems && allItems.length > 0) {
+                  items = allItems;
+                }
+              } catch (err) {
+                console.warn(`[Sync] Failed to fetch full content for ${node.title}, using partial data.`);
+              }
+            }
+
+            const text = items.map((it: any) => it.text || '').join('\n');
             const children = parseTopicBody(text, node.vkTopicId);
             return { ...node, children, isLoaded: true, structureOnly: true };
           }
           return { ...node, children: [], isLoaded: true, structureOnly: true };
-        });
+        }));
+
+        return processedNodes;
       } catch (e) {
+        console.error('[Sync] Batch error:', e);
         return batch.map(n => ({ ...n, children: [], isLoaded: true, structureOnly: true }));
       }
     });
@@ -658,15 +691,62 @@ export const fetchFolderTreeUpToDepth = async (
   level2Expanded.forEach((node) => level2Map.set(node.id, node));
 
   // Mise a jour niveau 2 dans l'arbre
+  // Mise a jour niveau 2 dans l'arbre
   level1Expanded.forEach((root) => {
     if (root.children) {
       root.children = root.children.map((child) => level2Map.get(child.id) || child);
     }
   });
 
-  // NIVEAU 4 DÉSACTIVÉ - Trop lent, on utilise le lazy loading à la place
-  // Les sous-dossiers Comics seront chargés quand l'utilisateur clique dessus
+  if (maxDepth <= 3) return level1Expanded;
 
-  console.log('[Sync] Done! 3 levels loaded successfully.');
+
+  // OPTIMISATION : On ne descend au niveau 4 que pour les Comics et Mangas qui utilisent des tranches (A-C, D-F).
+  // Les BDs Européennes ont leurs séries directement au niveau 3, donc pas besoin de descendre plus bas (ce sont des fichiers).
+  const level3Nodes: VkNode[] = [];
+
+  level1Expanded.forEach((root) => {
+    // Filtrage par ID de topic pour cibler spécifiquement "Comics en Français"
+    // ID connu : 203785966_47543940 (Comics en français / Comics in french)
+    // Mangas n'a pas de niveau 4, donc on ne le scanne pas ici.
+    const isTargetTopic = root.vkTopicId === '47543940';
+
+    if (isTargetTopic) {
+      (root.children || []).forEach((l2) => {
+        const l2Expanded = level2Map.get(l2.id);
+        if (l2Expanded && l2Expanded.children) {
+          l2Expanded.children.forEach((l3) => {
+            // On ne garde que les dossiers (pas les fichiers) pour descendre au niveau 4
+            if (l3.vkGroupId && l3.vkTopicId) {
+              level3Nodes.push(l3);
+            }
+          });
+        }
+      });
+    }
+  });
+
+  if (level3Nodes.length === 0) return level1Expanded;
+
+  console.log(`[Sync] Loading Level 4 (Deep Content) for ${level3Nodes.length} items (Comics/Mangas only)...`);
+  const level3Expanded = await fetchNodesBatchLocal(level3Nodes);
+
+  // Indexer
+  const level3Map = new Map<string, VkNode>();
+  level3Expanded.forEach((node) => level3Map.set(node.id, node));
+
+  // Mise à jour arbre
+  level1Expanded.forEach((root) => {
+    if (root.children) {
+      root.children.forEach((l2) => {
+        if (l2.children) {
+          l2.children = l2.children.map((l3) => level3Map.get(l3.id) || l3);
+        }
+      });
+    }
+  });
+
+  console.log('[Sync] Done! 4 levels loaded successfully.');
   return level1Expanded;
 };
+
