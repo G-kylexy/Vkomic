@@ -55,14 +55,7 @@
         "zip"
       ],
       "category": "public.app-category.utilities"
-    },
-    "publish": [
-      {
-        "provider": "github",
-        "owner": "G-kylexy",
-        "repo": "Vkomic"
-      }
-    ]
+    }
   },
   "dependencies": {
     "electron-updater": "^6.6.2",
