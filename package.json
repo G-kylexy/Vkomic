@@ -49,6 +49,7 @@
       "category": "Utility"
     },
     "mac": {
+      "identity": null,
       "icon": "public/icon.png",
       "target": [
         "zip"
