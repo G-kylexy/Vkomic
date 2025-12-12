@@ -11,11 +11,7 @@ permissions:
 
 jobs:
   release:
-    runs-on: ${{ matrix.os }}
-
-    strategy:
-      matrix:
-        os: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: macos-latest
 
     steps:
       - name: Check out Git repository
@@ -30,21 +26,23 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build Electron App
-        run: npm run dist
+      - name: Build Electron App (no publish)
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        run: npm run dist -- --publish never
+
+      - name: Build Electron App (publish)
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        run: npm run dist -- --publish always
         env:
-          GH_TOKEN: ${{ github.token }}
-          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: release-${{ matrix.os }}
+          name: release-macos
           path: |
-            release/*.exe
             release/*.dmg
             release/*.zip
-            release/*.AppImage
-            release/*.snap
-            release/*.deb
-            release/*.rpm
+            release/latest*.yml
+            release/*.blockmap

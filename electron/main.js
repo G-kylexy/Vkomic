@@ -11,7 +11,7 @@ const __dirname = path.dirname(__filename);
 let mainWindow;
 let updateFeedReady = false;
 
-const GITHUB_REPO = "G-kylexy/Vkomic";
+const GITHUB_REPO = "G-kylexy/vkomic";
 
 const normalizeReleaseNotes = (notes) => {
   if (Array.isArray(notes)) {
@@ -58,7 +58,7 @@ const ensureUpdateFeed = () => {
     autoUpdater.setFeedURL({
       provider: "github",
       owner: "G-kylexy",
-      repo: "Vkomic",
+      repo: "vkomic",
     });
     updateFeedReady = true;
   } catch (error) {

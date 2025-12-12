@@ -6,6 +6,10 @@
   "type": "module",
   "description": "Lecteur et téléchargeur de comics VK",
   "author": "G-kylexy",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/G-kylexy/vkomic.git"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -17,6 +21,12 @@
   "build": {
     "appId": "com.vkomic.app",
     "productName": "vkomic",
+    "publish": {
+      "provider": "github",
+      "owner": "G-kylexy",
+      "repo": "vkomic",
+      "releaseType": "release"
+    },
     "directories": {
       "output": "release"
     },
@@ -49,9 +59,9 @@
       "category": "Utility"
     },
     "mac": {
-      "identity": null,
       "icon": "public/icon.png",
       "target": [
+        "dmg",
         "zip"
       ],
       "category": "public.app-category.utilities"
