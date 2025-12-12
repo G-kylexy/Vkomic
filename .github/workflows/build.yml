@@ -11,7 +11,11 @@ permissions:
 
 jobs:
   release:
-    runs-on: macos-latest
+    runs-on: ${{ matrix.os }}
+    
+    strategy:
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
 
     steps:
       - name: Check out Git repository
@@ -26,23 +30,42 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build Electron App (no publish)
-        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
-        run: npm run dist -- --publish never
+      # Linux-specific setup (snapcraft is needed for some targets, but we use AppImage/tar.gz mostly)
+      - name: Install Linux dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libarchive-tools
 
-      - name: Build Electron App (publish)
-        if: ${{ startsWith(github.ref, 'refs/tags/') }}
-        run: npm run dist -- --publish always
+      - name: Build Electron App
+        run: npm run dist
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            release/*.dmg
+            release/*.zip
+            release/*.exe
+            release/*.AppImage
+            release/*.tar.gz
+            release/latest*.yml
+            release/*.blockmap
+        env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: release-macos
+          name: build-${{ matrix.os }}
           path: |
             release/*.dmg
             release/*.zip
+            release/*.exe
+            release/*.AppImage
+            release/*.tar.gz
             release/latest*.yml
             release/*.blockmap
