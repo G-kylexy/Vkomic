@@ -42,18 +42,37 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create Release
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Create Release (Windows)
+        if: startsWith(github.ref, 'refs/tags/') && matrix.os == 'windows-latest'
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            release/*.exe
+            release/*.blockmap
+            release/latest.yml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Release (macOS)
+        if: startsWith(github.ref, 'refs/tags/') && matrix.os == 'macos-latest'
         uses: softprops/action-gh-release@v1
         with:
           files: |
             release/*.dmg
             release/*.zip
-            release/*.exe
+            release/*.blockmap
+            release/latest-mac.yml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Release (Linux)
+        if: startsWith(github.ref, 'refs/tags/') && matrix.os == 'ubuntu-latest'
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
             release/*.AppImage
             release/*.tar.gz
-            release/latest*.yml
-            release/*.blockmap
+            release/latest-linux.yml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
