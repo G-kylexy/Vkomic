@@ -48,6 +48,13 @@
       ],
       "category": "Utility"
     },
+    "mac": {
+      "icon": "public/icon.png",
+      "target": [
+        "zip"
+      ],
+      "category": "public.app-category.utilities"
+    },
     "publish": [
       {
         "provider": "github",
