@@ -14,4 +14,54 @@ body,
 .content-wrapper {
   padding-top: 0;
 }
-/* Updated */
+
+/* Responsive table handling */
+@media (max-width: 768px) {
+  table {
+    font-size: 12px;
+  }
+
+  th,
+  td {
+    padding: 8px 12px !important;
+  }
+}
+
+/* Minimum app width to prevent severe layout breaking */
+html,
+body {
+  min-width: 480px;
+}
+
+/* Custom scrollbar for consistency */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+/* Hide scrollbar but keep functionality */
+.custom-scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+.custom-scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Smooth transitions for responsive elements */
+.transition-width {
+  transition: width 0.3s ease-in-out;
+}

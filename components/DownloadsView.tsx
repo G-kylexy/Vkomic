@@ -38,14 +38,7 @@ const DownloadsView: React.FC<DownloadsViewProps> = ({
 }) => {
   const { t } = useTranslation();
 
-  const stats = useMemo(() => {
-    const downloadedCount = downloads.filter(
-      (d) => d.status === "completed",
-    ).length;
-    const inProgressCount = downloads.filter((d) =>
-      ["downloading", "pending", "paused"].includes(d.status),
-    ).length;
-
+  const indexedCount = useMemo(() => {
     let seriesCount = 0;
     const countSeries = (nodes: VkNode[]) => {
       nodes.forEach((n) => {
@@ -54,13 +47,16 @@ const DownloadsView: React.FC<DownloadsViewProps> = ({
       });
     };
     if (syncedData) countSeries(syncedData);
+    return seriesCount;
+  }, [syncedData]);
 
-    return {
-      indexed: seriesCount > 0 ? seriesCount : 0,
-      downloaded: downloadedCount,
-      inProgress: inProgressCount,
-    };
-  }, [downloads, syncedData]);
+  const downloadCounts = useMemo(() => {
+    const downloaded = downloads.filter((d) => d.status === "completed").length;
+    const inProgress = downloads.filter((d) =>
+      ["downloading", "pending", "paused"].includes(d.status),
+    ).length;
+    return { downloaded, inProgress };
+  }, [downloads]);
 
   const sortedDownloads = useMemo(() => {
     const statusPriority: Record<DownloadItem["status"], number> = {
@@ -101,7 +97,7 @@ const DownloadsView: React.FC<DownloadsViewProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             <div className="bg-[#131926] border border-[#1e293b] rounded-xl p-6 flex flex-col justify-center shadow-lg">
               <span className="text-4xl font-bold text-white mb-2">
-                {stats.indexed}
+                {indexedCount}
               </span>
               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
                 {t.downloads.statsIndexed}
@@ -110,7 +106,7 @@ const DownloadsView: React.FC<DownloadsViewProps> = ({
 
             <div className="bg-[#131926] border border-[#1e293b] rounded-xl p-6 flex flex-col justify-center shadow-lg">
               <span className="text-4xl font-bold text-white mb-2">
-                {stats.downloaded}
+                {downloadCounts.downloaded}
               </span>
               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
                 {t.downloads.statsDownloaded}
@@ -119,7 +115,7 @@ const DownloadsView: React.FC<DownloadsViewProps> = ({
 
             <div className="bg-[#131926] border border-[#1e293b] rounded-xl p-6 flex flex-col justify-center shadow-lg sm:col-span-2 lg:col-span-1">
               <span className="text-4xl font-bold text-white mb-2">
-                {stats.inProgress}
+                {downloadCounts.inProgress}
               </span>
               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
                 {t.downloads.statsInProgress}
@@ -163,168 +159,175 @@ const DownloadsView: React.FC<DownloadsViewProps> = ({
               <table className="w-full table-fixed text-left border-collapse">
                 <thead>
                   <tr>
-                    <th className="py-4 px-6 bg-[#0f1523] text-xs font-bold text-slate-500 uppercase border-b border-slate-800 tracking-wider">
+                    <th className="py-4 px-6 bg-[#0f1523] text-xs font-bold text-slate-500 uppercase border-b border-slate-800 tracking-wider w-[30%]">
                       {t.downloads.tableSeries}
                     </th>
-                    <th className="py-4 px-6 bg-[#0f1523] text-xs font-bold text-slate-500 uppercase border-b border-slate-800 tracking-wider">
+                    <th className="py-4 px-6 bg-[#0f1523] text-xs font-bold text-slate-500 uppercase border-b border-slate-800 tracking-wider w-[10%]">
                       {t.downloads.tableVolume}
                     </th>
-                    <th className="py-4 px-6 bg-[#0f1523] text-xs font-bold text-slate-500 uppercase border-b border-slate-800 tracking-wider">
+                    <th className="py-4 px-6 bg-[#0f1523] text-xs font-bold text-slate-500 uppercase border-b border-slate-800 tracking-wider w-[30%]">
                       {t.downloads.tableStatus}
                     </th>
-                    <th className="py-4 px-6 bg-[#0f1523] text-xs font-bold text-slate-500 uppercase border-b border-slate-800 tracking-wider">
+                    <th className="py-4 px-6 bg-[#0f1523] text-xs font-bold text-slate-500 uppercase border-b border-slate-800 tracking-wider w-[15%]">
                       {t.downloads.tableSize}
                     </th>
-                    <th className="py-4 px-6 bg-[#0f1523] text-xs font-bold text-slate-500 uppercase border-b border-slate-800 tracking-wider text-right">
+                    <th className="py-4 px-6 bg-[#0f1523] text-xs font-bold text-slate-500 uppercase border-b border-slate-800 tracking-wider text-right w-[15%]">
                       {t.downloads.tableActions}
                     </th>
                   </tr>
                 </thead>
                 <tbody className="text-slate-300">
                   {sortedDownloads.map((d) => {
-                      const isCompleted = d.status === "completed";
-                      const isDownloading = d.status === "downloading";
-                      const isPaused = d.status === "paused";
-                      const isCanceled = d.status === "canceled";
-                      const dateLabel = formatDateISO(d.createdAt);
-                      const volumeLabel = extractVolumeLabel(d.title);
-                      const displaySize = d.size || "--";
+                    const isCompleted = d.status === "completed";
+                    const isDownloading = d.status === "downloading";
+                    const isPaused = d.status === "paused";
+                    const isCanceled = d.status === "canceled";
+                    const dateLabel = formatDateISO(d.createdAt);
+                    const volumeLabel = extractVolumeLabel(d.title);
+                    const displaySize = d.size || "--";
 
-                      return (
-                        <tr
-                          key={d.id}
-                          className="hover:bg-[#1a2233] transition-colors group"
-                        >
-                          <td className="py-4 px-6 border-b border-slate-800/50">
-                            <div
-                              className="font-medium text-white truncate max-w-[250px] md:max-w-sm lg:max-w-md"
-                              title={d.title}
-                            >
-                              {d.title}
+                    return (
+                      <tr
+                        key={d.id}
+                        className="hover:bg-[#1a2233] transition-colors group"
+                      >
+                        <td className="py-4 px-6 border-b border-slate-800/50">
+                          <div
+                            className="font-medium text-white truncate max-w-[250px] md:max-w-sm lg:max-w-md"
+                            title={d.title}
+                          >
+                            {d.title}
+                          </div>
+                          {dateLabel !== "--" && (
+                            <div className="mt-1 text-xs text-slate-500">
+                              {dateLabel}
                             </div>
-                            {dateLabel !== "--" && (
-                              <div className="mt-1 text-xs text-slate-500">
-                                {dateLabel}
-                              </div>
-                            )}
-                          </td>
-                          <td className="py-4 px-6 border-b border-slate-800/50 font-mono text-slate-400">
-                            {volumeLabel}
-                          </td>
-                          <td className="py-4 px-6 border-b border-slate-800/50">
-                            {isCompleted ? (
-                              <div className="flex items-center gap-2 text-emerald-500 font-bold text-xs uppercase tracking-wide">
-                                <Check size={16} strokeWidth={3} />
-                                {t.downloads.completed}
-                              </div>
-                            ) : isCanceled ? (
-                              <div className="flex items-center gap-2 text-rose-500 font-bold text-xs uppercase tracking-wide">
-                                <X size={16} strokeWidth={3} />
-                                {t.downloads.canceled}
-                              </div>
-                            ) : (
-                              <div className="w-full">
-                                <div className="flex justify-between items-end mb-1">
-                                  <span
-                                    className={`text-[10px] font-bold uppercase ${isPaused ? "text-amber-500" : "text-blue-400"}`}
-                                  >
-                                    {isPaused
-                                      ? t.downloads.statusPaused
-                                      : isDownloading
-                                        ? t.downloads.statusDownloading
-                                        : t.downloads.statusPending}
-                                  </span>
+                          )}
+                        </td>
+                        <td className="py-4 px-6 border-b border-slate-800/50 font-mono text-slate-400">
+                          {volumeLabel}
+                        </td>
+                        <td className="py-4 px-6 border-b border-slate-800/50">
+                          {isCompleted ? (
+                            <div className="flex items-center gap-2 text-emerald-500 font-bold text-xs uppercase tracking-wide">
+                              <Check size={16} strokeWidth={3} />
+                              {t.downloads.completed}
+                            </div>
+                          ) : isCanceled ? (
+                            <div className="flex items-center gap-2 text-rose-500 font-bold text-xs uppercase tracking-wide">
+                              <X size={16} strokeWidth={3} />
+                              {t.downloads.canceled}
+                            </div>
+                          ) : (
+                            <div className="w-full">
+                              <div className="flex justify-between items-end mb-1">
+                                <span
+                                  className={`text-[10px] font-bold uppercase ${isPaused ? "text-amber-500" : "text-blue-400"}`}
+                                >
+                                  {isPaused
+                                    ? t.downloads.statusPaused
+                                    : isDownloading
+                                      ? t.downloads.statusDownloading
+                                      : t.downloads.statusPending}
+                                </span>
+                                <div className="flex items-center gap-2">
+                                  {isDownloading && d.speed && d.speed !== "0 MB/s" && (
+                                    <span className="text-[10px] font-mono text-blue-400">
+                                      {d.speed}
+                                    </span>
+                                  )}
                                   <span className="text-[10px] font-mono text-slate-500">
                                     {d.progress}%
                                   </span>
                                 </div>
-                                <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
-                                  <div
-                                    className={`h-full transition-all duration-300 ${isPaused ? "bg-amber-500" : "bg-blue-600"}`}
-                                    style={{ width: `${d.progress}%` }}
-                                  ></div>
-                                </div>
                               </div>
-                            )}
-                          </td>
-                          <td className="py-4 px-6 border-b border-slate-800/50 text-sm font-mono text-slate-400">
-                            {displaySize}
-                          </td>
-                          <td className="py-4 px-6 border-b border-slate-800/50 text-right">
-                            <div className="flex items-center justify-end gap-2 opacity-60 group-hover:opacity-100 transition-opacity">
-                              {isCanceled ? (
-                                <button
-                                  onClick={() => retryDownload(d.id)}
-                                  className="px-2 py-1.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-300 flex items-center gap-2 text-xs font-bold transition-colors"
-                                  title={t.downloads.redownload}
-                                >
-                                  <RefreshCw size={14} />
-                                  <span className="hidden lg:inline">
-                                    {t.downloads.redownload}
-                                  </span>
-                                </button>
-                              ) : (
-                                !isCompleted && (
-                                  <>
-                                    {isPaused ? (
-                                      <button
-                                        onClick={() => resumeDownload(d.id)}
-                                        className="p-1.5 hover:bg-slate-700 rounded text-slate-300"
-                                        title={t.tooltips.resume}
-                                      >
-                                        <Play size={16} />
-                                      </button>
-                                    ) : (
-                                      <button
-                                        onClick={() => pauseDownload(d.id)}
-                                        className="p-1.5 hover:bg-slate-700 rounded text-slate-300"
-                                        title={t.tooltips.pause}
-                                      >
-                                        <Pause size={16} />
-                                      </button>
-                                    )}
-                                    <button
-                                      onClick={() => cancelDownload(d.id)}
-                                      className="p-1.5 hover:bg-rose-900/30 rounded text-rose-400"
-                                      title={t.tooltips.cancel}
-                                    >
-                                      <X size={16} />
-                                    </button>
-                                  </>
-                                )
-                              )}
-
-                              {isCompleted && (
-                                <button
-                                  className="p-1.5 hover:bg-slate-700 rounded text-slate-300"
-                                  title={t.tooltips.openFolder}
-                                  onClick={() => {
-                                    if (
-                                      typeof window === "undefined" ||
-                                      !window.fs
-                                    )
-                                      return;
-
-                                    if (window.fs.revealPath && d.path) {
-                                      window.fs.revealPath(d.path);
-                                    } else if (window.fs.openPath) {
-                                      const folder =
-                                        getFolderFromPath(d.path) ||
-                                        downloadPath;
-                                      if (folder) {
-                                        window.fs.openPath(folder);
-                                      }
-                                    }
-                                  }}
-                                >
-                                  <Folder size={16} />
-                                </button>
-                              )}
+                              <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full transition-all duration-300 ${isPaused ? "bg-amber-500" : "bg-blue-600"}`}
+                                  style={{ width: `${Math.max(0, d.progress || 0)}%` }}
+                                ></div>
+                              </div>
                             </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
+                          )}
+                        </td>
+                        <td className="py-4 px-6 border-b border-slate-800/50 text-sm font-mono text-slate-400">
+                          {displaySize}
+                        </td>
+                        <td className="py-4 px-6 border-b border-slate-800/50 text-right">
+                          <div className="flex items-center justify-end gap-2 opacity-60 group-hover:opacity-100 transition-opacity">
+                            {isCanceled ? (
+                              <button
+                                onClick={() => retryDownload(d.id)}
+                                className="px-2 py-1.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-300 flex items-center gap-2 text-xs font-bold transition-colors"
+                                title={t.downloads.redownload}
+                              >
+                                <RefreshCw size={14} />
+                                <span className="hidden lg:inline">
+                                  {t.downloads.redownload}
+                                </span>
+                              </button>
+                            ) : (
+                              !isCompleted && (
+                                <>
+                                  {isPaused ? (
+                                    <button
+                                      onClick={() => resumeDownload(d.id)}
+                                      className="p-1.5 hover:bg-slate-700 rounded text-slate-300"
+                                      title={t.tooltips.resume}
+                                    >
+                                      <Play size={16} />
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={() => pauseDownload(d.id)}
+                                      className="p-1.5 hover:bg-slate-700 rounded text-slate-300"
+                                      title={t.tooltips.pause}
+                                    >
+                                      <Pause size={16} />
+                                    </button>
+                                  )}
+                                  <button
+                                    onClick={() => cancelDownload(d.id)}
+                                    className="p-1.5 hover:bg-rose-900/30 rounded text-rose-400"
+                                    title={t.tooltips.cancel}
+                                  >
+                                    <X size={16} />
+                                  </button>
+                                </>
+                              )
+                            )}
+
+                            {isCompleted && (
+                              <button
+                                className="p-1.5 hover:bg-slate-700 rounded text-slate-300"
+                                title={t.tooltips.openFolder}
+                                onClick={() => {
+                                  if (
+                                    typeof window === "undefined" ||
+                                    !window.fs
+                                  )
+                                    return;
+
+                                  if (window.fs.revealPath && d.path) {
+                                    window.fs.revealPath(d.path);
+                                  } else if (window.fs.openPath) {
+                                    const folder =
+                                      getFolderFromPath(d.path) ||
+                                      downloadPath;
+                                    if (folder) {
+                                      window.fs.openPath(folder);
+                                    }
+                                  }
+                                }}
+                              >
+                                <Folder size={16} />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

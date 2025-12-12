@@ -8,7 +8,7 @@ export const DEFAULT_DOWNLOAD_PATH = "";
 export const MAX_CONCURRENT_DOWNLOADS = 5;
 
 // GitHub repository for update checks
-export const GITHUB_REPO = "G-kylexy/Vkomic";
+export const GITHUB_REPO = "G-kylexy/vkomic";
 
 // Theme color palette (for consistency across components)
 export const COLORS = {

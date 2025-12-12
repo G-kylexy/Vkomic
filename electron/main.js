@@ -248,6 +248,19 @@ app.whenReady().then(() => {
       });
 
       if (!res.ok && res.status !== 206) {
+        // HTTP 416 = Range Not Satisfiable
+        // Cela arrive quand le fichier est DÉJÀ entièrement téléchargé (startByte >= taille distante)
+        if (res.status === 416) {
+          // Envoie directement le signal de complétion (emitProgress n'est pas encore définie ici)
+          event.sender.send("fs:downloadProgress", {
+            id,
+            receivedBytes: startByte,
+            totalBytes: startByte,
+            progress: 100,
+            speedBytes: 0,
+          });
+          return { ok: true, path: targetPath, size: startByte };
+        }
         throw new Error(`Failed to download file (HTTP ${res.status})`);
       }
 

@@ -28,29 +28,30 @@ const Sidebar: React.FC<SidebarProps> = ({
     : "--";
 
   return (
-    <div className="w-64 bg-[#050B14] flex flex-col h-screen border-r border-[#1e293b] flex-shrink-0 pt-2">
+    <div className="w-16 lg:w-64 bg-[#050B14] flex flex-col h-screen border-r border-[#1e293b] flex-shrink-0 pt-2 transition-all duration-300">
       {/* Logo Area */}
-      <div className="h-16 flex items-center px-6 mb-4">
+      <div className="h-16 flex items-center px-4 lg:px-6 mb-4 justify-center lg:justify-start">
         <div className="flex items-center gap-3 text-white font-bold text-xl tracking-tight">
           <Zap className="text-blue-500 fill-blue-500" size={24} />
-          <span>VKomic</span>
+          <span className="hidden lg:inline">VKomic</span>
         </div>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-4 space-y-1.5">
+      <nav className="flex-1 px-2 lg:px-4 space-y-1.5">
         {navItems.map((item) => {
           const isActive = activeTab === item.id;
           return (
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id)}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all text-sm font-medium border relative group
+              className={`w-full flex items-center justify-center lg:justify-start gap-3 px-3 lg:px-4 py-3 rounded-lg transition-all text-sm font-medium border relative group
                 ${isActive
                   ? "bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-900/40"
                   : "text-slate-400 hover:text-white hover:bg-slate-800/50 border-transparent"
                 }
               `}
+              title={item.label}
             >
               <item.icon
                 size={18}
@@ -60,14 +61,14 @@ const Sidebar: React.FC<SidebarProps> = ({
                     : "text-slate-500 group-hover:text-white"
                 }
               />
-              {item.label}
+              <span className="hidden lg:inline">{item.label}</span>
             </button>
           );
         })}
       </nav>
 
-      {/* Footer / Status */}
-      <div className="pb-6 mt-4">
+      {/* Footer / Status - Hidden on small screens */}
+      <div className="pb-6 mt-4 hidden lg:block">
         <div className="mx-6 h-px bg-slate-800/50 mb-6"></div>
         <div className="px-6 flex flex-col gap-2 text-xs">
           {vkStatus.connected ? (
@@ -96,6 +97,13 @@ const Sidebar: React.FC<SidebarProps> = ({
             </p>
           </div>
         </div>
+      </div>
+
+      {/* Minimal status indicator for small screens */}
+      <div className="pb-4 lg:hidden flex justify-center">
+        <span className={`relative flex h-3 w-3 ${vkStatus.connected ? "" : ""}`}>
+          <span className={`relative inline-flex rounded-full h-3 w-3 ${vkStatus.connected ? "bg-emerald-500 shadow-[0_0_8px_rgba(52,211,153,0.8)]" : "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.8)]"}`}></span>
+        </span>
       </div>
     </div>
   );

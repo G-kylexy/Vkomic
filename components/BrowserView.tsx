@@ -45,6 +45,8 @@ interface BrowserViewProps {
   resumeDownload: (id: string) => void;
   cancelDownload: (id: string) => void;
   retryDownload: (id: string) => void;
+  navPath: VkNode[];
+  setNavPath: (path: VkNode[]) => void;
 }
 
 const BrowserView: React.FC<BrowserViewProps> = ({
@@ -64,11 +66,12 @@ const BrowserView: React.FC<BrowserViewProps> = ({
   resumeDownload,
   cancelDownload,
   retryDownload,
+  navPath,
+  setNavPath,
 }) => {
   const { t, language } = useTranslation();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [navPath, setNavPath] = useState<VkNode[]>([]);
   // La recherche est maintenant debounced depuis App.tsx
   // searchQuery ici est déjà "calme" (ne change pas à chaque frappe)
   const debouncedQuery = searchQuery;
@@ -114,12 +117,28 @@ const BrowserView: React.FC<BrowserViewProps> = ({
     return results;
   }, [isSearching, debouncedQuery, syncedData, currentNodes]);
 
-  const fileNodes = displayedNodes.filter((n) => n.type === "file");
+  const downloadsById = React.useMemo(() => {
+    const map = new Map<string, DownloadItem>();
+    downloads.forEach((d) => map.set(d.id, d));
+    return map;
+  }, [downloads]);
 
-  const activeDownloadsInView = fileNodes.filter((node) => {
-    const d = downloads.find((down) => down.id === node.id);
-    return d && ["pending", "downloading", "paused"].includes(d.status);
-  });
+  const fileNodes = React.useMemo(
+    () => displayedNodes.filter((n) => n.type === "file"),
+    [displayedNodes],
+  );
+
+  const activeDownloadsInView = React.useMemo(() => {
+    if (fileNodes.length === 0) return [];
+    const active: VkNode[] = [];
+    fileNodes.forEach((node) => {
+      const d = downloadsById.get(node.id);
+      if (d && ["pending", "downloading", "paused"].includes(d.status)) {
+        active.push(node);
+      }
+    });
+    return active;
+  }, [fileNodes, downloadsById]);
 
   const hasActiveDownloads = activeDownloadsInView.length > 0;
 
@@ -187,14 +206,15 @@ const BrowserView: React.FC<BrowserViewProps> = ({
   };
 
   const navigateTo = async (node: VkNode) => {
-    // Si on est en mode recherche, on quitte la recherche pour naviguer dans le dossier
-    if (isSearching) {
-      setSearchQuery("");
-    }
-
+    // Pour les fichiers, on lance le téléchargement SANS toucher à la recherche
     if (node.type === "file" && node.url) {
       addDownload(node);
       return;
+    }
+
+    // Si on est en mode recherche et qu'on navigue dans un DOSSIER, on quitte la recherche
+    if (isSearching) {
+      setSearchQuery("");
     }
 
     // Si le nœud a des enfants ET n'est pas marqué "structureOnly", on peut naviguer directement
@@ -291,10 +311,8 @@ const BrowserView: React.FC<BrowserViewProps> = ({
         : undefined;
 
       fileNodes.forEach((node) => {
-        const d = downloads.find((down) => down.id === node.id);
-        if (!d || d.status !== "completed") {
-          addDownload(node, subFolder);
-        }
+        const d = downloadsById.get(node.id);
+        if (!d || d.status !== "completed") addDownload(node, subFolder);
       });
     }
   };
@@ -618,9 +636,7 @@ const BrowserView: React.FC<BrowserViewProps> = ({
                   const fileConfig = getFileIconConfig(node.extension);
                   const FileIcon = fileConfig.icon;
 
-                  const activeDownload = downloads.find(
-                    (d) => d.id === node.id,
-                  );
+                  const activeDownload = downloadsById.get(node.id);
                   const isDownloading =
                     activeDownload &&
                     ["pending", "downloading", "paused"].includes(
@@ -685,13 +701,13 @@ const BrowserView: React.FC<BrowserViewProps> = ({
                                     ? "bg-amber-500"
                                     : "bg-blue-500"
                                     }`}
-                                  style={{ width: `${progress}%` }}
+                                  style={{ width: `${Math.max(0, progress)}%` }}
                                 />
                               </div>
                               <span className="text-[10px] font-mono text-slate-400 whitespace-nowrap min-w-[48px] text-right">
                                 {progress}%
                               </span>
-                              <span className="hidden md:inline-block text-[10px] text-slate-500">
+                              <span className="hidden md:inline-block text-[10px] text-slate-500 w-[70px] text-right truncate">
                                 {statusText}
                               </span>
                             </div>

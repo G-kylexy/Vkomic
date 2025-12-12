@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import Sidebar from "./components/Sidebar";
 import TopBar from "./components/TopBar";
 import MainView from "./components/MainView";
@@ -53,13 +53,13 @@ const App: React.FC = () => {
         setUpdateInfo((prev) =>
           prev
             ? {
-                ...prev,
-                status: "downloading",
-                progress:
-                  typeof payload?.percent === "number"
-                    ? Math.min(Math.max(payload.percent, 0), 100)
-                    : prev.progress,
-              }
+              ...prev,
+              status: "downloading",
+              progress:
+                typeof payload?.percent === "number"
+                  ? Math.min(Math.max(payload.percent, 0), 100)
+                  : prev.progress,
+            }
             : prev,
         );
       }) || null;
@@ -167,15 +167,33 @@ const App: React.FC = () => {
 
   // Persistance des données synchronisées
   useEffect(() => {
-    try {
-      if (syncedData) {
-        localStorage.setItem("vk_synced_data", JSON.stringify(syncedData));
-      } else {
-        localStorage.removeItem("vk_synced_data");
+    const persist = () => {
+      try {
+        if (syncedData) {
+          localStorage.setItem("vk_synced_data", JSON.stringify(syncedData));
+        } else {
+          localStorage.removeItem("vk_synced_data");
+        }
+      } catch (e) {
+        console.error("Failed to save synced data", e);
       }
-    } catch (e) {
-      console.error("Failed to save synced data", e);
+    };
+
+    const ric = (window as any)?.requestIdleCallback as
+      | ((cb: () => void, opts?: { timeout?: number }) => number)
+      | undefined;
+
+    if (ric) {
+      const id = ric(persist, { timeout: 2000 });
+      return () => {
+        const cancel = (window as any)
+          ?.cancelIdleCallback as ((id: number) => void) | undefined;
+        cancel?.(id);
+      };
     }
+
+    const id = window.setTimeout(persist, 0);
+    return () => window.clearTimeout(id);
   }, [syncedData]);
 
   // État pour savoir si une synchronisation complète a déjà été effectuée
@@ -217,10 +235,14 @@ const App: React.FC = () => {
       return [];
     }
   });
+  const downloadsRef = useRef(downloads);
+  useEffect(() => {
+    downloadsRef.current = downloads;
+  }, [downloads]);
   // Avoid repeating the missing download path alert when batch-triggering downloads
   const missingDownloadPathAlertedRef = useRef(false);
 
-  const addDownload = (node: VkNode, subFolder?: string) => {
+  const addDownload = useCallback((node: VkNode, subFolder?: string) => {
     if (!node.url) return;
 
     // Vérifier si un dossier de téléchargement est configuré
@@ -306,9 +328,9 @@ const App: React.FC = () => {
     });
 
     // On ne démarre plus le téléchargement immédiatement, le useEffect de gestion de file d'attente s'en chargera
-  };
+  }, [downloadPath]);
 
-  const startRealDownload = async (
+  const startRealDownload = useCallback(async (
     id: string,
     url: string,
     title: string,
@@ -414,10 +436,10 @@ const App: React.FC = () => {
         }),
       );
     }
-  };
+  }, [downloadPath]);
 
-  const retryDownload = (id: string) => {
-    const download = downloads.find((d) => d.id === id);
+  const retryDownload = useCallback((id: string) => {
+    const download = downloadsRef.current.find((d) => d.id === id);
     if (!download) return;
 
     setDownloads((prev) =>
@@ -434,7 +456,11 @@ const App: React.FC = () => {
         return d;
       }),
     );
-  };
+  }, []);
+
+  // Clé de statut pour optimiser le useEffect de la queue
+  // On ne recalcule que quand les statuts changent, pas à chaque update de progression
+  const downloadStatusKey = downloads.map(d => `${d.id}:${d.status}`).join(',');
 
   // GESTION DE LA FILE D'ATTENTE (QUEUE)
   useEffect(() => {
@@ -462,7 +488,8 @@ const App: React.FC = () => {
         );
       });
     }
-  }, [downloads]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [downloadStatusKey]); // Optimisation : ne réagit qu'aux changements de statut
 
   // Écoute de la progression réelle des téléchargements depuis le processus principal
   const lastUpdateRef = useRef<number>(0);
@@ -483,6 +510,11 @@ const App: React.FC = () => {
       setDownloads((prev) =>
         prev.map((d) => {
           if (d.id === id) {
+            // Si l'élément est en pause ou annulé, on ignore les mises à jour de progression
+            if (d.status === "paused" || d.status === "canceled") {
+              return d;
+            }
+
             const isComplete = progress >= 100;
             const newProgress =
               typeof progress === "number"
@@ -509,16 +541,26 @@ const App: React.FC = () => {
     };
   }, []);
 
-  // Persistance de l'historique de téléchargement
+  // Persistance de l'historique de téléchargement (throttled pour éviter les écritures excessives)
+  const lastPersistRef = useRef<number>(0);
   useEffect(() => {
-    try {
-      localStorage.setItem("vk_downloads", JSON.stringify(downloads));
-    } catch {
-      // Ignore les erreurs de stockage
+    const now = Date.now();
+    // Ne persiste que toutes les 1 seconde max, ou immédiatement si statut change
+    const hasStatusChange = downloads.some(d =>
+      d.status === 'completed' || d.status === 'canceled' || d.status === 'error'
+    );
+
+    if (hasStatusChange || now - lastPersistRef.current > 1000) {
+      lastPersistRef.current = now;
+      try {
+        localStorage.setItem("vk_downloads", JSON.stringify(downloads));
+      } catch {
+        // Ignore les erreurs de stockage
+      }
     }
   }, [downloads]);
 
-  const pauseDownload = (id: string) => {
+  const pauseDownload = useCallback((id: string) => {
     // On annule le téléchargement côté Electron mais on garde le statut "paused" côté UI
     if (window.fs && window.fs.cancelDownload) {
       window.fs.cancelDownload(id);
@@ -529,14 +571,15 @@ const App: React.FC = () => {
         d.id === id ? { ...d, status: "paused", speed: "0 MB/s" } : d,
       ),
     );
-  };
+  }, []);
 
-  const resumeDownload = (id: string) => {
+  const resumeDownload = useCallback((id: string) => {
     // Relance le téléchargement
-    const download = downloads.find((d) => d.id === id);
+    const downloadsSnapshot = downloadsRef.current;
+    const download = downloadsSnapshot.find((d) => d.id === id);
     if (download) {
       // Vérifier le nombre de téléchargements actifs pour un démarrage immédiat
-      const activeCount = downloads.filter(
+      const activeCount = downloadsSnapshot.filter(
         (d) => d.status === "downloading",
       ).length;
 
@@ -564,9 +607,9 @@ const App: React.FC = () => {
         );
       }
     }
-  };
+  }, [startRealDownload]);
 
-  const cancelDownload = (id: string) => {
+  const cancelDownload = useCallback((id: string) => {
     // Annulation réelle côté Electron
     if (window.fs && window.fs.cancelDownload) {
       window.fs.cancelDownload(id);
@@ -579,30 +622,34 @@ const App: React.FC = () => {
           : d,
       ),
     );
-  };
+  }, []);
+
+  const clearDownloads = useCallback(() => {
+    setDownloads([]);
+  }, []);
 
   // --- FONCTIONS UTILITAIRES ---
 
   // Wrapper pour sauvegarder le token dans le stockage local (Persistance)
-  const handleSetVkToken = (token: string) => {
+  const handleSetVkToken = useCallback((token: string) => {
     setVkToken(token);
     localStorage.setItem("vk_token", token);
-  };
+  }, []);
 
-  const handleSetVkGroupId = (groupId: string) => {
+  const handleSetVkGroupId = useCallback((groupId: string) => {
     setVkGroupId(groupId);
     localStorage.setItem("vk_group_id", groupId);
-  };
+  }, []);
 
-  const handleSetVkTopicId = (topicId: string) => {
+  const handleSetVkTopicId = useCallback((topicId: string) => {
     setVkTopicId(topicId);
     localStorage.setItem("vk_topic_id", topicId);
-  };
+  }, []);
 
-  const handleSetDownloadPath = (path: string) => {
+  const handleSetDownloadPath = useCallback((path: string) => {
     setDownloadPath(path);
     localStorage.setItem("vk_download_path", path);
-  };
+  }, []);
 
   useEffect(() => {
     if (downloadPath && downloadPath !== DEFAULT_DOWNLOAD_PATH) {
@@ -633,14 +680,25 @@ const App: React.FC = () => {
     // Mesure la latence vers VK toutes les secondes (via IPC pour éviter CORB côté renderer)
     const measurePing = async () => {
       if (!vkToken) {
-        setVkStatus((prev) => ({
-          ...prev,
-          connected: false,
-          latencyMs: null,
-          lastSync: null,
-          region: rawRegion,
-          regionAggregate,
-        }));
+        setVkStatus((prev) => {
+          if (
+            prev.connected === false &&
+            prev.latencyMs === null &&
+            prev.lastSync === null &&
+            prev.region === rawRegion &&
+            prev.regionAggregate === regionAggregate
+          ) {
+            return prev;
+          }
+          return {
+            ...prev,
+            connected: false,
+            latencyMs: null,
+            lastSync: null,
+            region: rawRegion,
+            regionAggregate,
+          };
+        });
         return;
       }
 
@@ -658,23 +716,51 @@ const App: React.FC = () => {
           throw new Error("VK IPC not available");
         }
 
-        setVkStatus((prev) => ({
-          ...prev,
-          connected: true,
-          latencyMs: latency,
-          lastSync: new Date().toISOString(),
-          region: rawRegion,
-          regionAggregate,
-        }));
+        setVkStatus((prev) => {
+          const threshold = 50;
+          const latencyStable =
+            prev.latencyMs !== null &&
+            latency !== null &&
+            Math.abs(prev.latencyMs - latency) < threshold;
+
+          const nextLatency = latencyStable ? prev.latencyMs : latency;
+
+          if (
+            prev.connected === true &&
+            prev.latencyMs === nextLatency &&
+            prev.region === rawRegion &&
+            prev.regionAggregate === regionAggregate
+          ) {
+            return prev;
+          }
+
+          return {
+            ...prev,
+            connected: true,
+            latencyMs: nextLatency,
+            // lastSync est mis à jour par les actions "Sync", pas par le ping
+            region: rawRegion,
+            regionAggregate,
+          };
+        });
       } catch (e) {
-        setVkStatus((prev) => ({
-          ...prev,
-          connected: false,
-          latencyMs: null,
-          lastSync: prev.lastSync,
-          region: rawRegion,
-          regionAggregate,
-        }));
+        setVkStatus((prev) => {
+          if (
+            prev.connected === false &&
+            prev.latencyMs === null &&
+            prev.region === rawRegion &&
+            prev.regionAggregate === regionAggregate
+          ) {
+            return prev;
+          }
+          return {
+            ...prev,
+            connected: false,
+            latencyMs: null,
+            region: rawRegion,
+            regionAggregate,
+          };
+        });
       }
     };
 
@@ -726,7 +812,7 @@ const App: React.FC = () => {
             resumeDownload={resumeDownload}
             cancelDownload={cancelDownload}
             retryDownload={retryDownload}
-            clearDownloads={() => setDownloads([])}
+            clearDownloads={clearDownloads}
           />
 
           {/* Modal de mise à jour */}
