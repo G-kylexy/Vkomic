@@ -21,7 +21,7 @@ contextBridge.exposeInMainWorld("fs", {
   downloadFile: (id, url, directory, fileName) =>
     ipcRenderer.invoke("fs:downloadFile", { id, url, directory, fileName }),
   onDownloadProgress: (callback) => {
-    if (typeof callback !== "function") return () => {};
+    if (typeof callback !== "function") return () => { };
     const listener = (_event, payload) => callback(payload);
     ipcRenderer.on("fs:downloadProgress", listener);
     return () => ipcRenderer.removeListener("fs:downloadProgress", listener);
@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld("fs", {
 
 contextBridge.exposeInMainWorld("vk", {
   ping: (token) => ipcRenderer.invoke("vk:ping", token),
+  request: (url) => ipcRenderer.invoke("vk:request", url),
 });
 
 contextBridge.exposeInMainWorld("app", {
@@ -39,26 +40,26 @@ contextBridge.exposeInMainWorld("app", {
   downloadUpdate: () => ipcRenderer.invoke("app:downloadUpdate"),
   installUpdate: () => ipcRenderer.invoke("app:installUpdate"),
   onUpdateAvailable: (callback) => {
-    if (typeof callback !== "function") return () => {};
+    if (typeof callback !== "function") return () => { };
     const listener = (_event, payload) => callback(payload);
     ipcRenderer.on("app:update-available", listener);
     return () => ipcRenderer.removeListener("app:update-available", listener);
   },
   onUpdateProgress: (callback) => {
-    if (typeof callback !== "function") return () => {};
+    if (typeof callback !== "function") return () => { };
     const listener = (_event, payload) => callback(payload);
     ipcRenderer.on("app:update-progress", listener);
     return () => ipcRenderer.removeListener("app:update-progress", listener);
   },
   onUpdateReady: (callback) => {
-    if (typeof callback !== "function") return () => {};
+    if (typeof callback !== "function") return () => { };
     const listener = (_event, payload) => callback(payload);
     ipcRenderer.on("app:update-downloaded", listener);
     return () =>
       ipcRenderer.removeListener("app:update-downloaded", listener);
   },
   onUpdateError: (callback) => {
-    if (typeof callback !== "function") return () => {};
+    if (typeof callback !== "function") return () => { };
     const listener = (_event, payload) => callback(payload);
     ipcRenderer.on("app:update-error", listener);
     return () => ipcRenderer.removeListener("app:update-error", listener);

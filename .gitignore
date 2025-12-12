@@ -27,5 +27,4 @@ build
 *.sln
 *.sw?
 
-# Debug logging (can be modified locally without committing)
-utils/logger.ts
+

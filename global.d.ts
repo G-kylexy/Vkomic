@@ -52,6 +52,7 @@ declare global {
       ping: (
         token?: string,
       ) => Promise<{ ok: boolean; latency: number | null }>;
+      request: (url: string) => Promise<any>;
     };
     app?: {
       getVersion?: () => Promise<string>;

@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, shell, dialog } from "electron";
-import { autoUpdater } from "electron-updater";
+import pkg from "electron-updater";
+const { autoUpdater } = pkg;
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
@@ -400,7 +401,7 @@ app.whenReady().then(() => {
     await shell.openPath(targetPath);
   });
 
-  // Ping VK depuis le processus principal (évite les erreurs CORB côté renderer)
+  // Ping VK depuis le processus principal
   ipcMain.handle("vk:ping", async (_, token) => {
     if (!token) {
       return { ok: false, latency: null };
@@ -411,7 +412,6 @@ app.whenReady().then(() => {
       const res = await fetch(url, { method: "GET", cache: "no-store" });
       const data = await res.json();
 
-      // Si l'API retourne une erreur (ex: token invalide), on considère le ping comme échoué
       if (data.error) {
         return { ok: false, latency: null };
       }
@@ -419,6 +419,26 @@ app.whenReady().then(() => {
       return { ok: true, latency: Date.now() - start };
     } catch (err) {
       return { ok: false, latency: null };
+    }
+  });
+
+  // Nouvelle méthode générique pour faire les requêtes API VK proprement
+  ipcMain.handle("vk:request", async (_, url) => {
+    try {
+      // On utilise fetch côté Node.js (pas de CORS, pas de JSONP)
+      const res = await fetch(url, {
+        method: "GET",
+        headers: {
+          "User-Agent": "Vkomic/1.0",
+        },
+      });
+
+      const json = await res.json();
+      return json;
+    } catch (error) {
+      console.error("VK Request Failed:", error);
+      // On renvoie une structure d'erreur similaire à celle de VK pour que le front gère
+      return { error: { error_code: -1, error_msg: error.message } };
     }
   });
 

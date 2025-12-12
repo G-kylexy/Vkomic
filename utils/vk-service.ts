@@ -40,59 +40,39 @@ const MOCK_ROOT_NODES: VkNode[] = [
   },
 ];
 
-// --- HACK JSONP + Limiteur ---
-// L'API VK ne supporte pas le CORS pour les appels frontend directs.
-// JSONP permet de contourner cela en injectant une balise <script>.
-// On ajoute en plus un petit limiteur global pour �viter de spammer l'API.
-
+// --- LIMITEUR DE REQUETES ---
+// Pour eviter de spammer l'API VK et de se faire bloquer
 const RATE_LIMIT_DELAY_MS = 350; // ~3 req/s
-type QueueItem<T> = { fn: () => Promise<T>; resolve: (v: T) => void; reject: (e: any) => void };
-const requestQueue: QueueItem<any>[] = [];
+const requestQueue: (() => Promise<void>)[] = [];
 let processingQueue = false;
 
 const processQueue = async () => {
   if (processingQueue) return;
   processingQueue = true;
   while (requestQueue.length > 0) {
-    const { fn, resolve, reject } = requestQueue.shift()!;
-    try {
-      const result = await fn();
-      resolve(result);
-    } catch (err) {
-      reject(err);
-    }
+    const task = requestQueue.shift();
+    if (task) await task();
     await new Promise((r) => setTimeout(r, RATE_LIMIT_DELAY_MS));
   }
   processingQueue = false;
 };
 
-const enqueueRequest = <T>(fn: () => Promise<T>): Promise<T> => {
+// Wrapper qui met la requête en file d'attente
+const executeRequest = <T>(url: string): Promise<T> => {
   return new Promise((resolve, reject) => {
-    requestQueue.push({ fn, resolve, reject });
-    processQueue();
-  });
-};
-
-const jsonp = (url: string): Promise<any> => {
-  return enqueueRequest(() => {
-    return new Promise((resolve, reject) => {
-      const callbackName = 'vk_cb_' + Math.round(100000 * Math.random());
-      const script = document.createElement('script');
-
-      (window as any)[callbackName] = (data: any) => {
-        delete (window as any)[callbackName];
-        document.body.removeChild(script);
-        resolve(data);
-      };
-
-      script.src = `${url}&callback=${callbackName}`;
-      script.onerror = (err) => {
-        delete (window as any)[callbackName];
-        document.body.removeChild(script);
+    const task = async () => {
+      try {
+        if (!window.vk || !window.vk.request) {
+          throw new Error("VK Bridge not available");
+        }
+        const result = await window.vk.request(url);
+        resolve(result);
+      } catch (err) {
         reject(err);
-      };
-      document.body.appendChild(script);
-    });
+      }
+    };
+    requestQueue.push(task);
+    processQueue();
   });
 };
 
@@ -126,8 +106,9 @@ export const fetchVkTopic = async (
   topicId: string
 ): Promise<any> => {
   if (!token || token.length < 10) throw new Error('Invalid Token');
+  // Note: On n'a plus besoin du paramètre '&callback=...' car ce n'est plus du JSONP
   const url = `https://api.vk.com/method/board.getComments?access_token=${token}&group_id=${groupId}&topic_id=${topicId}&count=100&extended=1&v=${API_VERSION}`;
-  return jsonp(url);
+  return executeRequest(url);
 };
 
 // Version batch pour plusieurs offsets d'un même topic via VK execute (max 25 sous-appels)
@@ -156,7 +137,7 @@ const fetchVkTopicBatch = async (
     return res;
   `;
   const url = `https://api.vk.com/method/execute?access_token=${token}&v=${API_VERSION}&code=${encodeURIComponent(code)}`;
-  const data = await jsonp(url);
+  const data = await executeRequest<any>(url);
   if (data.error) {
     throw new Error(`VK execute error: ${JSON.stringify(data.error)}`);
   }
@@ -184,7 +165,7 @@ const fetchMultipleTopics = async (
   const code = `return [${calls}];`;
   const url = `https://api.vk.com/method/execute?access_token=${token}&v=${API_VERSION}&code=${encodeURIComponent(code)}`;
 
-  const data = await jsonp(url);
+  const data = await executeRequest<any>(url);
   if (data.error) {
     logError('VK execute error:', data.error);
     return topics.map(() => null);
@@ -273,7 +254,7 @@ export const searchVkBoard = async (
   const url = `https://api.vk.com/method/board.getTopics?access_token=${token}&group_id=${effectiveGroupId}&count=100&order=1&preview=1&v=${API_VERSION}`;
 
   try {
-    const data = await jsonp(url);
+    const data = await executeRequest<any>(url);
     if (data.response && data.response.items) {
       const items = data.response.items;
       const lowerQuery = query.toLowerCase();
