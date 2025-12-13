@@ -92,21 +92,9 @@ const App: React.FC = () => {
   }, []);
 
   const handleDownloadUpdate = async () => {
-    if ((window as any).app?.downloadUpdate) {
-      setUpdateInfo((prev) =>
-        prev ? { ...prev, status: "downloading" } : prev,
-      );
-      try {
-        const result = await (window as any).app.downloadUpdate();
-        if (!result?.ok && updateInfo?.url) {
-          window.shell?.openExternal
-            ? window.shell.openExternal(updateInfo.url)
-            : window.open(updateInfo.url, "_blank");
-        }
-      } catch (e) {
-        console.error("Failed to download update", e);
-      }
-    } else if (updateInfo?.url) {
+    // Redirection simple vers la page de release GitHub
+    if (updateInfo?.url) {
+      setUpdateInfo(null); // On ferme le modal
       if (window.shell?.openExternal) {
         window.shell.openExternal(updateInfo.url);
       } else {
@@ -116,14 +104,14 @@ const App: React.FC = () => {
   };
 
   const handleInstallUpdate = async () => {
-    if ((window as any).app?.installUpdate) {
-      try {
-        await (window as any).app.installUpdate();
-      } catch (e) {
-        console.error("Failed to install update", e);
+    // Même comportement pour l'installation
+    if (updateInfo?.url) {
+      setUpdateInfo(null);
+      if (window.shell?.openExternal) {
+        window.shell.openExternal(updateInfo.url);
+      } else {
+        window.open(updateInfo.url, "_blank");
       }
-    } else if (updateInfo?.url && window.shell?.openExternal) {
-      window.shell.openExternal(updateInfo.url);
     }
   };
 
