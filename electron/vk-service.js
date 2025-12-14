@@ -1,4 +1,41 @@
+import { app } from "electron";
+
 const API_VERSION = "5.131";
+const VK_ID_RE = /^\d+$/;
+
+const IS_DEV = !app.isPackaged;
+const logDev = (...args) => {
+  if (IS_DEV) console.log(...args);
+};
+const warnDev = (...args) => {
+  if (IS_DEV) console.warn(...args);
+};
+
+const normalizeVkIdOrThrow = (value, label) => {
+  const raw =
+    typeof value === "number" ? String(Math.trunc(value)) : String(value ?? "");
+  const trimmed = raw.trim();
+  if (!VK_ID_RE.test(trimmed)) {
+    throw new Error(`Invalid ${label}`);
+  }
+  return trimmed;
+};
+
+const normalizeVkIdOrDefault = (value, fallback) => {
+  try {
+    return normalizeVkIdOrThrow(value, "vk id");
+  } catch {
+    return fallback;
+  }
+};
+
+const normalizeOffset = (value) => {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) {
+    throw new Error("Invalid offset");
+  }
+  return Math.trunc(n);
+};
 
 const MOCK_ROOT_NODES = [
   {
@@ -94,18 +131,22 @@ const runParallel = async (items, limit, worker) => {
 
 const fetchVkTopicBatch = async (token, groupId, topicId, offsets) => {
   if (!token || token.length < 10) throw new Error("Invalid Token");
-  const offsetsLiteral = offsets.join(",");
+  const safeGroupId = normalizeVkIdOrThrow(groupId, "groupId");
+  const safeTopicId = normalizeVkIdOrThrow(topicId, "topicId");
+  const safeOffsets = Array.isArray(offsets)
+    ? offsets.map(normalizeOffset)
+    : [];
+  const offsetsLiteral = safeOffsets.join(",");
   const code = `
     var offsets = [${offsetsLiteral}];
     var res = [];
     var i = 0;
     while (i < offsets.length) {
       res.push(API.board.getComments({
-        group_id: ${groupId},
-        topic_id: ${topicId},
+        group_id: ${safeGroupId},
+        topic_id: ${safeTopicId},
         count: 100,
-        offset: offsets[i],
-        extended: 1
+        offset: offsets[i]
       }));
       i = i + 1;
     }
@@ -130,8 +171,11 @@ const fetchMultipleTopics = async (token, topics) => {
 
   const calls = topics
     .map(
-      (t) =>
-        `API.board.getComments({group_id:${t.groupId},topic_id:${t.topicId},count:100,extended:1})`,
+      (t) => {
+        const safeGroupId = normalizeVkIdOrThrow(t.groupId, "groupId");
+        const safeTopicId = normalizeVkIdOrThrow(t.topicId, "topicId");
+        return `API.board.getComments({group_id:${safeGroupId},topic_id:${safeTopicId},count:100})`;
+      },
     )
     .join(",");
 
@@ -252,9 +296,13 @@ const fetchAllComments = async (
   groupId,
   topicId,
   maxRetries = 3,
+  options = {},
 ) => {
-  const allItems = [];
-  let offset = 0;
+  const startOffset = normalizeOffset(options?.startOffset ?? 0);
+  const seedItems = Array.isArray(options?.seedItems) ? options.seedItems : [];
+
+  const allItems = [...seedItems];
+  let offset = startOffset;
   const count = 100;
   const BATCH_SIZE = 10;
 
@@ -303,8 +351,6 @@ const fetchAllComments = async (
 
     offset += count * BATCH_SIZE;
     if (reachedEnd) break;
-
-    await sleep(200);
   }
 
   return allItems;
@@ -331,20 +377,22 @@ const fetchNodesStructureBatch = async (token, nodes) => {
         batch.map(async (node, index) => {
           const resp = responses[index];
           if (resp && resp.items) {
-            let items = resp.items;
+          let items = resp.items;
 
-            if (resp.count > 100) {
-              try {
-                const allItems = await fetchAllComments(
-                  token,
-                  node.vkGroupId,
-                  node.vkTopicId,
-                );
-                if (allItems && allItems.length > 0) {
-                  items = allItems;
-                }
-              } catch {
-                console.warn(
+          if (resp.count > 100) {
+            try {
+              const allItems = await fetchAllComments(
+                token,
+                node.vkGroupId,
+                node.vkTopicId,
+                3,
+                { startOffset: 100, seedItems: items },
+              );
+              if (allItems && allItems.length > 0) {
+                items = allItems;
+              }
+            } catch {
+                warnDev(
                   `Failed to fetch full content for ${node.title}, using partial data.`,
                 );
               }
@@ -382,9 +430,13 @@ const fetchNodesStructureBatch = async (token, nodes) => {
 export const fetchRootIndex = async (token, groupId, topicId) => {
   try {
     const effectiveGroupId =
-      groupId && groupId.trim().length > 0 ? groupId.trim() : "203785966";
+      groupId && groupId.trim().length > 0
+        ? normalizeVkIdOrDefault(groupId, "203785966")
+        : "203785966";
     const effectiveTopicId =
-      topicId && topicId.trim().length > 0 ? topicId.trim() : "47515406";
+      topicId && topicId.trim().length > 0
+        ? normalizeVkIdOrDefault(topicId, "47515406")
+        : "47515406";
 
     const items = await fetchAllComments(token, effectiveGroupId, effectiveTopicId);
 
@@ -457,13 +509,13 @@ export const fetchFolderTreeUpToDepth = async (
   topicId,
   maxDepth = 4,
 ) => {
-  console.log("Starting fetchFolderTreeUpToDepth...");
+  logDev("Starting fetchFolderTreeUpToDepth...");
 
   const rootNodes = await fetchRootIndex(token, groupId, topicId);
 
   if (maxDepth <= 1) return rootNodes;
 
-  console.log(`Loading Level 2 (Categories) for ${rootNodes.length} roots...`);
+  logDev(`Loading Level 2 (Categories) for ${rootNodes.length} roots...`);
   const level1Expanded = await fetchNodesStructureBatch(token, rootNodes);
 
   if (maxDepth <= 2) return level1Expanded;
@@ -479,7 +531,7 @@ export const fetchFolderTreeUpToDepth = async (
 
   if (level2Nodes.length === 0) return level1Expanded;
 
-  console.log(
+  logDev(
     `Loading Level 3 (Series) for ${level2Nodes.length} sub-categories...`,
   );
   const level2Expanded = await fetchNodesStructureBatch(token, level2Nodes);
@@ -516,7 +568,7 @@ export const fetchFolderTreeUpToDepth = async (
 
   if (level3Nodes.length === 0) return level1Expanded;
 
-  console.log(
+  logDev(
     `Loading Level 4 (Deep Content) for ${level3Nodes.length} items (Comics only)...`,
   );
   const level3Expanded = await fetchNodesStructureBatch(token, level3Nodes);
@@ -534,7 +586,6 @@ export const fetchFolderTreeUpToDepth = async (
     }
   });
 
-  console.log("Done! 4 levels loaded successfully.");
+  logDev("Done! 4 levels loaded successfully.");
   return level1Expanded;
 };
-
