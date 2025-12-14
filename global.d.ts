@@ -37,6 +37,17 @@ declare global {
         size?: number | null;
         status?: string;
       }>;
+      queueDownload?: (
+        id: string,
+        url: string,
+        directory: string,
+        fileName?: string,
+      ) => Promise<{
+        ok: boolean;
+        queued?: boolean;
+        alreadyRunning?: boolean;
+      }>;
+      clearDownloadQueue?: () => Promise<boolean>;
       onDownloadProgress?: (
         callback: (payload: {
           id: string;
@@ -46,6 +57,16 @@ declare global {
           speedBytes: number | null;
         }) => void,
       ) => () => void;
+      onDownloadResult?: (
+        callback: (payload: {
+          id: string;
+          ok: boolean;
+          status?: string;
+          path?: string;
+          size?: number | null;
+          error?: string;
+        }) => void,
+      ) => () => void;
       cancelDownload?: (id: string) => Promise<boolean>;
     };
     vk?: {
@@ -53,6 +74,21 @@ declare global {
         token?: string,
       ) => Promise<{ ok: boolean; latency: number | null }>;
       request: (url: string) => Promise<any>;
+      fetchRootIndex?: (
+        token: string,
+        groupId?: string,
+        topicId?: string,
+      ) => Promise<import("./types").VkNode[]>;
+      fetchNodeContent?: (
+        token: string,
+        node: import("./types").VkNode,
+      ) => Promise<import("./types").VkNode>;
+      fetchFolderTreeUpToDepth?: (
+        token: string,
+        groupId?: string,
+        topicId?: string,
+        maxDepth?: number,
+      ) => Promise<import("./types").VkNode[]>;
     };
     app?: {
       getVersion?: () => Promise<string>;

@@ -20,11 +20,20 @@ contextBridge.exposeInMainWorld("fs", {
   revealPath: (path) => ipcRenderer.invoke("fs:revealPath", path),
   downloadFile: (id, url, directory, fileName) =>
     ipcRenderer.invoke("fs:downloadFile", { id, url, directory, fileName }),
+  queueDownload: (id, url, directory, fileName) =>
+    ipcRenderer.invoke("fs:queueDownload", { id, url, directory, fileName }),
+  clearDownloadQueue: () => ipcRenderer.invoke("fs:clearDownloadQueue"),
   onDownloadProgress: (callback) => {
     if (typeof callback !== "function") return () => { };
     const listener = (_event, payload) => callback(payload);
     ipcRenderer.on("fs:downloadProgress", listener);
     return () => ipcRenderer.removeListener("fs:downloadProgress", listener);
+  },
+  onDownloadResult: (callback) => {
+    if (typeof callback !== "function") return () => { };
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on("fs:downloadResult", listener);
+    return () => ipcRenderer.removeListener("fs:downloadResult", listener);
   },
   cancelDownload: (id) => ipcRenderer.invoke("fs:cancelDownload", id),
 });
@@ -32,6 +41,17 @@ contextBridge.exposeInMainWorld("fs", {
 contextBridge.exposeInMainWorld("vk", {
   ping: (token) => ipcRenderer.invoke("vk:ping", token),
   request: (url) => ipcRenderer.invoke("vk:request", url),
+  fetchRootIndex: (token, groupId, topicId) =>
+    ipcRenderer.invoke("vk:fetchRootIndex", { token, groupId, topicId }),
+  fetchNodeContent: (token, node) =>
+    ipcRenderer.invoke("vk:fetchNodeContent", { token, node }),
+  fetchFolderTreeUpToDepth: (token, groupId, topicId, maxDepth) =>
+    ipcRenderer.invoke("vk:fetchFolderTreeUpToDepth", {
+      token,
+      groupId,
+      topicId,
+      maxDepth,
+    }),
 });
 
 contextBridge.exposeInMainWorld("app", {

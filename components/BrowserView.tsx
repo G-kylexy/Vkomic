@@ -25,7 +25,7 @@ import {
   fetchRootIndex,
   fetchNodeContent,
   fetchFolderTreeUpToDepth,
-} from "../utils/vk-service";
+} from "../utils/vk-client";
 import { normalizeText } from "../utils/text";
 
 interface BrowserViewProps {
@@ -80,6 +80,23 @@ const BrowserView: React.FC<BrowserViewProps> = ({
   const currentNodes = currentFolder ? currentFolder.children : syncedData;
   const isSearching = debouncedQuery.trim().length > 0;
 
+  const searchIndex = React.useMemo(() => {
+    if (!syncedData) return [];
+    const index: Array<{ node: VkNode; normalizedTitle: string }> = [];
+    const stack: VkNode[] = [...syncedData];
+
+    while (stack.length > 0) {
+      const node = stack.pop();
+      if (!node) continue;
+      index.push({ node, normalizedTitle: normalizeText(node.title) });
+      if (node.children && node.children.length > 0) {
+        stack.push(...node.children);
+      }
+    }
+
+    return index;
+  }, [syncedData]);
+
   // Fonction de recherche optimisée avec useMemo
   const displayedNodes = React.useMemo(() => {
     if (!isSearching) {
@@ -93,29 +110,16 @@ const BrowserView: React.FC<BrowserViewProps> = ({
     const results: VkNode[] = [];
     const MAX_RESULTS = 100; // Limite pour éviter le freeze du DOM
 
-    const traverse = (nodes: VkNode[]) => {
-      for (const node of nodes) {
-        if (results.length >= MAX_RESULTS) return;
-
-        const normalizedTitle = normalizeText(node.title);
-        // Vérifie si TOUS les mots de la requête sont dans le titre
-        const matches = queryWords.every((word) =>
-          normalizedTitle.includes(word),
-        );
-
-        if (matches) {
-          results.push(node);
-        }
-
-        if (node.children && node.children.length > 0) {
-          traverse(node.children);
-        }
-      }
-    };
-
-    traverse(syncedData);
+    for (const entry of searchIndex) {
+      if (results.length >= MAX_RESULTS) break;
+      // Vérifie si TOUS les mots de la requête sont dans le titre
+      const matches = queryWords.every((word) =>
+        entry.normalizedTitle.includes(word),
+      );
+      if (matches) results.push(entry.node);
+    }
     return results;
-  }, [isSearching, debouncedQuery, syncedData, currentNodes]);
+  }, [isSearching, debouncedQuery, currentNodes, searchIndex]);
 
   const downloadsById = React.useMemo(() => {
     const map = new Map<string, DownloadItem>();
@@ -125,6 +129,11 @@ const BrowserView: React.FC<BrowserViewProps> = ({
 
   const fileNodes = React.useMemo(
     () => displayedNodes.filter((n) => n.type === "file"),
+    [displayedNodes],
+  );
+
+  const folderNodes = React.useMemo(
+    () => displayedNodes.filter((n) => n.type !== "file"),
     [displayedNodes],
   );
 
@@ -554,11 +563,9 @@ const BrowserView: React.FC<BrowserViewProps> = ({
           )}
 
           {/* Folders Grid */}
-          {displayedNodes.filter((n) => n.type !== "file").length > 0 && (
+          {folderNodes.length > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
-              {displayedNodes
-                .filter((n) => n.type !== "file")
-                .map((node) => {
+              {folderNodes.map((node) => {
                   const displayTitle = getDisplayTitle(node);
                   return (
                     <div

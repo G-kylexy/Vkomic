@@ -1,3 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 /* Reset and base styles */
 body,
 #root {
@@ -33,6 +37,30 @@ body {
   min-width: 480px;
 }
 
+/* Match the app background while the renderer boots */
+body {
+  background-color: #050B14;
+}
+
+/* Global scrollbar to match the dark theme */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0f172a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
 /* Custom scrollbar for consistency */
 .custom-scrollbar::-webkit-scrollbar {
   width: 6px;
@@ -64,4 +92,64 @@ body {
 /* Smooth transitions for responsive elements */
 .transition-width {
   transition: width 0.3s ease-in-out;
+}
+
+/* Fade-in utility used across views */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out both;
+}
+
+/* Rainbow animation (TopBar avatar border) */
+@keyframes rainbow-move {
+  0% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.animate-rainbow {
+  background: linear-gradient(
+    45deg,
+    #ef4444,
+    #f97316,
+    #eab308,
+    #22c55e,
+    #3b82f6,
+    #a855f7,
+    #ec4899
+  );
+  background-size: 200% 200%;
+  animation: rainbow-move 12s ease infinite;
+}
+
+/* Custom slow ping for status indicator */
+@keyframes ping-slow {
+  75%,
+  100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+.animate-ping-slow {
+  animation: ping-slow 2s cubic-bezier(0, 0, 0.2, 1) infinite;
 }

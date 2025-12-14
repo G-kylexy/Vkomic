@@ -16,6 +16,9 @@ export default defineConfig(({ mode }) => {
       host: "0.0.0.0",
       strictPort: true,
     },
+    build: {
+      target: "es2022",
+    },
     plugins: [react()],
     resolve: {
       alias: {
@@ -24,4 +27,3 @@ export default defineConfig(({ mode }) => {
     },
   };
 });
-

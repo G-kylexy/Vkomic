@@ -1,13 +1,15 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import Sidebar from "./components/Sidebar";
 import TopBar from "./components/TopBar";
 import MainView from "./components/MainView";
 import { VkNode, VkConnectionStatus, DownloadItem } from "./types";
 import { TranslationProvider } from "./i18n";
-import { DEFAULT_DOWNLOAD_PATH, MAX_CONCURRENT_DOWNLOADS, GITHUB_REPO, UI } from "./utils/constants";
+import { DEFAULT_DOWNLOAD_PATH, GITHUB_REPO, UI } from "./utils/constants";
 import { formatBytes, formatSpeed } from "./utils/formatters";
 import { mapRegion } from "./utils/region";
-import UpdateModal from "./components/UpdateModal";
+import { idbDel, idbGet, idbSet, migrateLocalStorageJsonToIdb } from "./utils/storage";
+
+const UpdateModal = React.lazy(() => import("./components/UpdateModal"));
 
 
 const App: React.FC = () => {
@@ -141,26 +143,45 @@ const App: React.FC = () => {
   });
 
   // Données synchronisées : L'arbre des dossiers/fichiers récupéré depuis VK
-  const [syncedData, setSyncedData] = useState<VkNode[] | null>(() => {
-    try {
-      const raw = localStorage.getItem("vk_synced_data");
-      if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return null;
-      return parsed as VkNode[];
-    } catch {
-      return null;
-    }
-  });
+  const [syncedData, setSyncedData] = useState<VkNode[] | null>(null);
+  const [syncedDataHydrated, setSyncedDataHydrated] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const hydrate = async () => {
+      try {
+        const stored =
+          (await idbGet<VkNode[]>("vk_synced_data")) ??
+          (await migrateLocalStorageJsonToIdb<VkNode[]>("vk_synced_data"));
+
+        if (cancelled) return;
+        setSyncedData(Array.isArray(stored) ? stored : null);
+      } catch {
+        if (cancelled) return;
+        setSyncedData(null);
+      } finally {
+        if (!cancelled) setSyncedDataHydrated(true);
+      }
+    };
+
+    hydrate();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Persistance des données synchronisées
   useEffect(() => {
-    const persist = () => {
+    if (!syncedDataHydrated) return;
+
+    const persist = async () => {
       try {
         if (syncedData) {
-          localStorage.setItem("vk_synced_data", JSON.stringify(syncedData));
+          await idbSet("vk_synced_data", syncedData);
         } else {
-          localStorage.removeItem("vk_synced_data");
+          await idbDel("vk_synced_data");
         }
       } catch (e) {
         console.error("Failed to save synced data", e);
@@ -172,7 +193,9 @@ const App: React.FC = () => {
       | undefined;
 
     if (ric) {
-      const id = ric(persist, { timeout: 2000 });
+      const id = ric(() => {
+        void persist();
+      }, { timeout: 2000 });
       return () => {
         const cancel = (window as any)
           ?.cancelIdleCallback as ((id: number) => void) | undefined;
@@ -180,9 +203,11 @@ const App: React.FC = () => {
       };
     }
 
-    const id = window.setTimeout(persist, 0);
+    const id = window.setTimeout(() => {
+      void persist();
+    }, 0);
     return () => window.clearTimeout(id);
-  }, [syncedData]);
+  }, [syncedData, syncedDataHydrated]);
 
   // État pour savoir si une synchronisation complète a déjà été effectuée
   const [hasFullSynced, setHasFullSynced] = useState(() => {
@@ -207,22 +232,39 @@ const App: React.FC = () => {
   });
 
   // Gestion des téléchargements
-  const [downloads, setDownloads] = useState<DownloadItem[]>(() => {
-    try {
-      const raw = localStorage.getItem("vk_downloads");
-      if (!raw) return [];
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return [];
+  const [downloads, setDownloads] = useState<DownloadItem[]>([]);
+  const [downloadsHydrated, setDownloadsHydrated] = useState(false);
 
-      // On remet les téléchargements "en cours" en pause au démarrage
-      // car le processus de téléchargement est perdu au rechargement
-      return (parsed as DownloadItem[]).map((d) =>
+  useEffect(() => {
+    let cancelled = false;
+
+    const normalize = (items: DownloadItem[]) =>
+      items.map((d) =>
         d.status === "downloading" ? { ...d, status: "paused" } : d,
       );
-    } catch {
-      return [];
-    }
-  });
+
+    const hydrate = async () => {
+      try {
+        const stored =
+          (await idbGet<DownloadItem[]>("vk_downloads")) ??
+          (await migrateLocalStorageJsonToIdb<DownloadItem[]>("vk_downloads"));
+
+        if (cancelled) return;
+        setDownloads(Array.isArray(stored) ? normalize(stored) : []);
+      } catch {
+        if (cancelled) return;
+        setDownloads([]);
+      } finally {
+        if (!cancelled) setDownloadsHydrated(true);
+      }
+    };
+
+    hydrate();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const downloadsRef = useRef(downloads);
   useEffect(() => {
     downloadsRef.current = downloads;
@@ -449,35 +491,79 @@ const App: React.FC = () => {
   // Clé de statut pour optimiser le useEffect de la queue
   // On ne recalcule que quand les statuts changent, pas à chaque update de progression
   const downloadStatusKey = downloads.map(d => `${d.id}:${d.status}`).join(',');
+  const enqueuedPendingDownloadsRef = useRef<Set<string>>(new Set());
 
-  // GESTION DE LA FILE D'ATTENTE (QUEUE)
+  // ENQUEUE DES TÉLÉCHARGEMENTS (QUEUE GÉRÉE CÔTÉ MAIN PROCESS)
   useEffect(() => {
-    // Compte les téléchargements actifs (en cours)
-    // Les téléchargements en pause ne comptent pas dans la limite
-    const activeCount = downloads.filter(
-      (d) => d.status === "downloading",
-    ).length;
-    const pendingItems = downloads.filter((d) => d.status === "pending");
+    if (!downloadsHydrated) return;
+    if (typeof window === "undefined" || !window.fs) return;
 
-    // Si on a moins de 5 téléchargements actifs et qu'il y a des éléments en attente
-    if (activeCount < MAX_CONCURRENT_DOWNLOADS && pendingItems.length > 0) {
-      // On lance les prochains éléments pour atteindre la limite de 5
-      const slotsAvailable = MAX_CONCURRENT_DOWNLOADS - activeCount;
-      // Traiter en priorité les plus anciens en attente (fin de liste) pour coller à l'ordre visuel
-      const toStart = pendingItems.slice(-slotsAvailable);
+    const canQueue = typeof window.fs.queueDownload === "function";
+    const canDownload = typeof window.fs.downloadFile === "function";
+    if (!canQueue && !canDownload) return;
 
-      toStart.forEach((item) => {
-        startRealDownload(
-          item.id,
-          item.url,
-          item.title,
-          item.extension,
-          item.subFolder,
-        );
-      });
+    const snapshot = downloadsRef.current;
+    const enqueued = enqueuedPendingDownloadsRef.current;
+
+    // Important: on parcourt de la fin vers le début pour respecter l'ordre visuel
+    // (addDownload ajoute en tête, donc les "plus anciens" sont en fin de liste).
+    for (let index = snapshot.length - 1; index >= 0; index--) {
+      const d = snapshot[index];
+      if (d.status !== "pending") {
+        enqueued.delete(d.id);
+        continue;
+      }
+
+      if (enqueued.has(d.id)) continue;
+      if (!downloadPath || downloadPath === DEFAULT_DOWNLOAD_PATH) continue;
+
+      enqueued.add(d.id);
+
+      let fileName = d.title;
+      if (d.extension) {
+        const ext = d.extension.toLowerCase();
+        if (!fileName.toLowerCase().endsWith(`.${ext}`)) {
+          fileName = `${fileName}.${ext}`;
+        }
+      }
+
+      let targetPath = downloadPath;
+      if (d.subFolder) {
+        const safeSubFolder = d.subFolder.replace(/[<>:"/\\|?*]+/g, "").trim();
+        if (safeSubFolder.length > 0) {
+          const separator = downloadPath.includes("\\") ? "\\" : "/";
+          const cleanPath = downloadPath.endsWith(separator)
+            ? downloadPath.slice(0, -1)
+            : downloadPath;
+          targetPath = `${cleanPath}${separator}${safeSubFolder}`;
+        }
+      }
+
+      const enqueue = async () => {
+        try {
+          if (canQueue && window.fs?.queueDownload) {
+            await window.fs.queueDownload(d.id, d.url, targetPath, fileName);
+          } else if (canDownload && window.fs?.downloadFile) {
+            void window.fs
+              .downloadFile(d.id, d.url, targetPath, fileName)
+              .catch(() => { });
+          }
+        } catch {
+          enqueued.delete(d.id);
+          setDownloads((prev) =>
+            prev.map((item) => {
+              if (item.id !== d.id) return item;
+              if (item.status !== "pending") return item;
+              return { ...item, status: "canceled", speed: "Error" };
+            }),
+          );
+        }
+      };
+
+      void enqueue();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [downloadStatusKey]); // Optimisation : ne réagit qu'aux changements de statut
+  }, [downloadStatusKey]);
 
   // Écoute de la progression réelle des téléchargements depuis le processus principal
   const lastUpdateRef = useRef<number>(0);
@@ -529,24 +615,77 @@ const App: React.FC = () => {
     };
   }, []);
 
+  useEffect(() => {
+    if (!window.fs || !window.fs.onDownloadResult) return;
+
+    const removeListener = window.fs.onDownloadResult((payload: any) => {
+      const { id, ok, status, path, size } = payload || {};
+      if (!id) return;
+
+      const formattedSize =
+        typeof size === "number" ? formatBytes(size) || undefined : undefined;
+
+      setDownloads((prev) =>
+        prev.map((d) => {
+          if (d.id !== id) return d;
+
+          const next: DownloadItem = {
+            ...d,
+            ...(path ? { path } : {}),
+            ...(formattedSize ? { size: formattedSize } : {}),
+          };
+
+          if (ok) {
+            return { ...next, status: "completed", speed: "0 MB/s" };
+          }
+
+          if (status === "aborted") {
+            return next;
+          }
+
+          if (next.status === "paused" || next.status === "canceled") {
+            return next;
+          }
+
+          return { ...next, status: "canceled", speed: "Error" };
+        }),
+      );
+    });
+
+    return () => {
+      if (removeListener) removeListener();
+    };
+  }, []);
+
   // Persistance de l'historique de téléchargement (throttled pour éviter les écritures excessives)
   const lastPersistRef = useRef<number>(0);
+  const lastPersistStatusKeyRef = useRef<string>("");
   useEffect(() => {
+    if (!downloadsHydrated) return;
     const now = Date.now();
-    // Ne persiste que toutes les 1 seconde max, ou immédiatement si statut change
-    const hasStatusChange = downloads.some(d =>
-      d.status === 'completed' || d.status === 'canceled' || d.status === 'error'
-    );
+    const statusChanged = downloadStatusKey !== lastPersistStatusKeyRef.current;
 
-    if (hasStatusChange || now - lastPersistRef.current > 1000) {
-      lastPersistRef.current = now;
+    if (!statusChanged && now - lastPersistRef.current <= 1000) {
+      return;
+    }
+
+    lastPersistRef.current = now;
+    lastPersistStatusKeyRef.current = downloadStatusKey;
+
+    const persist = async () => {
       try {
-        localStorage.setItem("vk_downloads", JSON.stringify(downloads));
+        if (downloads.length === 0) {
+          await idbDel("vk_downloads");
+        } else {
+          await idbSet("vk_downloads", downloads);
+        }
       } catch {
         // Ignore les erreurs de stockage
       }
-    }
-  }, [downloads]);
+    };
+
+    void persist();
+  }, [downloads, downloadStatusKey, downloadsHydrated]);
 
   const pauseDownload = useCallback((id: string) => {
     // On annule le téléchargement côté Electron mais on garde le statut "paused" côté UI
@@ -562,40 +701,13 @@ const App: React.FC = () => {
   }, []);
 
   const resumeDownload = useCallback((id: string) => {
-    // Relance le téléchargement
-    const downloadsSnapshot = downloadsRef.current;
-    const download = downloadsSnapshot.find((d) => d.id === id);
-    if (download) {
-      // Vérifier le nombre de téléchargements actifs pour un démarrage immédiat
-      const activeCount = downloadsSnapshot.filter(
-        (d) => d.status === "downloading",
-      ).length;
-
-      if (activeCount < MAX_CONCURRENT_DOWNLOADS) {
-        // Démarrage immédiat pour éviter le délai visuel
-        startRealDownload(
-          download.id,
-          download.url,
-          download.title,
-          download.extension,
-          download.subFolder,
-        );
-
-        setDownloads((prev) =>
-          prev.map((d) =>
-            d.id === id ? { ...d, status: "downloading", speed: "..." } : d,
-          ),
-        );
-      } else {
-        // Sinon mise en file d'attente
-        setDownloads((prev) =>
-          prev.map((d) =>
-            d.id === id ? { ...d, status: "pending", speed: "0 MB/s" } : d,
-          ),
-        );
-      }
-    }
-  }, [startRealDownload]);
+    // Remet en attente : la file est gérée côté main process
+    setDownloads((prev) =>
+      prev.map((d) =>
+        d.id === id ? { ...d, status: "pending", speed: "0 MB/s" } : d,
+      ),
+    );
+  }, []);
 
   const cancelDownload = useCallback((id: string) => {
     // Annulation réelle côté Electron
@@ -613,6 +725,10 @@ const App: React.FC = () => {
   }, []);
 
   const clearDownloads = useCallback(() => {
+    if (window.fs?.clearDownloadQueue) {
+      window.fs.clearDownloadQueue();
+    }
+    enqueuedPendingDownloadsRef.current.clear();
     setDownloads([]);
   }, []);
 
@@ -665,8 +781,31 @@ const App: React.FC = () => {
 
     const regionAggregate = mapRegion(rawRegion);
 
-    // Mesure la latence vers VK toutes les secondes (via IPC pour éviter CORB côté renderer)
-    const measurePing = async () => {
+    // Mesure la latence vers VK (via IPC) avec backoff et pause en arrière-plan
+    const BASE_INTERVAL_MS = UI.PING_INTERVAL_MS;
+    const HIDDEN_INTERVAL_MS = Math.max(BASE_INTERVAL_MS * 5, 15000);
+    const NO_TOKEN_INTERVAL_MS = Math.max(BASE_INTERVAL_MS * 10, 30000);
+    const MAX_BACKOFF_MS = 60000;
+
+    let timeoutId: number | null = null;
+    let cancelled = false;
+    let consecutiveFailures = 0;
+
+    const computeBackoff = () =>
+      Math.min(
+        BASE_INTERVAL_MS * 2 ** Math.min(consecutiveFailures, 5),
+        MAX_BACKOFF_MS,
+      );
+
+    const schedule = (delayMs: number) => {
+      if (cancelled) return;
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
+      timeoutId = window.setTimeout(loop, delayMs);
+    };
+
+    const measurePing = async (): Promise<"success" | "failure" | "no-token"> => {
       if (!vkToken) {
         setVkStatus((prev) => {
           if (
@@ -687,7 +826,7 @@ const App: React.FC = () => {
             regionAggregate,
           };
         });
-        return;
+        return "no-token";
       }
 
       try {
@@ -731,6 +870,7 @@ const App: React.FC = () => {
             regionAggregate,
           };
         });
+        return "success";
       } catch (e) {
         setVkStatus((prev) => {
           if (
@@ -749,12 +889,62 @@ const App: React.FC = () => {
             regionAggregate,
           };
         });
+        return "failure";
       }
     };
 
-    measurePing();
-    const id = setInterval(measurePing, UI.PING_INTERVAL_MS);
-    return () => clearInterval(id);
+    const loop = async () => {
+      if (cancelled) return;
+
+      const isHidden =
+        typeof document !== "undefined" && Boolean(document.hidden);
+      if (isHidden) {
+        schedule(HIDDEN_INTERVAL_MS);
+        return;
+      }
+
+      const result = await measurePing();
+      if (cancelled) return;
+
+      if (result === "failure") {
+        consecutiveFailures += 1;
+        schedule(computeBackoff());
+        return;
+      }
+
+      consecutiveFailures = 0;
+
+      if (result === "no-token") {
+        schedule(NO_TOKEN_INTERVAL_MS);
+        return;
+      }
+
+      schedule(BASE_INTERVAL_MS);
+    };
+
+    const handleVisibilityChange = () => {
+      if (cancelled) return;
+      if (typeof document === "undefined") return;
+      if (!document.hidden) {
+        schedule(0);
+      }
+    };
+
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", handleVisibilityChange);
+    }
+
+    schedule(0);
+
+    return () => {
+      cancelled = true;
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", handleVisibilityChange);
+      }
+    };
   }, [vkToken]);
 
   return (
@@ -805,15 +995,17 @@ const App: React.FC = () => {
 
           {/* Modal de mise à jour */}
           {updateInfo && (
-            <UpdateModal
-              version={updateInfo.version}
-              notes={updateInfo.notes}
-              status={updateInfo.status}
-              progress={updateInfo.progress}
-              onDownload={handleDownloadUpdate}
-              onInstall={handleInstallUpdate}
-              onClose={() => setUpdateInfo(null)}
-            />
+            <Suspense fallback={null}>
+              <UpdateModal
+                version={updateInfo.version}
+                notes={updateInfo.notes}
+                status={updateInfo.status}
+                progress={updateInfo.progress}
+                onDownload={handleDownloadUpdate}
+                onInstall={handleInstallUpdate}
+                onClose={() => setUpdateInfo(null)}
+              />
+            </Suspense>
           )}
         </div>
       </div>

@@ -1,8 +1,9 @@
-import React, { useState } from "react";
+import React, { Suspense, useState } from "react";
 import BrowserView from "./BrowserView";
-import SettingsView from "./SettingsView";
-import DownloadsView from "./DownloadsView";
-import LibraryView from "./LibraryView";
+
+const SettingsView = React.lazy(() => import("./SettingsView"));
+const DownloadsView = React.lazy(() => import("./DownloadsView"));
+const LibraryView = React.lazy(() => import("./LibraryView"));
 import { VkNode, VkConnectionStatus, DownloadItem } from "../types";
 
 interface MainViewProps {
@@ -62,50 +63,65 @@ const MainView: React.FC<MainViewProps> = ({
 }) => {
   const [navPath, setNavPath] = useState<VkNode[]>([]);
 
+  const loadingFallback = (
+    <div className="flex-1 flex items-center justify-center text-slate-400">
+      <div className="flex items-center gap-3 text-sm">
+        <span className="inline-block h-4 w-4 border-2 border-slate-600 border-t-transparent rounded-full animate-spin" />
+        Chargement...
+      </div>
+    </div>
+  );
+
   // Rendu du contenu secondaire (non-home)
   const renderSecondaryContent = () => {
-    switch (activeTab) {
-      case "settings":
-        return (
-          <SettingsView
-            vkToken={vkToken}
-            setVkToken={setVkToken}
-            vkGroupId={vkGroupId}
-            setVkGroupId={setVkGroupId}
-            vkTopicId={vkTopicId}
-            setVkTopicId={setVkTopicId}
-            downloadPath={downloadPath}
-            setDownloadPath={setDownloadPath}
-            onResetDatabase={() => {
-              setSyncedData(null);
-              setHasFullSynced(false);
-              setNavPath([]);
-            }}
-          />
-        );
-      case "downloads":
-        return (
-          <DownloadsView
-            downloads={downloads}
-            pauseDownload={pauseDownload}
-            resumeDownload={resumeDownload}
-            cancelDownload={cancelDownload}
-            retryDownload={retryDownload}
-            syncedData={syncedData}
-            downloadPath={downloadPath}
-            clearDownloads={clearDownloads}
-          />
-        );
-      case "library":
-        return (
-          <LibraryView
-            downloadPath={downloadPath}
-            onNavigateToSettings={() => setActiveTab("settings")}
-          />
-        );
-      default:
-        return null;
-    }
+    return (
+      <Suspense fallback={loadingFallback}>
+        {(() => {
+          switch (activeTab) {
+            case "settings":
+              return (
+                <SettingsView
+                  vkToken={vkToken}
+                  setVkToken={setVkToken}
+                  vkGroupId={vkGroupId}
+                  setVkGroupId={setVkGroupId}
+                  vkTopicId={vkTopicId}
+                  setVkTopicId={setVkTopicId}
+                  downloadPath={downloadPath}
+                  setDownloadPath={setDownloadPath}
+                  onResetDatabase={() => {
+                    setSyncedData(null);
+                    setHasFullSynced(false);
+                    setNavPath([]);
+                  }}
+                />
+              );
+            case "downloads":
+              return (
+                <DownloadsView
+                  downloads={downloads}
+                  pauseDownload={pauseDownload}
+                  resumeDownload={resumeDownload}
+                  cancelDownload={cancelDownload}
+                  retryDownload={retryDownload}
+                  syncedData={syncedData}
+                  downloadPath={downloadPath}
+                  clearDownloads={clearDownloads}
+                />
+              );
+            case "library":
+              return (
+                <LibraryView
+                  downloadPath={downloadPath}
+                  onNavigateToSettings={() => setActiveTab("settings")}
+                />
+              );
+            default:
+              return null;
+          }
+        })()}
+      </Suspense>
+    );
   };
 
   if (activeTab === "home") {
