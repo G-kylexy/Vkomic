@@ -35,3 +35,12 @@ Prerequis : Node.js, npm
 2. Lancer en dev : `npm run dev`
 3. Build (vite) : `npm run build`
 4. Build desktop (electron-builder) : `npm run dist`
+
+## Mobile (Expo)
+
+Le dossier `mobile/` contient une application Expo (React Native) avec une UI de base inspirée de la version desktop.
+
+- Installer les deps : `cd mobile && npm install`
+- Lancer : `npm run start` (ou depuis la racine : `npm run mobile:start`)
+- Android : `npm run android` (ou `npm run mobile:android`)
+- Web : `npm run web` (ou `npm run mobile:web`)

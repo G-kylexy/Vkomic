@@ -12,6 +12,7 @@ import { idbDel, idbGet, idbSet, migrateLocalStorageJsonToIdb } from "./utils/st
 const UpdateModal = React.lazy(() => import("./components/UpdateModal"));
 
 
+
 const App: React.FC = () => {
   // --- GESTION DE L'ÉTAT GLOBAL ---
 
@@ -23,6 +24,8 @@ const App: React.FC = () => {
     status: "available" | "downloading" | "ready";
     progress?: number;
   } | null>(null);
+
+
 
   useEffect(() => {
     const checkUpdate = async () => {
@@ -92,6 +95,8 @@ const App: React.FC = () => {
       unsubError && unsubError();
     };
   }, []);
+
+
 
   const handleDownloadUpdate = async () => {
     // Redirection simple vers la page de release GitHub
@@ -958,40 +963,46 @@ const App: React.FC = () => {
         />
 
         {/* Contenu Principal */}
-        <div className="content-wrapper flex-1 flex flex-col h-full relative">
+        <div className="content-wrapper flex-1 flex flex-col h-full relative min-w-0">
           {/* Effet visuel d'arrière-plan (Lueur bleue) */}
           <div className="absolute top-0 right-0 w-[500px] h-[500px]  pointer-events-none" />
 
           {/* Barre du haut (Recherche & Fenêtre) */}
-          <TopBar searchQuery={searchQuery} setSearchQuery={setSearchQuery} />
+          <TopBar
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            isMobile={false}
+          />
 
           {/* Vue dynamique (Change selon l'onglet actif) */}
-          <MainView
-            searchQuery={debouncedSearchQuery} // On passe la version debounced pour éviter les re-renders inutiles
-            setSearchQuery={setSearchQuery}
-            activeTab={activeTab}
-            setActiveTab={setActiveTab}
-            vkToken={vkToken}
-            setVkToken={handleSetVkToken}
-            vkGroupId={vkGroupId}
-            setVkGroupId={handleSetVkGroupId}
-            vkTopicId={vkTopicId}
-            setVkTopicId={handleSetVkTopicId}
-            syncedData={syncedData}
-            setSyncedData={setSyncedData}
-            hasFullSynced={hasFullSynced}
-            setHasFullSynced={setHasFullSynced}
-            downloadPath={downloadPath}
-            setDownloadPath={handleSetDownloadPath}
-            onVkStatusChange={setVkStatus}
-            downloads={downloads}
-            addDownload={addDownload}
-            pauseDownload={pauseDownload}
-            resumeDownload={resumeDownload}
-            cancelDownload={cancelDownload}
-            retryDownload={retryDownload}
-            clearDownloads={clearDownloads}
-          />
+          <div className="flex-1 min-h-0 flex flex-col">
+            <MainView
+              searchQuery={debouncedSearchQuery} // On passe la version debounced pour éviter les re-renders inutiles
+              setSearchQuery={setSearchQuery}
+              activeTab={activeTab}
+              setActiveTab={setActiveTab}
+              vkToken={vkToken}
+              setVkToken={handleSetVkToken}
+              vkGroupId={vkGroupId}
+              setVkGroupId={handleSetVkGroupId}
+              vkTopicId={vkTopicId}
+              setVkTopicId={handleSetVkTopicId}
+              syncedData={syncedData}
+              setSyncedData={setSyncedData}
+              hasFullSynced={hasFullSynced}
+              setHasFullSynced={setHasFullSynced}
+              downloadPath={downloadPath}
+              setDownloadPath={handleSetDownloadPath}
+              onVkStatusChange={setVkStatus}
+              downloads={downloads}
+              addDownload={addDownload}
+              pauseDownload={pauseDownload}
+              resumeDownload={resumeDownload}
+              cancelDownload={cancelDownload}
+              retryDownload={retryDownload}
+              clearDownloads={clearDownloads}
+            />
+          </div>
 
           {/* Modal de mise à jour */}
           {updateInfo && (
@@ -1009,6 +1020,7 @@ const App: React.FC = () => {
           )}
         </div>
       </div>
+
     </TranslationProvider>
   );
 };

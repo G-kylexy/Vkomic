@@ -84,7 +84,7 @@ const DownloadsView: React.FC<DownloadsViewProps> = ({
   };
 
   return (
-    <div className="flex-1 p-8 flex flex-col pt-6 animate-fade-in overflow-y-auto custom-scrollbar">
+    <div className="flex-1 px-4 sm:px-8 pt-6 sm:pt-8 pb-24 flex flex-col animate-fade-in overflow-y-auto custom-scrollbar">
       <div className="w-full flex flex-col">
         <div className="mb-10">
           <div className="flex items-center gap-3 mb-6">
@@ -155,7 +155,8 @@ const DownloadsView: React.FC<DownloadsViewProps> = ({
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <>
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full table-fixed text-left border-collapse">
                 <thead>
                   <tr>
@@ -331,6 +332,137 @@ const DownloadsView: React.FC<DownloadsViewProps> = ({
                 </tbody>
               </table>
             </div>
+
+            <div className="md:hidden flex flex-col gap-3 p-4">
+              {sortedDownloads.map((d) => {
+                const isCompleted = d.status === "completed";
+                const isDownloading = d.status === "downloading";
+                const isPaused = d.status === "paused";
+                const isCanceled = d.status === "canceled";
+                const dateLabel = formatDateISO(d.createdAt);
+                const volumeLabel = extractVolumeLabel(d.title);
+                const displaySize = d.size || "--";
+
+                const statusLabel = isCompleted
+                  ? t.downloads.completed
+                  : isCanceled
+                    ? t.downloads.canceled
+                    : isPaused
+                      ? t.downloads.statusPaused
+                      : isDownloading
+                        ? t.downloads.statusDownloading
+                        : t.downloads.statusPending;
+
+                const statusTone = isCompleted
+                  ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/30"
+                  : isCanceled
+                    ? "text-rose-400 bg-rose-500/10 border-rose-500/30"
+                    : isPaused
+                      ? "text-amber-400 bg-amber-500/10 border-amber-500/30"
+                      : "text-blue-400 bg-blue-500/10 border-blue-500/30";
+
+                const showProgress = !isCompleted && !isCanceled;
+                const progressValue = Math.max(0, d.progress || 0);
+
+                return (
+                  <div
+                    key={d.id}
+                    className="bg-[#0f1523] border border-[#1e293b] rounded-xl p-4 shadow-lg"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-semibold text-white leading-snug line-clamp-2">
+                          {d.title}
+                        </div>
+                        <div className="text-[11px] text-slate-500 mt-1 flex flex-wrap gap-2">
+                          <span className="font-mono text-slate-400">
+                            {volumeLabel}
+                          </span>
+                          {dateLabel !== "--" && (
+                            <span className="text-slate-500">• {dateLabel}</span>
+                          )}
+                        </div>
+                      </div>
+                      <span
+                        className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase border whitespace-nowrap ${statusTone}`}
+                      >
+                        {statusLabel}
+                      </span>
+                    </div>
+
+                    <div className="mt-3 flex items-center justify-between text-[11px] text-slate-400">
+                      <span className="font-mono">{displaySize}</span>
+                      {!isCompleted && !isCanceled && d.speed && d.speed !== "0 MB/s" && (
+                        <span className="text-blue-400 font-mono">{d.speed}</span>
+                      )}
+                      <span className="font-mono">{d.progress}%</span>
+                    </div>
+
+                    {showProgress && (
+                      <div className="mt-2 h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full transition-all duration-300 ${isPaused ? "bg-amber-500" : "bg-blue-600"}`}
+                          style={{ width: `${progressValue}%` }}
+                        ></div>
+                      </div>
+                    )}
+
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {isCanceled ? (
+                        <button
+                          onClick={() => retryDownload(d.id)}
+                          className="flex-1 min-w-[140px] px-3 py-2 rounded-lg bg-slate-800 text-slate-200 border border-slate-700/50 text-sm font-semibold flex items-center justify-center gap-2"
+                        >
+                          <RefreshCw size={14} />
+                          <span>{t.downloads.redownload}</span>
+                        </button>
+                      ) : !isCompleted ? (
+                        <>
+                          <button
+                            onClick={() =>
+                              isPaused ? resumeDownload(d.id) : pauseDownload(d.id)
+                            }
+                            className="flex-1 min-w-[120px] px-3 py-2 rounded-lg bg-slate-800 text-slate-200 border border-slate-700/50 text-sm font-semibold flex items-center justify-center gap-2"
+                          >
+                            {isPaused ? <Play size={14} /> : <Pause size={14} />}
+                            <span>
+                              {isPaused ? t.tooltips.resume : t.tooltips.pause}
+                            </span>
+                          </button>
+                          <button
+                            onClick={() => cancelDownload(d.id)}
+                            className="flex-1 min-w-[100px] px-3 py-2 rounded-lg bg-rose-900/40 text-rose-300 border border-rose-900/60 text-sm font-semibold flex items-center justify-center gap-2"
+                          >
+                            <X size={14} />
+                            <span>{t.tooltips.cancel}</span>
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          className="flex-1 min-w-[140px] px-3 py-2 rounded-lg bg-slate-800 text-slate-200 border border-slate-700/50 text-sm font-semibold flex items-center justify-center gap-2"
+                          onClick={() => {
+                            if (typeof window === "undefined" || !window.fs) return;
+
+                            if (window.fs.revealPath && d.path) {
+                              window.fs.revealPath(d.path);
+                            } else if (window.fs.openPath) {
+                              const folder = getFolderFromPath(d.path) || downloadPath;
+                              if (folder) {
+                                window.fs.openPath(folder);
+                              }
+                            }
+                          }}
+                        >
+                          <Folder size={14} />
+                          <span>{t.tooltips.openFolder}</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            </>
           )}
         </div>
       </div>

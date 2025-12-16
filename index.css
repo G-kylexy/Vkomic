@@ -34,7 +34,7 @@ body,
 /* Minimum app width to prevent severe layout breaking */
 html,
 body {
-  min-width: 480px;
+  min-width: 320px;
 }
 
 /* Match the app background while the renderer boots */

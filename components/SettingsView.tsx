@@ -120,7 +120,7 @@ const SettingsView: React.FC<
 
     return (
       <>
-        <div className="flex-1 p-8 flex flex-col pt-6 animate-fade-in overflow-y-auto custom-scrollbar pb-24">
+        <div className="flex-1 px-4 sm:px-8 pt-6 sm:pt-8 animate-fade-in overflow-y-auto custom-scrollbar pb-28 sm:pb-24">
           {/* En-tete */}
           <div className="mb-8">
             <h1 className="text-3xl font-bold text-white mb-2 tracking-tight">
@@ -293,7 +293,7 @@ const SettingsView: React.FC<
             </div>
 
             {/* Bouton de sauvegarde global */}
-            <div className="pt-4 flex justify-end sticky bottom-0 bg-[#050B14]/80 p-4 backdrop-blur-sm border-t border-slate-800/50 -mx-8 -mb-8 mt-8">
+            <div className="pt-4 flex justify-end sticky bottom-0 bg-[#050B14]/90 p-4 backdrop-blur-sm border-t border-slate-800/50 -mx-4 sm:-mx-8 -mb-10 sm:-mb-8 mt-8">
               <button
                 onClick={handleSave}
                 className={`flex items-center gap-2 px-8 py-3 rounded-md font-semibold text-sm transition-all duration-300 shadow-lg ${isSaved

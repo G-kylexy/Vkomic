@@ -403,7 +403,7 @@ const BrowserView: React.FC<BrowserViewProps> = ({
 
   if (!syncedData) {
     return (
-      <div className="flex-1 p-8 flex flex-col pt-6 animate-fade-in overflow-y-auto custom-scrollbar">
+      <div className="flex-1 px-4 sm:px-8 flex flex-col pt-6 animate-fade-in overflow-y-auto custom-scrollbar pb-24">
         <div className="flex-1 flex flex-col items-center justify-center -mt-20">
           <div className="w-16 h-16 bg-slate-800 rounded-2xl flex items-center justify-center mb-6 border border-slate-700 shadow-lg shadow-blue-900/10">
             <Folder className="text-slate-500" size={32} />
@@ -439,7 +439,7 @@ const BrowserView: React.FC<BrowserViewProps> = ({
     <div className="flex-1 flex flex-col h-full animate-fade-in overflow-hidden">
       {/* Header / Breadcrumbs - Fixed */}
       <div className="w-full flex-shrink-0 z-10 bg-[#050B14]/95 backdrop-blur-xl border-b border-slate-800/50 shadow-sm">
-        <div className="w-full px-4 sm:px-6 py-4">
+        <div className="w-full px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between text-sm min-h-[32px]">
             <div className="flex items-center gap-2 overflow-x-auto flex-nowrap flex-1 min-w-0 pr-2 custom-scrollbar-none">
               {!isSearching && (
@@ -554,8 +554,8 @@ const BrowserView: React.FC<BrowserViewProps> = ({
       </div>
 
       {/* Content - Scrollable */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar relative">
-        <div className="w-full px-8 py-6 flex flex-col gap-6 min-h-full">
+      <div className="flex-1 overflow-y-auto custom-scrollbar relative pb-24 md:pb-10">
+        <div className="w-full px-4 sm:px-6 lg:px-8 py-6 flex flex-col gap-6 min-h-full">
           {isLoading && (
             <div className="absolute inset-0 bg-[#050B14]/60 z-20 flex items-center justify-center backdrop-blur-sm">
               <RefreshCw className="animate-spin text-blue-500" size={40} />

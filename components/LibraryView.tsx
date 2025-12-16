@@ -161,7 +161,7 @@ const LibraryView: React.FC<LibraryViewProps> = ({
 
   if (!effectivePath) {
     return (
-      <div className="flex-1 p-8 flex flex-col pt-6 animate-fade-in overflow-y-auto custom-scrollbar">
+      <div className="flex-1 px-4 sm:px-8 pt-6 sm:pt-8 flex flex-col animate-fade-in overflow-y-auto custom-scrollbar pb-20">
         <div className="flex-1 flex flex-col items-center justify-center text-center px-6 text-slate-400 gap-4">
           <div className="w-16 h-16 rounded-full bg-slate-800/50 flex items-center justify-center mb-2">
             <Settings size={32} className="text-slate-500" />
@@ -183,7 +183,7 @@ const LibraryView: React.FC<LibraryViewProps> = ({
 
   if (!hasFsBridge) {
     return (
-      <div className="flex-1 p-8 flex flex-col pt-6 animate-fade-in overflow-y-auto custom-scrollbar">
+      <div className="flex-1 px-4 sm:px-8 pt-6 sm:pt-8 flex flex-col animate-fade-in overflow-y-auto custom-scrollbar pb-20">
         <div className="flex-1 flex flex-col items-center justify-center text-center px-6 text-slate-400 gap-3">
           <p className="font-medium text-lg">{t.library.desktopOnly}</p>
         </div>
@@ -192,7 +192,7 @@ const LibraryView: React.FC<LibraryViewProps> = ({
   }
 
   return (
-    <div className="flex-1 p-8 flex flex-col pt-6 animate-fade-in overflow-y-auto custom-scrollbar pb-24">
+    <div className="flex-1 px-4 sm:px-8 pt-6 sm:pt-8 flex flex-col animate-fade-in overflow-y-auto custom-scrollbar pb-24">
       <div className="w-full flex flex-col">
         <div className="pt-2 pb-6">
           <div className="flex items-center justify-between mb-4">

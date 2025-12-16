@@ -5,18 +5,27 @@ import { useTranslation } from "../i18n";
 interface TopBarProps {
   searchQuery: string;
   setSearchQuery: (q: string) => void;
+  isMobile: boolean;
 }
 
-const TopBar: React.FC<TopBarProps> = ({ searchQuery, setSearchQuery }) => {
+const TopBar: React.FC<TopBarProps> = ({
+  searchQuery,
+  setSearchQuery,
+  isMobile,
+}) => {
   const { t } = useTranslation();
   return (
     <header
-      className="h-12 flex items-center justify-between pl-6 pr-0 relative bg-[#050B14] z-50"
+      className={`h-12 flex items-center justify-between ${
+        isMobile ? "px-4 gap-3" : "pl-6 pr-0"
+      } relative bg-[#050B14] z-40 sticky top-0`}
       style={{ WebkitAppRegion: "drag" } as any}
     >
       {/* Search Input */}
       <div
-        className="relative flex-1 max-w-96 min-w-[150px] z-50"
+        className={`relative flex-1 ${
+          isMobile ? "max-w-full" : "max-w-96"
+        } min-w-[140px] z-50`}
         style={{ WebkitAppRegion: "no-drag" } as any}
       >
         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -35,7 +44,7 @@ const TopBar: React.FC<TopBarProps> = ({ searchQuery, setSearchQuery }) => {
 
       {/* Right Controls (User Profile + Window Controls) */}
       <div
-        className="flex items-center gap-2"
+        className={`flex items-center ${isMobile ? "gap-1" : "gap-2"}`}
         style={{ WebkitAppRegion: "no-drag" } as any}
       >
         {/* User Profile / GitHub link */}
@@ -58,26 +67,28 @@ const TopBar: React.FC<TopBarProps> = ({ searchQuery, setSearchQuery }) => {
         </button>
 
         {/* Window Controls */}
-        <div className="flex items-center">
-          <button
-            onClick={() => window.win?.minimize()}
-            className="w-12 h-12 flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
-          >
-            <Minus size={14} />
-          </button>
-          <button
-            onClick={() => window.win?.maximize()}
-            className="w-12 h-12 flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
-          >
-            <Square size={12} />
-          </button>
-          <button
-            onClick={() => window.win?.close()}
-            className="w-12 h-12 flex items-center justify-center text-slate-400 hover:text-white hover:bg-red-600 transition-colors"
-          >
-            <X size={14} />
-          </button>
-        </div>
+        {!isMobile && (
+          <div className="flex items-center">
+            <button
+              onClick={() => window.win?.minimize()}
+              className="w-12 h-12 flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+            >
+              <Minus size={14} />
+            </button>
+            <button
+              onClick={() => window.win?.maximize()}
+              className="w-12 h-12 flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+            >
+              <Square size={12} />
+            </button>
+            <button
+              onClick={() => window.win?.close()}
+              className="w-12 h-12 flex items-center justify-center text-slate-400 hover:text-white hover:bg-red-600 transition-colors"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
       </div>
     </header>
   );
