@@ -1,7 +1,7 @@
 {
   "name": "vkomic",
   "private": true,
-  "version": "1.2.0",
+  "version": "1.2.1",
   "main": "electron/main.js",
   "type": "module",
   "description": "Lecteur et téléchargeur de comics VK",
