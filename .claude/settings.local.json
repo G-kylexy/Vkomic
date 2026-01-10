@@ -14,7 +14,8 @@
       "Bash(npx expo start --port 8082 --android)",
       "Bash(findstr:*)",
       "Bash(npx tsc:*)",
-      "Bash(adb devices:*)"
+      "Bash(adb devices:*)",
+      "Bash(dir:*)"
     ]
   }
 }

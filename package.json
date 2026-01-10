@@ -66,12 +66,14 @@
     "mac": {
       "icon": "public/icon.png",
       "target": [
-        "dmg",
-        "zip"
-      ],
-      "arch": [
-        "x64",
-        "arm64"
+        {
+          "target": "dmg",
+          "arch": ["universal"]
+        },
+        {
+          "target": "zip",
+          "arch": ["universal"]
+        }
       ],
       "category": "public.app-category.utilities"
     }
