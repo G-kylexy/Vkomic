@@ -28,4 +28,4 @@ build
 *.sln
 *.sw?
 mobile
-
+.claude
