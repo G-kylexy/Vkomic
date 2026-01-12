@@ -228,9 +228,11 @@ export const useDownloads = (downloadPath: string) => {
                         ...(formattedSize ? { size: formattedSize } : {}),
                     };
                     if (ok) return { ...next, status: "completed", speed: "0 MB/s" };
-                    if (status === "aborted") return next;
+                    // Si l'utilisateur a mis en pause ou annulé, ne pas changer le statut
                     if (next.status === "paused" || next.status === "canceled") return next;
-                    return { ...next, status: "canceled", speed: "Error" };
+                    // Si aborted par le système, marquer en erreur pour retry
+                    if (status === "aborted") return { ...next, status: "error", speed: "Interrompu" };
+                    return { ...next, status: "error", speed: "Erreur" };
                 })
             );
         });

@@ -200,48 +200,26 @@ const cleanTitle = (text) => {
 };
 
 const parseTopicBody = (text, excludeTopicId) => {
-  const lines = text
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => l.length > 0);
-
   const nodes = [];
   const seenIds = new Set();
-  const linkRegex = /vk\.com\/topic-(\d+)_(\d+)/;
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (!line.includes("vk.com/topic-")) continue;
+  // Regex pour BBCode VK: [topic-GROUP_TOPIC|Texte]
+  const bbcodeRegex = /\[topic-(\d+)_(\d+)\|([^\]]+)\]/g;
 
-    const match = line.match(linkRegex);
-    if (!match) continue;
+  // Aussi gérer le format avec @ : @topic-GROUP_TOPIC (Texte)
+  const mentionRegex = /@topic-(\d+)_(\d+)(?:\s*\(([^)]+)\))?/g;
 
-    const topicId = match[2];
+  // 1. Parser les BBCode VK d'abord (plus fiable car contient le titre)
+  let bbMatch;
+  while ((bbMatch = bbcodeRegex.exec(text)) !== null) {
+    const [, groupId, topicId, linkText] = bbMatch;
     if (excludeTopicId && topicId === excludeTopicId) continue;
 
     const uniqueId = `topic_${topicId}`;
     if (seenIds.has(uniqueId)) continue;
 
-    let title = "";
-    const parts = line.split(/http|vk\.com/);
-    if (parts[0].trim().length > 3) {
-      title = parts[0];
-    } else if (i > 0) {
-      const prevLine = lines[i - 1];
-      if (!prevLine.includes("vk.com") && prevLine.length > 2) {
-        title = prevLine;
-      }
-    }
-
-    if (!title) {
-      const withoutLink = line
-        .replace(/https?:\/\/vk\.com\/topic-\d+_\d+/i, "")
-        .trim();
-      title = withoutLink || `Topic ${topicId}`;
-    }
-
-    title = cleanTitle(title);
-    if (!title) title = `Topic ${topicId}`;
+    let title = cleanTitle(linkText);
+    if (!title || title.length < 2) title = `Topic ${topicId}`;
 
     if (title.length < 200) {
       seenIds.add(uniqueId);
@@ -249,12 +227,104 @@ const parseTopicBody = (text, excludeTopicId) => {
         id: uniqueId,
         title,
         type: "genre",
-        url: `https://vk.com/topic-${match[1]}_${match[2]}`,
-        vkGroupId: match[1],
-        vkTopicId: match[2],
+        url: `https://vk.com/topic-${groupId}_${topicId}`,
+        vkGroupId: groupId,
+        vkTopicId: topicId,
         children: [],
         isLoaded: false,
       });
+    }
+  }
+
+  // 2. Parser les mentions @topic-XXX
+  let mentionMatch;
+  while ((mentionMatch = mentionRegex.exec(text)) !== null) {
+    const [, groupId, topicId, linkText] = mentionMatch;
+    if (excludeTopicId && topicId === excludeTopicId) continue;
+
+    const uniqueId = `topic_${topicId}`;
+    if (seenIds.has(uniqueId)) continue;
+
+    let title = linkText ? cleanTitle(linkText) : `Topic ${topicId}`;
+    if (!title || title.length < 2) title = `Topic ${topicId}`;
+
+    if (title.length < 200) {
+      seenIds.add(uniqueId);
+      nodes.push({
+        id: uniqueId,
+        title,
+        type: "genre",
+        url: `https://vk.com/topic-${groupId}_${topicId}`,
+        vkGroupId: groupId,
+        vkTopicId: topicId,
+        children: [],
+        isLoaded: false,
+      });
+    }
+  }
+
+  // 3. Parser les URLs en clair (fallback)
+  const lines = text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line.includes("vk.com/topic-")) continue;
+
+    // Reset regex lastIndex for each line
+    const lineUrlRegex = /vk\.com\/topic-(\d+)_(\d+)/g;
+    let match;
+
+    while ((match = lineUrlRegex.exec(line)) !== null) {
+      const [, groupId, topicId] = match;
+      if (excludeTopicId && topicId === excludeTopicId) continue;
+
+      const uniqueId = `topic_${topicId}`;
+      if (seenIds.has(uniqueId)) continue;
+
+      let title = "";
+
+      // Essayer d'extraire le titre avant l'URL
+      const beforeUrl = line.substring(0, match.index);
+      const parts = beforeUrl.split(/https?:\/\//);
+      const lastPart = parts[parts.length - 1].trim();
+
+      if (lastPart.length > 2) {
+        title = lastPart;
+      } else if (i > 0) {
+        // Chercher dans la ligne précédente
+        const prevLine = lines[i - 1];
+        if (!prevLine.includes("vk.com") && prevLine.length > 2) {
+          title = prevLine;
+        }
+      }
+
+      if (!title) {
+        // Essayer après l'URL
+        const afterUrl = line.substring(match.index + match[0].length).trim();
+        if (afterUrl.length > 2 && !afterUrl.includes("vk.com")) {
+          title = afterUrl;
+        }
+      }
+
+      title = cleanTitle(title);
+      if (!title || title.length < 2) title = `Topic ${topicId}`;
+
+      if (title.length < 200) {
+        seenIds.add(uniqueId);
+        nodes.push({
+          id: uniqueId,
+          title,
+          type: "genre",
+          url: `https://vk.com/topic-${groupId}_${topicId}`,
+          vkGroupId: groupId,
+          vkTopicId: topicId,
+          children: [],
+          isLoaded: false,
+        });
+      }
     }
   }
 
