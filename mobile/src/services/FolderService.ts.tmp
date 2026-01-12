@@ -1,0 +1,26 @@
+/**
+ * Ensures a SAF tree URI is converted to a browseable document URI for folders
+ */
+export const ensureFolderUri = (uri: string): string => {
+    if (!uri || !uri.startsWith("content://") || !uri.includes("/tree/")) {
+        return uri;
+    }
+
+    // Si c'est déjà une URI document complète dans un arbre, on garde
+    if (uri.includes("/document/")) {
+        return uri;
+    }
+
+    // Transformer l'URI Tree en URI Document exploitable pour les opérations sur le dossier
+    try {
+        const treeId = uri.split('/').pop();
+        if (treeId) {
+            const folderDocumentUri = `${uri}/document/${treeId}`;
+            return folderDocumentUri;
+        }
+    } catch (e) {
+        console.warn("ensureFolderUri failure:", e);
+    }
+
+    return uri;
+};
