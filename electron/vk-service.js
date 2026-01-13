@@ -700,14 +700,14 @@ export const fetchNodeContent = async (token, node) => {
  * @param {number} maxDepth - Profondeur max (défaut: 4)
  */
 export const fetchFolderTreeUpToDepth = async (token, groupId, topicId, maxDepth = 4) => {
-  logDev("Starting fetchFolderTreeUpToDepth...");
+  // logDev("Starting fetchFolderTreeUpToDepth...");
 
   // Niveau 1: Catégories racines
   const rootNodes = await fetchRootIndex(token, groupId, topicId);
   if (maxDepth <= 1) return rootNodes;
 
   // Niveau 2: Genres (A-B, C-D, etc.)
-  logDev(`Loading Level 2 for ${rootNodes.length} roots...`);
+  // logDev(`Loading Level 2 for ${rootNodes.length} roots...`);
   const level1Expanded = await fetchNodesStructureBatch(token, rootNodes);
   if (maxDepth <= 2) return level1Expanded;
 
@@ -723,7 +723,7 @@ export const fetchFolderTreeUpToDepth = async (token, groupId, topicId, maxDepth
 
   if (level2Nodes.length === 0) return level1Expanded;
 
-  logDev(`Loading Level 3 for ${level2Nodes.length} sub-categories...`);
+  // logDev(`Loading Level 3 for ${level2Nodes.length} sub-categories...`);
   const level2Expanded = await fetchNodesStructureBatch(token, level2Nodes);
 
   // Mapper les résultats pour mise à jour
@@ -755,7 +755,7 @@ export const fetchFolderTreeUpToDepth = async (token, groupId, topicId, maxDepth
 
   if (level3Nodes.length === 0) return level1Expanded;
 
-  logDev(`Loading Level 4 for ${level3Nodes.length} items (Comics only)...`);
+  // logDev(`Loading Level 4 for ${level3Nodes.length} items (Comics only)...`);
   const level3Expanded = await fetchNodesStructureBatch(token, level3Nodes);
 
   const level3Map = new Map();
@@ -771,7 +771,7 @@ export const fetchFolderTreeUpToDepth = async (token, groupId, topicId, maxDepth
     }
   });
 
-  logDev("Done! 4 levels loaded successfully.");
+  // logDev("Done! 4 levels loaded successfully.");
   return level1Expanded;
 };
 
