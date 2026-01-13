@@ -5,7 +5,7 @@ import { DEFAULT_DOWNLOAD_PATH, UI } from "../utils/constants";
 import { formatBytes, formatSpeed } from "../utils/formatters";
 import { idbDel, idbGet, idbSet, migrateLocalStorageJsonToIdb } from "../utils/storage";
 
-export const useDownloads = (downloadPath: string) => {
+export const useDownloads = (downloadPath: string, vkToken?: string) => {
     const [downloads, setDownloads] = useState<DownloadItem[]>([]);
     const [downloadsHydrated, setDownloadsHydrated] = useState(false);
     const downloadsRef = useRef(downloads);
@@ -54,7 +54,7 @@ export const useDownloads = (downloadPath: string) => {
 
     // 2. Add Download
     const addDownload = useCallback((node: VkNode, subFolder?: string) => {
-        if (!node.url) return;
+        if (!node.url && (!node.vkOwnerId || !node.id)) return;
 
         if (!downloadPath || downloadPath === DEFAULT_DOWNLOAD_PATH) {
             if (!missingDownloadPathAlertedRef.current) {
@@ -99,6 +99,9 @@ export const useDownloads = (downloadPath: string) => {
                 createdAt: new Date().toISOString(),
                 size: existing && existing.size ? existing.size : formattedSize,
                 path: existing && (existing as any).path ? (existing as any).path : undefined,
+                vkOwnerId: node.vkOwnerId,
+                vkDocId: node.id.replace("doc_", ""),
+                vkAccessKey: node.vkAccessKey,
             };
 
             if (existing) {
@@ -159,9 +162,9 @@ export const useDownloads = (downloadPath: string) => {
             const enqueue = async () => {
                 try {
                     if (canQueue && window.fs?.queueDownload) {
-                        await window.fs.queueDownload(d.id, d.url, targetPath, fileName);
+                        await window.fs.queueDownload(d.id, d.url, targetPath, fileName, vkToken, d.vkOwnerId, d.vkDocId, d.vkAccessKey);
                     } else if (canDownload && window.fs?.downloadFile) {
-                        void window.fs.downloadFile(d.id, d.url, targetPath, fileName).catch(() => { });
+                        void window.fs.downloadFile(d.id, d.url, targetPath, fileName, vkToken, d.vkOwnerId, d.vkDocId, d.vkAccessKey).catch(() => { });
                     }
                 } catch {
                     enqueued.delete(d.id);

@@ -1,3 +1,15 @@
+/**
+ * MAIN.JS - Processus principal Electron
+ * ======================================
+ *
+ * Ce fichier gère:
+ * - La fenêtre principale de l'application
+ * - Les communications IPC avec le renderer (React)
+ * - Le système de téléchargement avec file d'attente
+ * - Les mises à jour automatiques via GitHub
+ * - L'intégration avec l'API VK
+ */
+
 import { app, BrowserWindow, ipcMain, shell, dialog, session } from "electron";
 import pkg from "electron-updater";
 const { autoUpdater } = pkg;
@@ -8,16 +20,24 @@ import {
   fetchFolderTreeUpToDepth as vkFetchFolderTreeUpToDepth,
   fetchNodeContent as vkFetchNodeContent,
   fetchRootIndex as vkFetchRootIndex,
+  refreshDocUrl as vkRefreshDocUrl,
 } from "./vk-service.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// ============================================================================
+// CONFIGURATION
+// ============================================================================
+
 let mainWindow;
 let updateFeedReady = false;
+let lastVkToken = null;  // Cache du dernier token VK utilisé
 
 const GITHUB_REPO = "G-kylexy/vkomic";
 const APP_BACKGROUND_COLOR = "#050B14";
+
+/** Content Security Policy pour la production */
 const CSP_PROD = [
   "default-src 'self'",
   "script-src 'self'",
@@ -30,6 +50,11 @@ const CSP_PROD = [
   "frame-ancestors 'none'",
 ].join("; ");
 
+// ============================================================================
+// SINGLE INSTANCE LOCK
+// ============================================================================
+
+/** Empêche l'ouverture de plusieurs instances de l'app */
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 if (!gotSingleInstanceLock) {
   app.quit();
@@ -41,37 +66,45 @@ if (!gotSingleInstanceLock) {
   });
 }
 
+// ============================================================================
+// UTILITAIRES
+// ============================================================================
+
+/** Normalise les notes de release (peut être string ou array) */
 const normalizeReleaseNotes = (notes) => {
   if (Array.isArray(notes)) {
     return notes
-      .map((entry) =>
-        typeof entry === "string" ? entry : entry?.note ? entry.note : "",
-      )
+      .map((entry) => typeof entry === "string" ? entry : entry?.note || "")
       .filter(Boolean)
       .join("\n\n");
   }
   return typeof notes === "string" ? notes : "";
 };
 
+/** Envoie un message au renderer (React) via IPC */
 const sendToRenderer = (channel, payload) => {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send(channel, payload);
   }
 };
 
+// ============================================================================
+// CRÉATION DE LA FENÊTRE
+// ============================================================================
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    frame: false,
+    frame: false,              // Fenêtre sans bordure (titre custom)
     autoHideMenuBar: true,
-    show: false,
+    show: false,               // Afficher après ready-to-show
     backgroundColor: APP_BACKGROUND_COLOR,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
+      contextIsolation: true,  // Sécurité: isolation du contexte
+      nodeIntegration: false,  // Sécurité: pas d'accès Node dans le renderer
+      sandbox: true,           // Sécurité: sandbox activé
       spellcheck: false,
       devTools: !app.isPackaged,
     },
@@ -82,6 +115,7 @@ function createWindow() {
     mainWindow.show();
   });
 
+  // En dev: charge le serveur Vite, en prod: charge le build
   if (!app.isPackaged) {
     mainWindow.loadURL("http://localhost:3000");
     mainWindow.webContents.once("did-frame-finish-load", () => {
@@ -91,6 +125,10 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, "../dist/index.html"));
   }
 }
+
+// ============================================================================
+// AUTO-UPDATER (Mises à jour via GitHub)
+// ============================================================================
 
 const ensureUpdateFeed = () => {
   if (updateFeedReady || !app.isPackaged) return;
@@ -113,6 +151,7 @@ const setupAutoUpdater = () => {
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = true;
 
+  // Notifie le renderer des événements de mise à jour
   autoUpdater.on("update-available", (info) => {
     sendToRenderer("app:update-available", {
       version: info.version,
@@ -143,50 +182,58 @@ const setupAutoUpdater = () => {
   });
 };
 
+// ============================================================================
+// CONTENT SECURITY POLICY
+// ============================================================================
+
 const setupContentSecurityPolicy = () => {
   if (!app.isPackaged) return;
 
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-    const responseHeaders = {
-      ...(details.responseHeaders || {}),
-      "Content-Security-Policy": [CSP_PROD],
-    };
-
-    callback({ responseHeaders });
+    callback({
+      responseHeaders: {
+        ...(details.responseHeaders || {}),
+        "Content-Security-Policy": [CSP_PROD],
+      },
+    });
   });
 };
+
+// ============================================================================
+// INITIALISATION DE L'APPLICATION
+// ============================================================================
 
 app.whenReady().then(() => {
   setupContentSecurityPolicy();
   createWindow();
   setupAutoUpdater();
 
-  // IPC handlers for window controls
+  // ========================================================================
+  // IPC HANDLERS - Contrôles de fenêtre
+  // ========================================================================
+
   ipcMain.on("win:min", () => mainWindow.minimize());
-
   ipcMain.on("win:max", () =>
-    mainWindow.isMaximized() ? mainWindow.unmaximize() : mainWindow.maximize(),
+    mainWindow.isMaximized() ? mainWindow.unmaximize() : mainWindow.maximize()
   );
-
   ipcMain.on("win:close", () => mainWindow.close());
 
-  // IPC handler for opening external links
-  ipcMain.on("open-external", (event, url) => {
-    shell.openExternal(url);
-  });
+  // Ouvre un lien dans le navigateur par défaut
+  ipcMain.on("open-external", (_, url) => shell.openExternal(url));
 
-  // Sélecteur natif pour choisir un dossier de téléchargement
+  // ========================================================================
+  // IPC HANDLERS - Système de fichiers
+  // ========================================================================
+
+  /** Ouvre le sélecteur de dossier natif */
   ipcMain.handle("dialog:selectFolder", async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
       properties: ["openDirectory", "createDirectory"],
     });
-    if (result.canceled || result.filePaths.length === 0) {
-      return null;
-    }
-    return result.filePaths[0];
+    return result.canceled ? null : result.filePaths[0];
   });
 
-  // Lecture d'un dossier local (Bibliothèque)
+  /** Liste le contenu d'un dossier local (pour la Bibliothèque) */
   ipcMain.handle("fs:listDirectory", async (_, targetPath) => {
     if (!targetPath || typeof targetPath !== "string") {
       throw new Error("Invalid path");
@@ -197,15 +244,11 @@ app.whenReady().then(() => {
       throw new Error("Path is not a directory");
     }
 
-    const dirEntries = await fs.promises.readdir(targetPath, {
-      withFileTypes: true,
-    });
-
+    const dirEntries = await fs.promises.readdir(targetPath, { withFileTypes: true });
     const entries = await Promise.all(
       dirEntries.map(async (entry) => {
         const entryPath = path.join(targetPath, entry.name);
         const entryStats = await fs.promises.stat(entryPath);
-
         return {
           name: entry.name,
           path: entryPath,
@@ -213,9 +256,10 @@ app.whenReady().then(() => {
           size: entryStats.isDirectory() ? null : entryStats.size,
           modifiedAt: entryStats.mtimeMs,
         };
-      }),
+      })
     );
 
+    // Tri: dossiers d'abord, puis par nom
     entries.sort((a, b) => {
       if (a.isDirectory && !b.isDirectory) return -1;
       if (!a.isDirectory && b.isDirectory) return 1;
@@ -225,95 +269,102 @@ app.whenReady().then(() => {
     return { path: targetPath, entries };
   });
 
-  const DOWNLOAD_CONCURRENCY = 5;
-  const activeDownloads = new Map();
-  const downloadQueue = [];
-  const queuedDownloadIds = new Set();
-  const downloadTasks = new Map();
+  // ========================================================================
+  // SYSTÈME DE TÉLÉCHARGEMENT
+  // ========================================================================
 
+  /** Nombre max de téléchargements simultanés (réduit pour éviter le rate-limiting VK) */
+  const DOWNLOAD_CONCURRENCY = 3;
+
+  const activeDownloads = new Map();    // Map<id, AbortController>
+  const downloadQueue = [];              // File d'attente des IDs
+  const queuedDownloadIds = new Set();   // Set pour vérification rapide
+  const downloadTasks = new Map();       // Map<id, TaskInfo>
+
+  /** Envoie la progression au renderer */
   function sendDownloadProgress(payload) {
     sendToRenderer("fs:downloadProgress", payload);
   }
 
+  /** Envoie le résultat final au renderer */
   function sendDownloadResult(payload) {
     sendToRenderer("fs:downloadResult", payload);
   }
 
+  /**
+   * Résout le chemin de destination d'un téléchargement
+   * Sanitize le nom de fichier pour éviter les caractères invalides
+   */
   function resolveDownloadTarget(url, directory, fileName) {
-    const safeDirectory = directory;
+    let finalName = fileName?.trim() || undefined;
 
-    let finalName =
-      typeof fileName === "string" && fileName.trim().length > 0
-        ? fileName.trim()
-        : undefined;
-
-    try {
-      if (!finalName) {
+    // Si pas de nom, extraire depuis l'URL
+    if (!finalName) {
+      try {
         const urlObj = new URL(url);
-        const pathname = urlObj.pathname || "";
-        const lastSegment =
-          pathname.split("/").filter(Boolean).pop() || "download";
+        const lastSegment = urlObj.pathname.split("/").filter(Boolean).pop() || "download";
         finalName = decodeURIComponent(lastSegment);
+      } catch {
+        finalName = "download";
       }
-    } catch {
-      if (!finalName) finalName = "download";
     }
 
-    const sanitizedName =
-      (finalName || "download").replace(/[<>:"/\\|?*]+/g, "").trim() ||
-      "download";
-    const targetPath = path.join(safeDirectory, sanitizedName);
+    const sanitizedName = (finalName || "download").replace(/[<>:"/\\|?*]+/g, "").trim() || "download";
+    const targetPath = path.join(directory, sanitizedName);
 
-    return { safeDirectory, targetPath };
+    return { safeDirectory: directory, targetPath };
   }
 
+  /** Génère un résultat d'abort avec les infos du fichier partiel */
   async function resolveAbortResult(task) {
     try {
-      const { targetPath } = resolveDownloadTarget(
-        task.url,
-        task.directory,
-        task.fileName,
-      );
+      const { targetPath } = resolveDownloadTarget(task.url, task.directory, task.fileName);
       const stats = await fs.promises.stat(targetPath);
-      return {
-        ok: false,
-        status: "aborted",
-        path: targetPath,
-        size: stats.size,
-      };
+      return { ok: false, status: "aborted", path: targetPath, size: stats.size };
     } catch {
-      try {
-        const { targetPath } = resolveDownloadTarget(
-          task.url,
-          task.directory,
-          task.fileName,
-        );
-        return { ok: false, status: "aborted", path: targetPath, size: 0 };
-      } catch {
-        return { ok: false, status: "aborted", path: "", size: 0 };
-      }
+      const { targetPath } = resolveDownloadTarget(task.url || "", task.directory, task.fileName);
+      return { ok: false, status: "aborted", path: targetPath, size: 0 };
     }
   }
 
+  /**
+   * Télécharge un fichier avec support de:
+   * - Reprise (Range headers)
+   * - Rafraîchissement d'URL VK
+   * - Détection d'erreurs HTML (fichiers protégés)
+   */
   async function downloadFileInternal(controller, args) {
-    const { id, url, directory, fileName } = args || {};
+    const { id, url, directory, fileName, token, vkOwnerId, vkDocId, vkAccessKey } = args || {};
+    const useToken = token || lastVkToken;
 
-    if (!id || typeof id !== "string") {
-      throw new Error("Invalid download identifier");
-    }
-    if (!url || typeof url !== "string") {
-      throw new Error("Invalid URL for download");
-    }
-    if (!directory || typeof directory !== "string") {
-      throw new Error("Invalid download directory");
+    if (!id || typeof id !== "string") throw new Error("Invalid download identifier");
+    if ((!url || typeof url !== "string") && !vkDocId) throw new Error("Invalid URL for download");
+    if (!directory || typeof directory !== "string") throw new Error("Invalid download directory");
+
+    let currentUrl = url || "";
+
+    // === Rafraîchissement automatique des URLs VK ===
+    // Les URLs VK expirent, on tente de récupérer une URL fraîche via l'API
+    if (useToken && ((currentUrl && currentUrl.includes("vk.com/doc")) || vkDocId)) {
+      const ownerId = vkOwnerId || currentUrl?.match(/doc(-?\d+)_/)?.[1];
+      const docId = vkDocId || currentUrl?.match(/_(\d+)/)?.[1] || id.replace("doc_", "");
+
+      if (ownerId && docId) {
+        const refresh = await vkRefreshDocUrl(useToken, ownerId, docId, currentUrl, vkAccessKey);
+        if (refresh.url) {
+          currentUrl = refresh.url;
+          // Conserver le paramètre 'dl' si présent (requis pour certains téléchargements)
+          const dlMatch = url?.match(/[?&]dl=([^&]+)/);
+          if (dlMatch && !currentUrl.includes("dl=")) {
+            currentUrl += (currentUrl.includes("?") ? "&" : "?") + `dl=${dlMatch[1]}`;
+          }
+        }
+      }
     }
 
-    const { safeDirectory, targetPath } = resolveDownloadTarget(
-      url,
-      directory,
-      fileName,
-    );
+    const { safeDirectory, targetPath } = resolveDownloadTarget(currentUrl, directory, fileName);
 
+    // === Support de la reprise ===
     let startByte = 0;
     try {
       const stats = await fs.promises.stat(targetPath);
@@ -323,87 +374,72 @@ app.whenReady().then(() => {
     }
 
     try {
-      const headers = {};
+      const headers = { "User-Agent": "Vkomic/1.0" };
       if (startByte > 0) {
         headers["Range"] = `bytes=${startByte}-`;
       }
 
-      const res = await fetch(url, {
-        signal: controller.signal,
-        headers,
-      });
+      const res = await fetch(currentUrl, { signal: controller.signal, headers });
+      const contentType = res.headers.get("content-type") || "";
 
+      // === Détection d'erreurs VK ===
+      // Si VK renvoie HTML au lieu du fichier, c'est une erreur (fichier protégé, supprimé, etc.)
+      const docExtensions = ['.pdf', '.cbz', '.cbr', '.zip', '.rar', '.epub', '.djvu', '.doc', '.docx', '.jpg', '.jpeg', '.png', '.gif'];
+      const isDocFile = docExtensions.some(ext => fileName?.toLowerCase().endsWith(ext));
+      if (contentType.includes("text/html") && isDocFile) {
+        const error = new Error("Le fichier est protégé ou n'est plus disponible sur VK");
+        error.isVkHtmlError = true;
+        throw error;
+      }
+
+      // === Gestion des codes HTTP ===
       if (!res.ok && res.status !== 206) {
         if (res.status === 416) {
-          sendDownloadProgress({
-            id,
-            receivedBytes: startByte,
-            totalBytes: startByte,
-            progress: 100,
-            speedBytes: 0,
-          });
+          // Range Not Satisfiable = fichier déjà complet
+          sendDownloadProgress({ id, receivedBytes: startByte, totalBytes: startByte, progress: 100, speedBytes: 0 });
           return { ok: true, path: targetPath, size: startByte };
         }
         throw new Error(`Failed to download file (HTTP ${res.status})`);
       }
 
-      if (res.status === 200) {
-        startByte = 0;
-      }
+      // Si le serveur ne supporte pas Range, recommencer depuis le début
+      if (res.status === 200) startByte = 0;
 
       await fs.promises.mkdir(safeDirectory, { recursive: true });
 
+      // === Streaming du fichier ===
       let receivedBytes = 0;
-      const contentLengthHeader = res.headers.get("content-length");
-      const chunkLength = contentLengthHeader
-        ? parseInt(contentLengthHeader, 10)
-        : null;
-
+      const contentLength = res.headers.get("content-length");
+      const chunkLength = contentLength ? parseInt(contentLength, 10) : null;
       const totalBytes = chunkLength ? startByte + chunkLength : null;
-
       const startedAt = Date.now();
 
       const emitProgress = (forceComplete = false) => {
         const elapsedSeconds = Math.max((Date.now() - startedAt) / 1000, 0.001);
         const speedBytes = receivedBytes / elapsedSeconds;
-
         const currentTotalBytes = startByte + receivedBytes;
+        const progressValue = forceComplete || (totalBytes && currentTotalBytes >= totalBytes)
+          ? 100
+          : totalBytes ? Math.min(100, (currentTotalBytes / totalBytes) * 100) : null;
 
-        const progressValue =
-          forceComplete || (totalBytes && currentTotalBytes >= totalBytes)
-            ? 100
-            : totalBytes
-              ? Math.min(100, (currentTotalBytes / totalBytes) * 100)
-              : null;
-
-        sendDownloadProgress({
-          id,
-          receivedBytes: currentTotalBytes,
-          totalBytes,
-          progress: progressValue,
-          speedBytes,
-        });
+        sendDownloadProgress({ id, receivedBytes: currentTotalBytes, totalBytes, progress: progressValue, speedBytes });
       };
 
-      if (startByte > 0) {
-        emitProgress();
-      }
+      if (startByte > 0) emitProgress();
 
-      const reader =
-        typeof res.body?.getReader === "function" ? res.body.getReader() : null;
-
+      const reader = res.body?.getReader?.();
       if (!reader) {
-        const arrayBuffer = await res.arrayBuffer();
-        const buffer = Buffer.from(arrayBuffer);
+        // Fallback pour navigateurs sans streaming
+        const buffer = Buffer.from(await res.arrayBuffer());
         receivedBytes = buffer.length;
         await fs.promises.writeFile(targetPath, buffer);
         emitProgress(true);
         return { ok: true, path: targetPath, size: receivedBytes };
       }
 
+      // Écriture streaming avec gestion du backpressure
       const flags = startByte > 0 && res.status === 206 ? "a" : "w";
       const fileStream = fs.createWriteStream(targetPath, { flags });
-
       let lastEmit = Date.now();
 
       try {
@@ -416,10 +452,10 @@ app.whenReady().then(() => {
             if (!fileStream.write(chunk)) {
               await new Promise((resolve) => fileStream.once("drain", resolve));
             }
-            const now = Date.now();
-            if (now - lastEmit >= 250) {
+            // Throttle les updates de progression (250ms)
+            if (Date.now() - lastEmit >= 250) {
               emitProgress();
-              lastEmit = now;
+              lastEmit = Date.now();
             }
           }
         }
@@ -432,83 +468,52 @@ app.whenReady().then(() => {
         emitProgress(true);
       } catch (error) {
         fileStream.destroy();
-
         if (error?.name === "AbortError") {
-          return {
-            ok: false,
-            status: "aborted",
-            path: targetPath,
-            size: startByte + receivedBytes,
-          };
+          return { ok: false, status: "aborted", path: targetPath, size: startByte + receivedBytes };
         }
-
-        await fs.promises.rm(targetPath, { force: true }).catch(() => { });
+        await fs.promises.rm(targetPath, { force: true }).catch(() => {});
         throw error;
       }
 
       return { ok: true, path: targetPath, size: startByte + receivedBytes };
     } catch (error) {
-      const isAbortError =
-        error?.name === "AbortError" ||
-        error?.code === "ABORT_ERR" ||
-        (typeof error?.message === "string" && error.message.includes("aborted"));
+      const isAbortError = error?.name === "AbortError" || error?.code === "ABORT_ERR" ||
+        error?.message?.includes("aborted");
 
       if (isAbortError) {
         try {
           const stats = await fs.promises.stat(targetPath);
-          return {
-            ok: false,
-            status: "aborted",
-            path: targetPath,
-            size: stats.size,
-          };
+          return { ok: false, status: "aborted", path: targetPath, size: stats.size };
         } catch {
-          return {
-            ok: false,
-            status: "aborted",
-            path: targetPath,
-            size: startByte,
-          };
+          return { ok: false, status: "aborted", path: targetPath, size: startByte };
         }
       }
-
       throw error;
     }
   }
 
+  /** Ajoute un téléchargement à la file d'attente */
   function enqueueDownloadTask(args, waiter) {
-    const { id, url, directory, fileName } = args || {};
-    if (!id || typeof id !== "string") {
-      throw new Error("Invalid download identifier");
-    }
-    if (!url || typeof url !== "string") {
-      throw new Error("Invalid URL for download");
-    }
-    if (!directory || typeof directory !== "string") {
-      throw new Error("Invalid download directory");
-    }
+    const { id, url, directory, fileName, vkOwnerId, vkDocId, vkAccessKey } = args || {};
 
+    if (!id || typeof id !== "string") throw new Error("Invalid download identifier");
+    if ((!url || typeof url !== "string") && !vkDocId) throw new Error("Invalid URL for download");
+    if (!directory || typeof directory !== "string") throw new Error("Invalid download directory");
+
+    // Vérifier si déjà en cours
     const activeController = activeDownloads.get(id);
     if (activeController && !activeController.signal?.aborted) {
-      if (waiter?.reject) {
-        waiter.reject(new Error("Download already in progress"));
-      }
+      waiter?.reject?.(new Error("Download already in progress"));
       return { queued: false, alreadyRunning: true };
     }
 
+    // Créer ou mettre à jour la tâche
     const existing = downloadTasks.get(id);
     const task = existing || { id, url, directory, fileName, waiters: [] };
-    task.url = url;
-    task.directory = directory;
-    task.fileName = fileName;
-    if (!existing) {
-      downloadTasks.set(id, task);
-    }
+    Object.assign(task, { url, directory, fileName, vkOwnerId, vkDocId, vkAccessKey });
 
-    if (waiter) {
-      task.waiters.push(waiter);
-    }
-
+    if (!existing) downloadTasks.set(id, task);
+    if (waiter) task.waiters.push(waiter);
     if (!queuedDownloadIds.has(id)) {
       downloadQueue.push(id);
       queuedDownloadIds.add(id);
@@ -518,121 +523,111 @@ app.whenReady().then(() => {
     return { queued: true, alreadyRunning: false };
   }
 
+  /** Lance les téléchargements en attente (jusqu'à DOWNLOAD_CONCURRENCY) */
   function scheduleDownloads() {
-    if (downloadQueue.length === 0) return;
-
-    let safety = downloadQueue.length;
-
-    while (
-      activeDownloads.size < DOWNLOAD_CONCURRENCY &&
-      downloadQueue.length > 0 &&
-      safety-- > 0
-    ) {
+    while (activeDownloads.size < DOWNLOAD_CONCURRENCY && downloadQueue.length > 0) {
       const nextId = downloadQueue.shift();
-      if (!nextId) break;
-
-      if (activeDownloads.has(nextId)) {
-        downloadQueue.push(nextId);
-        continue;
-      }
+      if (!nextId || activeDownloads.has(nextId)) continue;
 
       queuedDownloadIds.delete(nextId);
       const task = downloadTasks.get(nextId);
       if (!task) continue;
+
       downloadTasks.delete(nextId);
       void runDownloadTask(nextId, task);
     }
   }
 
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  /**
+   * Exécute un téléchargement avec retry automatique
+   * - 2 tentatives max
+   * - Retry après erreur VK (3s) ou erreur réseau (2s)
+   */
   async function runDownloadTask(id, task) {
     const controller = new AbortController();
     activeDownloads.set(id, controller);
 
-    try {
-      sendDownloadProgress({
-        id,
-        receivedBytes: 0,
-        totalBytes: null,
-        progress: 0,
-        speedBytes: 0,
-      });
+    const MAX_RETRIES = 2;
+    let lastError = null;
 
-      const result = await downloadFileInternal(controller, task);
-      sendDownloadResult({ id, ...result });
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        sendDownloadProgress({ id, receivedBytes: 0, totalBytes: null, progress: 0, speedBytes: 0 });
 
-      if (Array.isArray(task.waiters)) {
-        task.waiters.forEach(({ resolve }) => {
-          try {
-            resolve(result);
-          } catch {
-            // ignore
-          }
-        });
+        const result = await downloadFileInternal(controller, task);
+        sendDownloadResult({ id, ...result });
+
+        // Résoudre les waiters
+        task.waiters?.forEach(({ resolve }) => { try { resolve(result); } catch {} });
+
+        activeDownloads.delete(id);
+        scheduleDownloads();
+        return;
+      } catch (error) {
+        lastError = error;
+
+        // Ne pas retry les aborts utilisateur
+        const isAbortError = error?.name === "AbortError" || error?.code === "ABORT_ERR" ||
+          error?.message?.includes("aborted");
+        if (isAbortError) break;
+
+        // Retry après erreur VK
+        if (error?.isVkHtmlError && attempt < MAX_RETRIES) {
+          await sleep(3000);
+          continue;
+        }
+
+        // Retry après erreur réseau
+        if (attempt < MAX_RETRIES && (error?.code === 'ECONNRESET' || error?.code === 'ETIMEDOUT' ||
+          error?.message?.includes('network'))) {
+          await sleep(2000);
+          continue;
+        }
+
+        break;
       }
-    } catch (error) {
-      const message =
-        typeof error?.message === "string"
-          ? error.message
-          : typeof error === "string"
-            ? error
-            : "Unknown download error";
-
-      sendDownloadResult({ id, ok: false, status: "error", error: message });
-
-      if (Array.isArray(task.waiters)) {
-        task.waiters.forEach(({ reject }) => {
-          try {
-            reject(error);
-          } catch {
-            // ignore
-          }
-        });
-      }
-    } finally {
-      activeDownloads.delete(id);
-      scheduleDownloads();
     }
+
+    // Échec final
+    const message = lastError?.message || "Unknown download error";
+    sendDownloadResult({ id, ok: false, status: "error", error: message });
+    task.waiters?.forEach(({ reject }) => { try { reject(lastError); } catch {} });
+
+    activeDownloads.delete(id);
+    scheduleDownloads();
   }
 
-  // Annule un téléchargement en cours
+  // === IPC Handlers pour les téléchargements ===
+
+  /** Annule un téléchargement en cours ou en attente */
   ipcMain.handle("fs:cancelDownload", async (_, id) => {
     if (!id || typeof id !== "string") return false;
 
     let cancelled = false;
 
+    // Retirer de la file d'attente
     if (queuedDownloadIds.has(id)) {
       queuedDownloadIds.delete(id);
-      for (let i = downloadQueue.length - 1; i >= 0; i--) {
-        if (downloadQueue[i] === id) downloadQueue.splice(i, 1);
-      }
+      const idx = downloadQueue.indexOf(id);
+      if (idx >= 0) downloadQueue.splice(idx, 1);
       cancelled = true;
     }
 
+    // Annuler une tâche en attente
     if (downloadTasks.has(id)) {
       const task = downloadTasks.get(id);
       const abortResult = await resolveAbortResult(task);
       sendDownloadResult({ id, ...abortResult });
-
-      if (Array.isArray(task?.waiters)) {
-        task.waiters.forEach(({ resolve }) => {
-          try {
-            resolve(abortResult);
-          } catch {
-            // ignore
-          }
-        });
-      }
-
+      task?.waiters?.forEach(({ resolve }) => { try { resolve(abortResult); } catch {} });
       downloadTasks.delete(id);
       cancelled = true;
     }
 
+    // Annuler un téléchargement actif
     if (activeDownloads.has(id)) {
-      try {
-        activeDownloads.get(id).abort();
-      } catch (e) {
-        console.error("Error cancelling download:", e);
-      }
+      try { activeDownloads.get(id).abort(); } catch {}
       cancelled = true;
     }
 
@@ -640,121 +635,127 @@ app.whenReady().then(() => {
     return cancelled;
   });
 
-  // Télécharge un fichier dans le dossier choisi
-  ipcMain.handle("fs:queueDownload", async (_event, args) => {
+  /** Ajoute un téléchargement à la file */
+  ipcMain.handle("fs:queueDownload", async (_, args) => {
     const { queued, alreadyRunning } = enqueueDownloadTask(args);
     return { ok: true, queued, alreadyRunning };
   });
 
+  /** Vide toute la file de téléchargement */
   ipcMain.handle("fs:clearDownloadQueue", async () => {
     queuedDownloadIds.clear();
-    downloadQueue.splice(0, downloadQueue.length);
+    downloadQueue.length = 0;
 
     for (const [id, task] of downloadTasks.entries()) {
       const abortResult = await resolveAbortResult(task);
       sendDownloadResult({ id, ...abortResult });
-
-      if (Array.isArray(task?.waiters)) {
-        task.waiters.forEach(({ resolve }) => {
-          try {
-            resolve(abortResult);
-          } catch {
-            // ignore
-          }
-        });
-      }
+      task?.waiters?.forEach(({ resolve }) => { try { resolve(abortResult); } catch {} });
     }
     downloadTasks.clear();
 
     for (const controller of activeDownloads.values()) {
-      try {
-        controller.abort();
-      } catch {
-        // ignore
-      }
+      try { controller.abort(); } catch {}
     }
 
     scheduleDownloads();
     return true;
   });
 
+  /** Télécharge un fichier (bloquant - attend la fin) */
   ipcMain.handle("fs:downloadFile", async (_, args) => {
     return new Promise((resolve, reject) => {
       enqueueDownloadTask(args, { resolve, reject });
     });
   });
 
-  // Ouvre un fichier/dossier dans le système
+  /** Ouvre un fichier/dossier dans l'explorateur système */
   ipcMain.handle("fs:openPath", async (_, targetPath) => {
-    if (!targetPath || typeof targetPath !== "string") {
-      return;
+    if (targetPath && typeof targetPath === "string") {
+      await shell.openPath(targetPath);
     }
-    await shell.openPath(targetPath);
   });
 
-  // Ping VK depuis le processus principal
-  ipcMain.handle("vk:ping", async (_, token) => {
-    if (!token) {
-      return { ok: false, latency: null };
+  /** Ouvre l'explorateur et sélectionne le fichier */
+  ipcMain.handle("fs:revealPath", async (_, targetPath) => {
+    if (!targetPath || typeof targetPath !== "string") return;
+    try {
+      shell.showItemInFolder(targetPath);
+    } catch {
+      try {
+        await shell.openPath(path.dirname(targetPath));
+      } catch {}
     }
+  });
+
+  // ========================================================================
+  // IPC HANDLERS - API VK
+  // ========================================================================
+
+  /** Vérifie la connexion VK et mesure la latence */
+  ipcMain.handle("vk:ping", async (_, token) => {
+    if (!token) return { ok: false, latency: null };
+    lastVkToken = token;
+
     const start = Date.now();
     try {
       const url = `https://api.vk.com/method/utils.getServerTime?access_token=${token}&v=5.131`;
       const res = await fetch(url, { method: "GET", cache: "no-store" });
       const data = await res.json();
-
-      if (data.error) {
-        return { ok: false, latency: null };
-      }
-
+      if (data.error) return { ok: false, latency: null };
       return { ok: true, latency: Date.now() - start };
-    } catch (err) {
+    } catch {
       return { ok: false, latency: null };
     }
   });
 
-  // Nouvelle méthode générique pour faire les requêtes API VK proprement
+  /** Requête générique à l'API VK (contourne CORS) */
   ipcMain.handle("vk:request", async (_, url) => {
     try {
-      // On utilise fetch côté Node.js (pas de CORS, pas de JSONP)
       const res = await fetch(url, {
         method: "GET",
-        headers: {
-          "User-Agent": "Vkomic/1.0",
-        },
+        headers: { "User-Agent": "Vkomic/1.0" },
       });
-
-      const json = await res.json();
-      return json;
+      return await res.json();
     } catch (error) {
-      console.error("VK Request Failed:", error);
-      // On renvoie une structure d'erreur similaire à celle de VK pour que le front gère
       return { error: { error_code: -1, error_msg: error.message } };
     }
   });
 
-  ipcMain.handle("vk:fetchRootIndex", async (_event, args) => {
+  /** Récupère l'index racine (BDs, Mangas, Comics) */
+  ipcMain.handle("vk:fetchRootIndex", async (_, args) => {
     const { token, groupId, topicId } = args || {};
+    if (token) lastVkToken = token;
     return vkFetchRootIndex(token, groupId, topicId);
   });
 
-  ipcMain.handle("vk:fetchNodeContent", async (_event, args) => {
+  /** Récupère le contenu d'un dossier (sous-dossiers + fichiers) */
+  ipcMain.handle("vk:fetchNodeContent", async (_, args) => {
     const { token, node } = args || {};
+    if (token) lastVkToken = token;
     return vkFetchNodeContent(token, node);
   });
 
-  ipcMain.handle("vk:fetchFolderTreeUpToDepth", async (_event, args) => {
+  /** Pré-charge l'arbre de dossiers jusqu'à une profondeur donnée */
+  ipcMain.handle("vk:fetchFolderTreeUpToDepth", async (_, args) => {
     const { token, groupId, topicId, maxDepth } = args || {};
-    const safeDepth = typeof maxDepth === "number" ? maxDepth : undefined;
-    return vkFetchFolderTreeUpToDepth(token, groupId, topicId, safeDepth);
+    if (token) lastVkToken = token;
+    return vkFetchFolderTreeUpToDepth(token, groupId, topicId, maxDepth);
   });
 
-  // Récupère la version de l'application
-  ipcMain.handle("app:getVersion", () => {
-    return app.getVersion();
+  /** Rafraîchit l'URL d'un document VK (les URLs expirent) */
+  ipcMain.handle("vk:refreshDocUrl", async (_, args) => {
+    const { token, ownerId, docId } = args || {};
+    return vkRefreshDocUrl(token, ownerId, docId);
   });
 
-  // Vérifie et prépare les mises à jour via electron-updater (GitHub)
+  // ========================================================================
+  // IPC HANDLERS - Application
+  // ========================================================================
+
+  /** Retourne la version de l'app */
+  ipcMain.handle("app:getVersion", () => app.getVersion());
+
+  /** Vérifie les mises à jour disponibles */
   ipcMain.handle("app:checkUpdate", async () => {
     if (!app.isPackaged) return { updateAvailable: false };
 
@@ -762,23 +763,20 @@ app.whenReady().then(() => {
       ensureUpdateFeed();
       const result = await autoUpdater.checkForUpdates();
       const info = result?.updateInfo;
-      const latestVersion = info?.version;
-      const currentVersion = app.getVersion();
-      const updateAvailable =
-        Boolean(latestVersion) && latestVersion !== currentVersion;
+      const updateAvailable = Boolean(info?.version) && info.version !== app.getVersion();
 
       return {
         updateAvailable,
-        version: latestVersion,
+        version: info?.version,
         notes: normalizeReleaseNotes(info?.releaseNotes),
         url: `https://github.com/${GITHUB_REPO}/releases`,
       };
     } catch (error) {
-      console.error("Update check failed:", error);
       return { updateAvailable: false, error: error.message };
     }
   });
 
+  /** Télécharge la mise à jour */
   ipcMain.handle("app:downloadUpdate", async () => {
     if (!app.isPackaged) return { ok: false, error: "Dev mode" };
 
@@ -787,38 +785,24 @@ app.whenReady().then(() => {
       await autoUpdater.downloadUpdate();
       return { ok: true };
     } catch (error) {
-      console.error("Update download failed:", error);
       return { ok: false, error: error.message };
     }
   });
 
+  /** Installe la mise à jour et redémarre */
   ipcMain.handle("app:installUpdate", () => {
     if (!app.isPackaged) return false;
     try {
       autoUpdater.quitAndInstall(false, true);
       return true;
-    } catch (error) {
-      console.error("Failed to install update:", error);
+    } catch {
       return false;
     }
   });
 
-  // Ouvre le dossier contenant et s��lectionne le fichier si possible
-  ipcMain.handle("fs:revealPath", async (_, targetPath) => {
-    if (!targetPath || typeof targetPath !== "string") {
-      return;
-    }
-    try {
-      shell.showItemInFolder(targetPath);
-    } catch {
-      try {
-        const dir = path.dirname(targetPath);
-        await shell.openPath(dir);
-      } catch {
-        // ignore
-      }
-    }
-  });
+  // ========================================================================
+  // ÉVÉNEMENTS DE CYCLE DE VIE
+  // ========================================================================
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -828,4 +812,3 @@ app.whenReady().then(() => {
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
-// Updated

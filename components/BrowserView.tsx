@@ -455,6 +455,22 @@ const BrowserView: React.FC<BrowserViewProps> = ({
                     <Home size={16} />
                   </button>
 
+                  <button
+                    onClick={() => {
+                      if (currentFolder) {
+                        const parentPath = navPath.slice(0, -1);
+                        navigateTo(currentFolder); // Re-fetch current folder
+                      } else {
+                        handleSync();
+                      }
+                    }}
+                    disabled={isLoading}
+                    className="flex items-center justify-center w-8 h-8 rounded-lg bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white transition-colors disabled:opacity-50"
+                    title="Rafraîchir"
+                  >
+                    <RefreshCw size={14} className={isLoading ? "animate-spin" : ""} />
+                  </button>
+
                   {breadcrumbs.map((crumb, idx) => {
                     if (crumb.isEllipsis) {
                       return (
@@ -566,61 +582,61 @@ const BrowserView: React.FC<BrowserViewProps> = ({
           {folderNodes.length > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
               {folderNodes.map((node) => {
-                  const displayTitle = getDisplayTitle(node);
-                  return (
-                    <div
-                      key={node.id}
-                      onClick={() => navigateTo(node)}
-                      className="bg-[#131926] rounded-lg border border-[#1e293b] flex flex-col transition-all hover:border-blue-500/50 hover:shadow-lg hover:shadow-blue-500/10 group cursor-pointer relative overflow-hidden"
-                    >
-                      <div className="p-5 flex-1 flex flex-col h-full">
-                        <div className="flex justify-between items-start mb-6">
-                          <span className="bg-[#1e293b] text-slate-400 text-[10px] font-bold px-1.5 py-0.5 rounded tracking-wide border border-slate-700/50">
-                            DIR
-                          </span>
-                          <span className="bg-blue-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded tracking-wide shadow-lg shadow-blue-900/50">
-                            VK
-                          </span>
-                        </div>
+                const displayTitle = getDisplayTitle(node);
+                return (
+                  <div
+                    key={node.id}
+                    onClick={() => navigateTo(node)}
+                    className="bg-[#131926] rounded-lg border border-[#1e293b] flex flex-col transition-all hover:border-blue-500/50 hover:shadow-lg hover:shadow-blue-500/10 group cursor-pointer relative overflow-hidden"
+                  >
+                    <div className="p-5 flex-1 flex flex-col h-full">
+                      <div className="flex justify-between items-start mb-6">
+                        <span className="bg-[#1e293b] text-slate-400 text-[10px] font-bold px-1.5 py-0.5 rounded tracking-wide border border-slate-700/50">
+                          DIR
+                        </span>
+                        <span className="bg-blue-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded tracking-wide shadow-lg shadow-blue-900/50">
+                          VK
+                        </span>
+                      </div>
 
-                        <div className="flex justify-center mb-6">
-                          <Folder className="text-blue-500 w-14 h-14 stroke-[1.5]" />
-                        </div>
+                      <div className="flex justify-center mb-6">
+                        <Folder className="text-blue-500 w-14 h-14 stroke-[1.5]" />
+                      </div>
 
-                        <div className="mt-auto">
-                          <h3
-                            className="text-white font-bold text-lg mb-3 leading-snug line-clamp-2"
-                            title={node.title}
-                          >
-                            {displayTitle}
-                          </h3>
+                      <div className="mt-auto">
+                        <h3
+                          className="text-white font-bold text-lg mb-3 leading-snug line-clamp-2"
+                          title={node.title}
+                        >
+                          {displayTitle}
+                        </h3>
 
-                          <div className="flex flex-col gap-1.5 mb-6">
-                            <div className="flex items-center gap-2">
-                              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />
-                              <span className="text-xs text-slate-400 font-medium capitalize truncate">
-                                {node.type || "Category"}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Folder
-                                size={12}
-                                className="text-slate-500 flex-shrink-0"
-                              />
-                              <span className="text-xs text-slate-500 font-medium">
-                                Folder
-                              </span>
-                            </div>
+                        <div className="flex flex-col gap-1.5 mb-6">
+                          <div className="flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />
+                            <span className="text-xs text-slate-400 font-medium capitalize truncate">
+                              {node.type || "Category"}
+                            </span>
                           </div>
-
-                          <button className="w-full py-2.5 rounded border border-[#2d3748] text-[11px] font-bold text-slate-400 uppercase tracking-widest hover:bg-[#1f2937] hover:text-white hover:border-slate-500 transition-all">
-                            {t.library.openFolder}
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <Folder
+                              size={12}
+                              className="text-slate-500 flex-shrink-0"
+                            />
+                            <span className="text-xs text-slate-500 font-medium">
+                              Folder
+                            </span>
+                          </div>
                         </div>
+
+                        <button className="w-full py-2.5 rounded border border-[#2d3748] text-[11px] font-bold text-slate-400 uppercase tracking-widest hover:bg-[#1f2937] hover:text-white hover:border-slate-500 transition-all">
+                          {t.library.openFolder}
+                        </button>
                       </div>
                     </div>
-                  );
-                })}
+                  </div>
+                );
+              })}
             </div>
           )}
 

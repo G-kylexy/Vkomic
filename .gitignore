@@ -29,3 +29,4 @@ build
 *.sw?
 mobile
 .claude
+tmpclaude-*

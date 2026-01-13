@@ -18,10 +18,10 @@ contextBridge.exposeInMainWorld("fs", {
   listDirectory: (path) => ipcRenderer.invoke("fs:listDirectory", path),
   openPath: (path) => ipcRenderer.invoke("fs:openPath", path),
   revealPath: (path) => ipcRenderer.invoke("fs:revealPath", path),
-  downloadFile: (id, url, directory, fileName) =>
-    ipcRenderer.invoke("fs:downloadFile", { id, url, directory, fileName }),
-  queueDownload: (id, url, directory, fileName) =>
-    ipcRenderer.invoke("fs:queueDownload", { id, url, directory, fileName }),
+  downloadFile: (id, url, directory, fileName, token, vkOwnerId, vkDocId, vkAccessKey) =>
+    ipcRenderer.invoke("fs:downloadFile", { id, url, directory, fileName, token, vkOwnerId, vkDocId, vkAccessKey }),
+  queueDownload: (id, url, directory, fileName, token, vkOwnerId, vkDocId, vkAccessKey) =>
+    ipcRenderer.invoke("fs:queueDownload", { id, url, directory, fileName, token, vkOwnerId, vkDocId, vkAccessKey }),
   clearDownloadQueue: () => ipcRenderer.invoke("fs:clearDownloadQueue"),
   onDownloadProgress: (callback) => {
     if (typeof callback !== "function") return () => { };
@@ -52,6 +52,8 @@ contextBridge.exposeInMainWorld("vk", {
       topicId,
       maxDepth,
     }),
+  refreshDocUrl: (token, ownerId, docId) =>
+    ipcRenderer.invoke("vk:refreshDocUrl", { token, ownerId, docId }),
 });
 
 contextBridge.exposeInMainWorld("app", {

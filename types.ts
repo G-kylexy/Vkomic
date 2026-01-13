@@ -24,6 +24,9 @@ export interface VkNode {
   structureOnly?: boolean; // Indique que ce nœud a été chargé via "Tout Sync" (structure seulement, pas les docs)
   vkGroupId?: string; // ID du groupe VK (nécessaire pour l'API)
   vkTopicId?: string; // ID du topic VK (nécessaire pour l'API)
+  vkOwnerId?: string;
+  vkDocId?: string;
+  vkAccessKey?: string;
   sizeBytes?: number; // Taille du fichier (en octets) pour les noeuds de type "file"
 }
 
@@ -54,12 +57,14 @@ export interface DownloadItem {
   | "completed"
   | "canceled"
   | "error";
-  createdAt?: string; // ISO date de la derni��re tentative
+  createdAt?: string; // ISO date de la dernre tentative
   size?: string;
   speed?: string;
-  url: string;
+  url?: string;
+  vkOwnerId?: string;
+  vkDocId?: string;
+  vkAccessKey?: string;
   path?: string; // Local save path
   extension?: string;
   subFolder?: string;
 }
-

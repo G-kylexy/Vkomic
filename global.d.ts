@@ -31,6 +31,10 @@ declare global {
         url: string,
         directory: string,
         fileName?: string,
+        token?: string,
+        vkOwnerId?: string,
+        vkDocId?: string,
+        vkAccessKey?: string,
       ) => Promise<{
         ok: boolean;
         path: string;
@@ -42,6 +46,10 @@ declare global {
         url: string,
         directory: string,
         fileName?: string,
+        token?: string,
+        vkOwnerId?: string,
+        vkDocId?: string,
+        vkAccessKey?: string,
       ) => Promise<{
         ok: boolean;
         queued?: boolean;
