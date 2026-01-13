@@ -343,9 +343,8 @@ app.whenReady().then(() => {
 
     let currentUrl = url || "";
 
-    // === Rafraîchissement automatique des URLs VK ===
-    // Les URLs VK expirent, on tente de récupérer une URL fraîche via l'API
-    if (useToken && ((currentUrl && currentUrl.includes("vk.com/doc")) || vkDocId)) {
+    // === Rafraîchissement SYSTEMATIQUE via l'API VK ===
+    if (useToken && (vkDocId || currentUrl.includes("doc"))) {
       const ownerId = vkOwnerId || currentUrl?.match(/doc(-?\d+)_/)?.[1];
       const docId = vkDocId || currentUrl?.match(/_(\d+)/)?.[1] || id.replace("doc_", "");
 
@@ -353,13 +352,13 @@ app.whenReady().then(() => {
         const refresh = await vkRefreshDocUrl(useToken, ownerId, docId, currentUrl, vkAccessKey);
         if (refresh.url) {
           currentUrl = refresh.url;
-          // Conserver le paramètre 'dl' si présent (requis pour certains téléchargements)
-          const dlMatch = url?.match(/[?&]dl=([^&]+)/);
-          if (dlMatch && !currentUrl.includes("dl=")) {
-            currentUrl += (currentUrl.includes("?") ? "&" : "?") + `dl=${dlMatch[1]}`;
-          }
         }
       }
+    }
+
+    // S'assurer systématiquement du paramètre dl=1 pour les liens VK
+    if (currentUrl.includes("vk.com/") && !currentUrl.includes("dl=")) {
+      currentUrl += (currentUrl.includes("?") ? "&" : "?") + "dl=1";
     }
 
     const { safeDirectory, targetPath } = resolveDownloadTarget(currentUrl, directory, fileName);
@@ -471,7 +470,7 @@ app.whenReady().then(() => {
         if (error?.name === "AbortError") {
           return { ok: false, status: "aborted", path: targetPath, size: startByte + receivedBytes };
         }
-        await fs.promises.rm(targetPath, { force: true }).catch(() => {});
+        await fs.promises.rm(targetPath, { force: true }).catch(() => { });
         throw error;
       }
 
@@ -560,7 +559,7 @@ app.whenReady().then(() => {
         sendDownloadResult({ id, ...result });
 
         // Résoudre les waiters
-        task.waiters?.forEach(({ resolve }) => { try { resolve(result); } catch {} });
+        task.waiters?.forEach(({ resolve }) => { try { resolve(result); } catch { } });
 
         activeDownloads.delete(id);
         scheduleDownloads();
@@ -593,7 +592,7 @@ app.whenReady().then(() => {
     // Échec final
     const message = lastError?.message || "Unknown download error";
     sendDownloadResult({ id, ok: false, status: "error", error: message });
-    task.waiters?.forEach(({ reject }) => { try { reject(lastError); } catch {} });
+    task.waiters?.forEach(({ reject }) => { try { reject(lastError); } catch { } });
 
     activeDownloads.delete(id);
     scheduleDownloads();
@@ -620,14 +619,14 @@ app.whenReady().then(() => {
       const task = downloadTasks.get(id);
       const abortResult = await resolveAbortResult(task);
       sendDownloadResult({ id, ...abortResult });
-      task?.waiters?.forEach(({ resolve }) => { try { resolve(abortResult); } catch {} });
+      task?.waiters?.forEach(({ resolve }) => { try { resolve(abortResult); } catch { } });
       downloadTasks.delete(id);
       cancelled = true;
     }
 
     // Annuler un téléchargement actif
     if (activeDownloads.has(id)) {
-      try { activeDownloads.get(id).abort(); } catch {}
+      try { activeDownloads.get(id).abort(); } catch { }
       cancelled = true;
     }
 
@@ -649,12 +648,12 @@ app.whenReady().then(() => {
     for (const [id, task] of downloadTasks.entries()) {
       const abortResult = await resolveAbortResult(task);
       sendDownloadResult({ id, ...abortResult });
-      task?.waiters?.forEach(({ resolve }) => { try { resolve(abortResult); } catch {} });
+      task?.waiters?.forEach(({ resolve }) => { try { resolve(abortResult); } catch { } });
     }
     downloadTasks.clear();
 
     for (const controller of activeDownloads.values()) {
-      try { controller.abort(); } catch {}
+      try { controller.abort(); } catch { }
     }
 
     scheduleDownloads();
@@ -683,7 +682,7 @@ app.whenReady().then(() => {
     } catch {
       try {
         await shell.openPath(path.dirname(targetPath));
-      } catch {}
+      } catch { }
     }
   });
 

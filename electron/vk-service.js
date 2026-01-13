@@ -832,7 +832,6 @@ export const refreshDocUrl = async (token, ownerId, docId, originalUrl = "", acc
     return { url: freshUrl, error: null };
   } catch (err) {
     if (originalUrl) {
-      logToFile(`[VK-SERVICE] refreshDocUrl failed (${err.message}), using original URL as fallback`);
       return { url: originalUrl, error: null };
     }
     console.error(`[VK-SERVICE] refreshDocUrl error:`, err);

@@ -455,21 +455,7 @@ const BrowserView: React.FC<BrowserViewProps> = ({
                     <Home size={16} />
                   </button>
 
-                  <button
-                    onClick={() => {
-                      if (currentFolder) {
-                        const parentPath = navPath.slice(0, -1);
-                        navigateTo(currentFolder); // Re-fetch current folder
-                      } else {
-                        handleSync();
-                      }
-                    }}
-                    disabled={isLoading}
-                    className="flex items-center justify-center w-8 h-8 rounded-lg bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white transition-colors disabled:opacity-50"
-                    title="Rafraîchir"
-                  >
-                    <RefreshCw size={14} className={isLoading ? "animate-spin" : ""} />
-                  </button>
+
 
                   {breadcrumbs.map((crumb, idx) => {
                     if (crumb.isEllipsis) {
