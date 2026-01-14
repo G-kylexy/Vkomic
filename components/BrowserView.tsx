@@ -46,7 +46,7 @@ interface BrowserViewProps {
   cancelDownload: (id: string) => void;
   retryDownload: (id: string) => void;
   navPath: VkNode[];
-  setNavPath: (path: VkNode[]) => void;
+  setNavPath: React.Dispatch<React.SetStateAction<VkNode[]>>;
 }
 
 const BrowserView: React.FC<BrowserViewProps> = ({
