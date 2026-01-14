@@ -277,11 +277,23 @@ const fetchMultipleTopics = async (token, topics) => {
  * Supprime les caractères spéciaux, guillemets, et annotations inutiles
  */
 const cleanTitle = (text) => {
-  return text
-    .replace(/[:\-]+$/, "")           // Supprime : ou - en fin
-    .replace(/^\s*[-"»«]+\s*/, "")    // Supprime guillemets en début
-    .replace(/\s*[-"»«]+\s*$/, "")    // Supprime guillemets en fin
-    .replace(/\(lien\)/gi, "")        // Supprime "(lien)"
+  if (!text) return "";
+
+  let cleaned = text;
+
+  // Si le texte contient du BBCode [topic-xxx|Titre] ou [topic-xxx_yyy|Titre], extraire le titre
+  const bbcodeInText = cleaned.match(/\[topic-\d+(?:_\d+)?\|([^\]]+)\]/);
+  if (bbcodeInText) {
+    cleaned = bbcodeInText[1]; // Utiliser le titre du BBCode
+  }
+
+  return cleaned
+    .replace(/\s*[-–—=]+[>→»]\s*.*$/i, "")  // Supprime flèches (->  –>  —>  =>  →  ») et tout après
+    .replace(/https?:\/\/.*$/i, "")          // Supprime les URLs résiduelles
+    .replace(/[:\-–—]+$/, "")                // Supprime : ou - en fin
+    .replace(/^\s*[-–—"»«•*·]+\s*/, "")      // Supprime guillemets/puces en début
+    .replace(/\s*[-–—"»«•*·]+\s*$/, "")      // Supprime guillemets/puces en fin
+    .replace(/\(lien\)/gi, "")               // Supprime "(lien)"
     .trim();
 };
 
@@ -335,6 +347,7 @@ const parseTopicBody = (text, excludeTopicId) => {
   let mentionMatch;
   while ((mentionMatch = mentionRegex.exec(text)) !== null) {
     const [, groupId, topicId, postId, linkText] = mentionMatch;
+    // Exclure les auto-références (évite les boucles infinies)
     if (excludeTopicId && topicId === excludeTopicId) continue;
 
     const uniqueId = postId ? `topic_${topicId}_post${postId}` : `topic_${topicId}`;
@@ -362,6 +375,8 @@ const parseTopicBody = (text, excludeTopicId) => {
   // Format: "Titre : https://vk.com/topic-XXX" ou titre sur ligne précédente
   const lines = text.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
 
+
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (!line.includes("vk.com/topic-")) continue;
@@ -371,6 +386,7 @@ const parseTopicBody = (text, excludeTopicId) => {
 
     while ((match = lineUrlRegex.exec(line)) !== null) {
       const [, groupId, topicId, postId] = match;
+      // Exclure les auto-références (évite les boucles infinies)
       if (excludeTopicId && topicId === excludeTopicId) continue;
 
       const uniqueId = postId ? `topic_${topicId}_post${postId}` : `topic_${topicId}`;
@@ -379,23 +395,33 @@ const parseTopicBody = (text, excludeTopicId) => {
       // Extraction du titre
       let title = "";
 
-      // Essayer avant l'URL sur la même ligne
-      const beforeUrl = line.substring(0, match.index);
-      const parts = beforeUrl.split(/https?:\/\//);
-      const titlePart = parts[0].trim();
+      // NOUVEAU: Format VK inversé "https://vk.com/topic-XXX|Titre]"
+      // Le titre est APRÈS l'URL, séparé par un pipe |
+      const afterMatch = line.substring(match.index + match[0].length);
+      const pipeMatch = afterMatch.match(/^\|([^\]]+)\]/);
+      if (pipeMatch) {
+        title = pipeMatch[1].trim();
+      }
 
-      if (titlePart.length > 2) {
-        title = titlePart;
-      } else if (i > 0) {
-        // Sinon chercher sur la ligne précédente
-        const prevLine = lines[i - 1];
-        if (!prevLine.includes("vk.com") && prevLine.length > 2) {
-          title = prevLine;
+      // Fallback: Essayer avant l'URL sur la même ligne
+      if (!title) {
+        const beforeUrl = line.substring(0, match.index);
+        const parts = beforeUrl.split(/https?:\/\//);
+        const titlePart = parts[0].trim();
+
+        if (titlePart.length > 2) {
+          title = titlePart;
+        } else if (i > 0) {
+          // Sinon chercher sur la ligne précédente
+          const prevLine = lines[i - 1];
+          if (!prevLine.includes("vk.com") && prevLine.length > 2) {
+            title = prevLine;
+          }
         }
       }
 
       if (!title) {
-        // Essayer après l'URL
+        // Essayer après l'URL (sans le format pipe)
         const afterUrl = line.substring(match.index + match[0].length).trim();
         if (afterUrl.length > 2 && !afterUrl.includes("vk.com")) {
           title = afterUrl;

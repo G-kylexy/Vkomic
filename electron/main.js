@@ -337,6 +337,8 @@ app.whenReady().then(() => {
     const { id, url, directory, fileName, token, vkOwnerId, vkDocId, vkAccessKey } = args || {};
     const useToken = token || lastVkToken;
 
+
+
     if (!id || typeof id !== "string") throw new Error("Invalid download identifier");
     if ((!url || typeof url !== "string") && !vkDocId) throw new Error("Invalid URL for download");
     if (!directory || typeof directory !== "string") throw new Error("Invalid download directory");
@@ -373,19 +375,42 @@ app.whenReady().then(() => {
     }
 
     try {
-      const headers = { "User-Agent": "Vkomic/1.0" };
+      const headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Referer": "https://vk.com/",
+        "Origin": "https://vk.com",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9,fr;q=0.8",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "cross-site",
+        "Sec-Fetch-User": "?1",
+        "Upgrade-Insecure-Requests": "1",
+        "Connection": "keep-alive"
+      };
+
       if (startByte > 0) {
         headers["Range"] = `bytes=${startByte}-`;
       }
 
-      const res = await fetch(currentUrl, { signal: controller.signal, headers });
+
+      // Encodage minimal pour les requêtes (VK est sensible)
+      const encodedUrl = encodeURI(currentUrl);
+      const res = await fetch(encodedUrl, { signal: controller.signal, headers });
+
       const contentType = res.headers.get("content-type") || "";
 
       // === Détection d'erreurs VK ===
-      // Si VK renvoie HTML au lieu du fichier, c'est une erreur (fichier protégé, supprimé, etc.)
       const docExtensions = ['.pdf', '.cbz', '.cbr', '.zip', '.rar', '.epub', '.djvu', '.doc', '.docx', '.jpg', '.jpeg', '.png', '.gif'];
       const isDocFile = docExtensions.some(ext => fileName?.toLowerCase().endsWith(ext));
+
       if (contentType.includes("text/html") && isDocFile) {
+        console.log(`\n-------------------------------------------------------------`);
+        console.log(`[ERREUR VK] Le téléchargement renvoie une page HTML (Erreur/Login)`);
+        console.log(`URL échouée : ${currentUrl}`);
+        console.log(`Essaie de copier cette URL dans ton navigateur pour voir le message exact !`);
+        console.log(`-------------------------------------------------------------\n`);
+
         const error = new Error("Le fichier est protégé ou n'est plus disponible sur VK");
         error.isVkHtmlError = true;
         throw error;
@@ -523,7 +548,7 @@ app.whenReady().then(() => {
   }
 
   /** Lance les téléchargements en attente (jusqu'à DOWNLOAD_CONCURRENCY) */
-  function scheduleDownloads() {
+  async function scheduleDownloads() {
     while (activeDownloads.size < DOWNLOAD_CONCURRENCY && downloadQueue.length > 0) {
       const nextId = downloadQueue.shift();
       if (!nextId || activeDownloads.has(nextId)) continue;
@@ -534,6 +559,8 @@ app.whenReady().then(() => {
 
       downloadTasks.delete(nextId);
       void runDownloadTask(nextId, task);
+      // Rate Limit : petite pause pour ne pas spammer VK
+      await sleep(350);
     }
   }
 
@@ -550,6 +577,8 @@ app.whenReady().then(() => {
 
     const MAX_RETRIES = 2;
     let lastError = null;
+
+
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
