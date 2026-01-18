@@ -31,7 +31,8 @@
         "READ_EXTERNAL_STORAGE",
         "android.permission.INTERNET",
         "android.permission.POST_NOTIFICATIONS",
-        "android.permission.FOREGROUND_SERVICE"
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_DATA_SYNC"
       ],
       "package": "com.anonymous.vkomicmobile",
       "intentFilters": [

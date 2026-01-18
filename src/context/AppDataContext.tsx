@@ -5,13 +5,11 @@ import * as FileSystem from "expo-file-system/legacy";
 import ReactNativeBlobUtil from "react-native-blob-util";
 
 import { expandNodesStructure, fetchNodeContent, fetchRootIndex, fetchFolderTreeUpToDepth } from "../services/vk-service";
+import * as FolderService from "../services/FolderService";
+import { notifyDownloadCompleted, notifyDownloadError, notifyDownloadStarted, notifyDownloadProgress, cancelDownloadNotification, setupNotifications } from "../services/NotificationService";
 import { getT } from "../i18n";
 import { DownloadItem, VkNode } from "../types";
 import { useVk } from "./VkContext";
-import { setupNotifications, notifyDownloadStarted, notifyDownloadCompleted, notifyDownloadError } from "../services/NotificationService";
-import { logDownload, logError } from "../services/logger";
-import * as FolderService from "../services/FolderService";
-import { SafError, SafErrorType } from "../services/FolderService";
 
 type AppDataContextType = {
   syncedData: VkNode[] | null;
@@ -50,6 +48,22 @@ type AppDataContextType = {
 
 const AppDataContext = createContext<AppDataContextType | null>(null);
 
+
+const isSafUri = (uri: string) => uri?.startsWith("content://");
+
+const formatBytes = (bytes: number, decimals = 2) => {
+  if (!+bytes) return '0 B';
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+};
+
+const truncate = (str: string, n: number) => {
+  return (str.length > n) ? str.slice(0, n - 1) + '...' : str;
+};
+
 const STORAGE_KEYS = {
   syncedData: "vk_synced_data_mobile",
   downloads: "vk_downloads_mobile",
@@ -80,18 +94,7 @@ const withRetry = async <T,>(
   throw lastError;
 };
 
-const formatBytes = (bytes: number) => {
-  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
-  const units = ["B", "KB", "MB", "GB"];
-  let idx = 0;
-  let val = bytes;
-  while (val >= 1024 && idx < units.length - 1) {
-    val /= 1024;
-    idx += 1;
-  }
-  const digits = idx === 0 ? 0 : idx === 1 ? 0 : 1;
-  return `${val.toFixed(digits)} ${units[idx]}`;
-};
+
 
 const safeFilename = (value: string) =>
   value
@@ -175,6 +178,7 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
 }) => {
   const { token, groupId, topicId, language, setStatus, autoSync, isReady, downloadPath, status } = useVk();
 
+
   // Vérifier si le token est invalide (error_code 5)
   const isTokenInvalid = status.errorCode === 5;
   const t = useMemo(() => getT(language), [language]);
@@ -199,6 +203,7 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
   // Batched progress updates to avoid race conditions with multiple concurrent downloads
   const pendingProgressRef = useRef(new Map<string, Partial<DownloadItem>>());
   const retryCountRef = useRef(new Map<string, number>());
+  const lastNotifRef = useRef(new Map<string, number>()); // Throttle notifications to 1s
   const MAX_AUTO_RETRIES = 3;
   const RETRY_DELAY_MS = 2000; // 2 seconds between retries
   const MAX_CONCURRENT_DOWNLOADS = 3;
@@ -312,7 +317,7 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
       return true; // Will auto-retry
     }
     // Max retries reached, notify user
-    void notifyDownloadError(title);
+    void notifyDownloadError(id, title);
     return false;
   };
 
@@ -327,8 +332,6 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
     await ensureDir(dir);
     return dir;
   };
-
-
 
   // Renamed from startDownload to processDownload (internal use)
   const processDownload = async (item: DownloadItem) => {
@@ -362,15 +365,14 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
     // For SAF, we'll download to temp then copy
     // For regular paths, download directly
     const tempPath = usingSaf
-      ? `${FileSystem.cacheDirectory}${item.id}${dottedExt}`
+      ? `${ReactNativeBlobUtil.fs.dirs.CacheDir}/${item.id}${dottedExt}`
       : `${dir}/${fileName}`;
 
     upsertDownload(item.id, { status: "downloading", path: tempPath, resumeData: item.resumeData ?? null });
     clearSpeed(speedRef, item.id);
 
-    // Android: use native DownloadManager via addAndroidDownloads (only for non-SAF paths)
-    // This ensures files are visible in file manager and handles all permissions automatically
-    if (Platform.OS === "android" && !usingSaf) {
+    // Android: Use ReactNativeBlobUtil with progress callback for speed tracking
+    if (Platform.OS === "android") {
       try {
         const mimeType = item.extension === "pdf" ? "application/pdf"
           : item.extension === "cbz" ? "application/x-cbz"
@@ -378,181 +380,83 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
               : item.extension === "zip" ? "application/zip"
                 : "*/*";
 
-        const task = ReactNativeBlobUtil.config({
-          addAndroidDownloads: {
-            useDownloadManager: true,
-            notification: true,
-            title: item.title,
-            description: `Téléchargement VKomic`,
-            path: tempPath,
-            mime: mimeType,
-            mediaScannable: true,
-          },
-        }).fetch("GET", item.url);
+        // Always download to public external storage first (Download/Vkomic_Temp)
+        const tempDir = `${ReactNativeBlobUtil.fs.dirs.DownloadDir}/Vkomic_Temp`;
+        // Ensure directory exists
+        try { await ReactNativeBlobUtil.fs.mkdir(tempDir); } catch { }
 
-        // Store task for potential cancellation
+        const tempPath = `${tempDir}/${item.id}${dottedExt}`;
+
+        console.log("Starting download with progress for:", item.title);
+
+        // Use fetch with progress callback to track speed and progress in the app
+        const task = ReactNativeBlobUtil.config({
+          path: tempPath,
+          fileCache: false,
+        }).fetch("GET", encodeURI(item.url))
+          .progress({ count: 10, interval: 250 }, (received, total) => {
+            const pct = total > 0 ? Math.round((received / total) * 100) : 0;
+            const now = Date.now();
+            const prev = speedRef.current.get(item.id);
+            let speed = "";
+            if (prev) {
+              const dt = Math.max(1, now - prev.at);
+              const db = Math.max(0, received - prev.bytes);
+              const bps = (db * 1000) / dt;
+              speed = `${formatBytes(bps)}/s`;
+            }
+            speedRef.current.set(item.id, { bytes: received, at: now });
+            if (pct < 100) {
+              queueProgressUpdate(item.id, {
+                progress: pct,
+                speed,
+                size: total > 0 ? formatBytes(total) : item.size,
+              });
+            }
+          });
+
         androidTasksRef.current.set(item.id, { cancel: () => task.cancel() });
 
-        // Progress tracking (works with DownloadManager too) - throttled to reduce state updates
-        task.progress((receivedStr, totalStr) => {
-          const received = Number(receivedStr) || 0;
-          const total = Number(totalStr) || 0;
-          const pct = total > 0 ? Math.round((received / total) * 100) : 0;
-          const now = Date.now();
-          const prev = speedRef.current.get(item.id);
-          let speed = "";
-          if (prev) {
-            const dt = Math.max(1, now - prev.at);
-            const db = Math.max(0, received - prev.bytes);
-            const bps = (db * 1000) / dt;
-            speed = `${formatBytes(bps)}/s`;
-          }
-          speedRef.current.set(item.id, { bytes: received, at: now });
-          // Don't queue 100% - let completion handler do it to avoid race
-          if (pct < 100) {
-            queueProgressUpdate(item.id, {
-              progress: pct,
-              speed,
-              size: total > 0 ? formatBytes(total) : item.size,
-            });
-          }
-        });
-
         const res = await task;
-        // Always mark as completed when task finishes successfully
-        const actualPath = res?.path?.() || tempPath;
-        // Clear any pending progress updates for this download
+        const downloadedPath = res?.path?.() || tempPath;
+
+        let finalPath = downloadedPath;
+
+        if (usingSaf) {
+
+          const safFileUri = await FolderService.createFileRobust(dir, fileName, mimeType);
+          const success = await FolderService.copyLocalToSaf(downloadedPath, safFileUri);
+
+          if (success) {
+            finalPath = safFileUri;
+            try { await ReactNativeBlobUtil.fs.unlink(downloadedPath); } catch { }
+          } else {
+            throw new Error("Erreur lors de la copie vers le dossier de destination");
+          }
+        }
+
         pendingProgressRef.current.delete(item.id);
-        // Directly set completed status (not queued)
         upsertDownload(item.id, {
           status: "completed",
           progress: 100,
           speed: "",
           resumeData: null,
-          path: actualPath
+          path: finalPath
         });
+
         androidTasksRef.current.delete(item.id);
         startingRef.current.delete(item.id);
-        clearRetryCount(item.id); // Success: clear retry count
+        clearRetryCount(item.id);
         clearSpeed(speedRef, item.id);
-        void notifyDownloadCompleted(item.title);
-      } catch (err) {
+        lastNotifRef.current.delete(item.id);
+        void notifyDownloadCompleted(item.id, item.title);
+
+      } catch (err: any) {
         console.log("Download error:", err);
-        androidTasksRef.current.delete(item.id);
         startingRef.current.delete(item.id);
         clearSpeed(speedRef, item.id);
-        // Check if download was paused/canceled by user
-        setDownloads((prev) => {
-          const d = prev.find(x => x.id === item.id);
-          if (d?.status === 'paused' || d?.status === 'canceled') return prev;
-          const next = [...prev];
-          const idx = next.findIndex(x => x.id === item.id);
-          if (idx !== -1) {
-            next[idx] = { ...next[idx], status: 'error', speed: "" };
-          }
-          return next;
-        });
-        // Schedule auto-retry (will notify on final failure)
-        scheduleAutoRetry(item.id, item.title);
-      }
-      return;
-    }
+        lastNotifRef.current.delete(item.id);
 
-    // Android SAF: Use DownloadManager (continues in background) then copy to SAF
-    if (Platform.OS === "android" && usingSaf) {
-      // Step 1: Verify folder permissions before starting
-      const hasPermission = await FolderService.ensureFolderPermission(dir);
-      if (!hasPermission) {
-        logError(`Step 1 FAILED: Permission denied for ${dir}. Please re-select the download folder in Settings.`);
-        setDownloads((prev) => prev.map(d => d.id === item.id ? { ...d, status: 'error', speed: "" } : d));
-        void notifyDownloadError(`${item.title} (Permission refusée)`);
-        startingRef.current.delete(item.id);
-        return;
-      }
-
-      try {
-        const mimeType = item.extension === "pdf" ? "application/pdf"
-          : item.extension === "cbz" ? "application/x-cbz"
-            : item.extension === "cbr" ? "application/x-cbr"
-              : item.extension === "zip" ? "application/zip"
-                : "*/*";
-
-        // Download to cache using DownloadManager (continues in background!)
-        const cacheTempPath = `${ReactNativeBlobUtil.fs.dirs.CacheDir}/${item.id}${dottedExt}`;
-
-        const task = ReactNativeBlobUtil.config({
-          addAndroidDownloads: {
-            useDownloadManager: true,
-            notification: true,
-            title: item.title,
-            description: `Téléchargement VKomic`,
-            path: cacheTempPath,
-            mime: mimeType,
-            mediaScannable: false, // Don't scan temp file
-          },
-        }).fetch("GET", item.url);
-
-        androidTasksRef.current.set(item.id, { cancel: () => task.cancel() });
-
-        // Progress tracking
-        task.progress((receivedStr, totalStr) => {
-          const received = Number(receivedStr) || 0;
-          const total = Number(totalStr) || 0;
-          const pct = total > 0 ? Math.round((received / total) * 100) : 0;
-          const now = Date.now();
-          const prev = speedRef.current.get(item.id);
-          let speed = "";
-          if (prev) {
-            const dt = Math.max(1, now - prev.at);
-            const db = Math.max(0, received - prev.bytes);
-            const bps = (db * 1000) / dt;
-            speed = `${formatBytes(bps)}/s`;
-          }
-          speedRef.current.set(item.id, { bytes: received, at: now });
-          if (pct < 100) {
-            queueProgressUpdate(item.id, {
-              progress: pct,
-              speed,
-              size: total > 0 ? formatBytes(total) : item.size,
-            });
-          }
-        });
-
-        const res = await task;
-        const downloadedPath = res?.path?.() || cacheTempPath;
-
-        // Copy to SAF folder
-        logDownload(`SAF: creating file for ${item.title}...`);
-        const fileUri = await FolderService.createFileRobust(dir, fileName, mimeType);
-
-        logDownload(`SAF: copying temp file to ${fileUri}...`);
-        const copied = await FolderService.copyLocalToSaf(downloadedPath, fileUri);
-
-        if (copied) {
-          // Clean up temp file
-          try { await ReactNativeBlobUtil.fs.unlink(downloadedPath); } catch { }
-
-          pendingProgressRef.current.delete(item.id);
-          upsertDownload(item.id, {
-            status: "completed",
-            progress: 100,
-            speed: "",
-            resumeData: null,
-            path: fileUri
-          });
-          androidTasksRef.current.delete(item.id);
-          startingRef.current.delete(item.id);
-          clearRetryCount(item.id);
-          clearSpeed(speedRef, item.id);
-          void notifyDownloadCompleted(item.title);
-        } else {
-          throw new SafError(SafErrorType.UNKNOWN, "Échec de la copie vers le dossier SAF");
-        }
-      } catch (err) {
-        console.log("SAF Download error:", err);
-        androidTasksRef.current.delete(item.id);
-        startingRef.current.delete(item.id);
-        clearSpeed(speedRef, item.id);
         setDownloads((prev) => {
           const d = prev.find(x => x.id === item.id);
           if (d?.status === 'paused' || d?.status === 'canceled') return prev;
@@ -610,7 +514,7 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
         startingRef.current.delete(item.id);
         clearRetryCount(item.id);
         clearSpeed(speedRef, item.id);
-        void notifyDownloadCompleted(item.title);
+        void notifyDownloadCompleted(item.id, item.title);
       }
     } catch (err: any) {
       console.warn("Download error:", err);
@@ -785,6 +689,7 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
     };
     void hydrate();
     void setupNotifications();
+    void setupNotifications();
     return () => { cancelled = true; };
   }, []);
 
@@ -913,7 +818,7 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
       resumeData: null,
     };
     setDownloads((prev) => [item, ...prev]);
-    void notifyDownloadStarted(node.title);
+    // Note: On ne notifie plus ici car le DownloadManager affiche sa propre notification avec barre de progression
   };
 
   const pauseDownload = async (id: string) => {
@@ -1002,7 +907,7 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
           upsertDownload(id, { status: "completed", progress: 100, speed: "", resumeData: null, path: result.uri });
           resumablesRef.current.delete(id);
           clearSpeed(speedRef, id);
-          void notifyDownloadCompleted(current.title);
+          void notifyDownloadCompleted(id, current.title);
         }
         return;
       } catch (e) {

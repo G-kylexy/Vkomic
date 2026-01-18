@@ -88,53 +88,59 @@ const LibraryFileRow = React.memo<LibraryFileRowProps>(({ file: f, palette: p, s
 
   return (
     <View style={styles.fileContainer}>
-      <Pressable
-        style={({ pressed }) => [
-          styles.fileRow,
-          pressed && { opacity: 0.7, backgroundColor: `${p.surface}80` },
-        ]}
-        onPress={() => void onPress(f)}
-      >
-        <View style={[styles.fileIcon, f.isDirectory && { backgroundColor: `${p.primary}15`, borderColor: `${p.primary}30` }]}>
-          <Ionicons
-            name={f.isDirectory ? "folder" : (f.name.toLowerCase().endsWith(".pdf") ? "book-outline" : "document-text-outline")}
-            size={18}
-            color={f.isDirectory ? p.primary : (f.name.toLowerCase().endsWith(".pdf") ? p.primaryBright : p.muted)}
-          />
-        </View>
-        <View style={styles.fileText}>
-          <Text style={styles.fileName} numberOfLines={isGrid ? 2 : (f.isDirectory ? 3 : 2)}>
-            {f.name}
-          </Text>
-          <Text style={styles.fileMeta} numberOfLines={1}>
-            {f.isDirectory ? "Dossier" : formatBytes(f.size)}
-          </Text>
-        </View>
-        {!isGrid && <Ionicons name={f.isDirectory ? "chevron-forward" : "eye-outline"} size={18} color={p.subtle} />}
-      </Pressable>
-      {!f.isDirectory && (
-        <View style={[styles.actionsRow, isGrid && { position: 'absolute', bottom: 10, right: 10 }]}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.deleteBtn,
-              pressed && { opacity: 0.7 }
-            ]}
-            onPress={() => void onShare(f)}
-          >
-            <Ionicons name="share-social-outline" size={18} color={p.primaryBright} />
-          </Pressable>
-          <Pressable
-            style={({ pressed }) => [
-              styles.deleteBtn,
-              pressed && { opacity: 0.7 }
-            ]}
-            onLongPress={() => void onDelete(f)}
-            onPress={() => void onDelete(f)}
-          >
-            <Ionicons name="trash-outline" size={18} color={p.danger} />
-          </Pressable>
-        </View>
-      )}
+      <View style={styles.fileRow}>
+        <Pressable
+          style={({ pressed }) => [
+            styles.fileRowInner,
+            pressed && { opacity: 0.7 },
+          ]}
+          onPress={() => void onPress(f)}
+        >
+          <View style={[styles.fileIcon, f.isDirectory && { backgroundColor: `${p.primary}15`, borderColor: `${p.primary}30` }]}>
+            <Ionicons
+              name={f.isDirectory ? "folder" : (f.name.toLowerCase().endsWith(".pdf") ? "book-outline" : "document-text-outline")}
+              size={18}
+              color={f.isDirectory ? p.primary : (f.name.toLowerCase().endsWith(".pdf") ? p.primaryBright : p.muted)}
+            />
+          </View>
+          <View style={styles.fileText}>
+            <Text style={styles.fileName}>
+              {f.name}
+            </Text>
+            <Text style={styles.fileMeta} numberOfLines={1}>
+              {f.isDirectory ? "Dossier" : formatBytes(f.size)}
+            </Text>
+          </View>
+        </Pressable>
+        {!f.isDirectory && (
+          <View style={styles.actionsRow}>
+            <Pressable
+              style={({ pressed }) => [
+                styles.deleteBtn,
+                pressed && { opacity: 0.7 }
+              ]}
+              hitSlop={8}
+              onPress={() => void onShare(f)}
+            >
+              <Ionicons name="share-social-outline" size={20} color={p.primaryBright} />
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [
+                styles.deleteBtn,
+                { marginLeft: 4, borderColor: `${p.danger}50`, backgroundColor: `${p.danger}15` },
+                pressed && { opacity: 0.7 }
+              ]}
+              hitSlop={8}
+              onPress={() => void onDelete(f)}
+            >
+              <Ionicons name="trash-outline" size={20} color={p.danger} />
+            </Pressable>
+          </View>
+        )}
+        {f.isDirectory && (
+          <Ionicons name="chevron-forward" size={18} color={p.subtle} style={{ marginLeft: 8 }} />
+        )}
+      </View>
     </View>
   );
 });
@@ -640,7 +646,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({ isActive = false }
           </View>
         )}
 
-        <Section title={t.library.folderTitle}>
+        <Section title={t.library.folderTitle} style={{ paddingHorizontal: 4 }}>
           {files.length === 0 ? (
             isLoading ? null : (
               <View style={styles.empty}>
@@ -726,7 +732,8 @@ const stylesWithPalette = (p: typeof defaultPalette, a: AccentType, screenWidth:
       backgroundColor: p.background,
     },
     content: {
-      padding: spacing.lg,
+      paddingHorizontal: 12, // Réduit le padding gauche pour décaler l'interface
+      paddingVertical: spacing.lg,
       paddingBottom: spacing.xl,
       gap: spacing.lg,
     },
@@ -815,22 +822,39 @@ const stylesWithPalette = (p: typeof defaultPalette, a: AccentType, screenWidth:
       gap: spacing.sm,
     },
     fileContainer: {
-      flexDirection: isTablet ? "column" : "row",
-      alignItems: isTablet ? "stretch" : "center",
-      marginBottom: isTablet ? spacing.sm : 0,
-      width: itemWidth,
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      marginBottom: spacing.xs,
     },
     fileRow: {
       flex: 1,
-      flexDirection: isTablet ? "column" : "row",
-      alignItems: isTablet ? "flex-start" : "center",
+      flexDirection: "row",
+      alignItems: "center",
       backgroundColor: p.card,
       borderRadius: radius.xl,
-      padding: isTablet ? spacing.md : spacing.lg,
-      gap: isTablet ? spacing.sm : spacing.lg,
+      paddingVertical: spacing.md,
+      paddingLeft: 0,
+      paddingRight: 4,
+      gap: spacing.xs,
       borderWidth: 1,
       borderColor: `${p.border}50`,
-      minHeight: isTablet ? 140 : 76,
+      minHeight: 80,
+      overflow: 'hidden',
+    },
+    fileRowInner: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.sm,
+      flexShrink: 1,
+      minWidth: 0,
+    },
+    actionsRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      flexShrink: 0, // Ne jamais rétrécir les boutons
     },
     fileIcon: {
       width: 40,
@@ -844,6 +868,8 @@ const stylesWithPalette = (p: typeof defaultPalette, a: AccentType, screenWidth:
     },
     fileText: {
       flex: 1,
+      flexShrink: 1,
+      minWidth: 0,
       gap: 2,
     },
     fileName: {
@@ -856,21 +882,16 @@ const stylesWithPalette = (p: typeof defaultPalette, a: AccentType, screenWidth:
       fontSize: 11,
       fontWeight: "700",
     },
-    actionsRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-      marginLeft: isTablet ? 0 : spacing.sm,
-    },
+
     deleteBtn: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
-      backgroundColor: `${p.surface}40`,
+      width: 38,
+      height: 38,
+      borderRadius: 19,
+      backgroundColor: `${p.surface}80`,
       alignItems: "center",
       justifyContent: "center",
-      borderWidth: 1,
-      borderColor: `${p.border}50`,
+      borderWidth: 1.5,
+      borderColor: `${p.border}80`,
     },
     refreshBtnCompact: {
       width: 36,

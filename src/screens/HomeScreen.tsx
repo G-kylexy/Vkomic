@@ -62,11 +62,13 @@ const stylesWithPalette = (p: typeof defaultPalette, a: AccentType, screenWidth:
     },
     searchInput: { flex: 1, color: p.text, fontSize: 15, fontWeight: "700" },
     clearBtn: { padding: 6 },
-    breadcrumbs: { paddingHorizontal: spacing.lg, paddingTop: spacing.xs, paddingBottom: spacing.xs, flexDirection: "row", alignItems: "center", overflow: "hidden" },
+    breadcrumbs: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.sm, flexDirection: "row", alignItems: "center", overflow: "hidden" },
     breadcrumbScroll: { flex: 1, flexShrink: 1 },
     breadcrumbInner: { flexDirection: "row", alignItems: "center", paddingRight: spacing.sm },
-    crumb: { flexDirection: "row", alignItems: "center", gap: 4, marginRight: 6, flexShrink: 0 },
-    crumbText: { color: p.muted, fontSize: 12, fontWeight: "700" },
+    crumb: { flexDirection: "row", alignItems: "center", gap: 6, marginRight: 8, flexShrink: 0, backgroundColor: `${p.surface}`, paddingHorizontal: 10, paddingVertical: 6, borderRadius: radius.md, borderWidth: 1, borderColor: `${p.border}50` },
+    crumbActive: { backgroundColor: `${a.accent}15`, borderColor: `${a.accent}30` },
+    crumbText: { color: p.muted, fontSize: 14, fontWeight: "700" },
+    crumbTextActive: { color: a.accentBright },
     container: { flex: 1 },
     content: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xs, gap: spacing.xs },
     statsRow: { flexDirection: "row", backgroundColor: p.surface, borderRadius: radius.lg, padding: spacing.lg, marginBottom: spacing.md, borderWidth: 1, borderColor: `${a.accent}30`, alignItems: "center" },
@@ -439,12 +441,21 @@ export const HomeScreen: React.FC<{ isActive?: boolean, onNavigate?: (tab: TabId
           <Pressable style={styles.crumb} onPress={goHome}>
             <Ionicons name="apps-outline" size={16} color={p.muted} />
           </Pressable>
-          {navPath.map((node: VkNode, idx: number) => (
-            <Pressable key={`${node.id}-${idx}`} style={styles.crumb} onPress={() => goUp(idx)}>
-              <Ionicons name="chevron-forward" size={14} color={p.subtle} />
-              <Text style={styles.crumbText} numberOfLines={1} ellipsizeMode="tail">{node.title}</Text>
-            </Pressable>
-          ))}
+          {navPath.map((node: VkNode, idx: number) => {
+            const isLast = idx === navPath.length - 1;
+            return (
+              <Pressable
+                key={`${node.id}-${idx}`}
+                style={[styles.crumb, isLast && styles.crumbActive]}
+                onPress={() => goUp(idx)}
+              >
+                {!isLast && <Ionicons name="chevron-forward" size={14} color={p.subtle} />}
+                <Text style={[styles.crumbText, isLast && styles.crumbTextActive]} numberOfLines={1} ellipsizeMode="tail">
+                  {node.title}
+                </Text>
+              </Pressable>
+            );
+          })}
         </ScrollView>
       </View>
 

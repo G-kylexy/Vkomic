@@ -2,51 +2,29 @@ import { useState, useEffect, useRef } from "react";
 import { StatusBar } from "expo-status-bar";
 import { StyleSheet, View, ActivityIndicator, Animated } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
-import * as FileSystem from "expo-file-system/legacy";
 import { BottomNav, TabId } from "./src/components/BottomNav";
-import { ErrorBoundary } from "./src/components/ErrorBoundary";
-import { OfflineBanner } from "./src/components/OfflineBanner";
-import { DownloadsScreen } from "./src/screens/DownloadsScreen";
-import { HomeScreen } from "./src/screens/HomeScreen";
-import { LibraryScreen } from "./src/screens/LibraryScreen";
-import { SettingsScreen } from "./src/screens/SettingsScreen";
-import { ReaderScreen } from "./src/screens/ReaderScreen";
+
 import { VkProvider, useVk } from "./src/context/VkContext";
 import { AppDataProvider, useAppData } from "./src/context/AppDataContext";
-import { requestAllPermissions } from "./src/services/PermissionsService";
-
-// Cleanup old cache files on app startup
-const cleanupCache = async () => {
-  try {
-    const readerTempDir = `${FileSystem.cacheDirectory}reader-temp/`;
-    const info = await FileSystem.getInfoAsync(readerTempDir);
-    if (info.exists) {
-      await FileSystem.deleteAsync(readerTempDir, { idempotent: true });
-      console.log("App: Cleaned up reader cache");
-    }
-  } catch (e) {
-    console.log("App: Cache cleanup failed (non-critical):", e);
-  }
-};
+import { ErrorBoundary } from "./src/components/ErrorBoundary";
+import { OfflineBanner } from "./src/components/OfflineBanner";
+import { HomeScreen } from "./src/screens/HomeScreen";
+import { LibraryScreen } from "./src/screens/LibraryScreen";
+import { DownloadsScreen } from "./src/screens/DownloadsScreen";
+import { SettingsScreen } from "./src/screens/SettingsScreen";
+import { ReaderScreen } from "./src/screens/ReaderScreen";
 
 const AppContent = () => {
-  const [activeTab, setActiveTab] = useState<TabId>("home");
   const { activePalette, isReady } = useVk();
   const { readingFile, setReadingFile } = useAppData();
+  const [activeTab, setActiveTab] = useState<TabId>("home");
   const fadeAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    // Request all permissions on mount (storage + notifications)
-    requestAllPermissions();
-    // Cleanup old cache files
-    cleanupCache();
-  }, []);
 
   useEffect(() => {
     if (isReady) {
       Animated.timing(fadeAnim, {
         toValue: 1,
-        duration: 400,
+        duration: 300,
         useNativeDriver: true,
       }).start();
     }
@@ -54,19 +32,19 @@ const AppContent = () => {
 
   if (!isReady) {
     return (
-      <View style={[styles.safeArea, styles.center, { backgroundColor: activePalette.background }]}>
-        <StatusBar style="light" />
-        <ActivityIndicator size="large" color={activePalette.primaryBright} />
+      <View style={[styles.center, { flex: 1, backgroundColor: activePalette.background }]}>
+        <ActivityIndicator size="large" color={activePalette.primary} />
       </View>
     );
   }
-
   return (
     <Animated.View style={[styles.safeArea, { opacity: fadeAnim, backgroundColor: activePalette.background }]}>
       <SafeAreaView style={styles.safeArea}>
         <StatusBar style="light" />
         <OfflineBanner />
+
         <View style={styles.screen}>
+          {/* ... screens ... */}
           <View style={[styles.screen, activeTab !== "home" && styles.hidden]}>
             <HomeScreen isActive={activeTab === "home"} onNavigate={setActiveTab} />
           </View>
@@ -111,6 +89,7 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
+  // ... (styles unchanged)
   safeArea: {
     flex: 1,
   },
