@@ -32,7 +32,8 @@
       "Bash(cmd /c \"type c:\\\\Users\\\\FX706\\\\Downloads\\\\vkomic\\\\debug_logs.txt 2>nul\")",
       "Bash(Select-String -Pattern \"T24|Centile|refresh|DOWNLOAD\")",
       "Bash(Select-Object -Last 50)",
-      "Bash(./gradlew assembleDebug:*)"
+      "Bash(./gradlew assembleDebug:*)",
+      "Bash(adb shell am force-stop:*)"
     ]
   }
 }

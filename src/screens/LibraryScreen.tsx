@@ -41,6 +41,7 @@ type LibraryFileRowProps = {
   file: LocalFile;
   palette: typeof defaultPalette;
   styles: any;
+  accentColor: string;
   onPress: (file: LocalFile) => void;
   onDelete: (file: LocalFile) => void;
   onShare: (file: LocalFile) => void;
@@ -83,7 +84,7 @@ const SkeletonRow = React.memo<{ styles: any, palette: typeof defaultPalette }>(
   );
 });
 
-const LibraryFileRow = React.memo<LibraryFileRowProps>(({ file: f, palette: p, styles, onPress, onDelete, onShare }) => {
+const LibraryFileRow = React.memo<LibraryFileRowProps>(({ file: f, palette: p, styles, accentColor, onPress, onDelete, onShare }) => {
   const isGrid = styles.fileContainer.width !== undefined;
 
   return (
@@ -127,13 +128,13 @@ const LibraryFileRow = React.memo<LibraryFileRowProps>(({ file: f, palette: p, s
             <Pressable
               style={({ pressed }) => [
                 styles.deleteBtn,
-                { marginLeft: 4, borderColor: `${p.danger}50`, backgroundColor: `${p.danger}15` },
+                { marginLeft: 4, borderColor: `${accentColor}50`, backgroundColor: `${accentColor}15` },
                 pressed && { opacity: 0.7 }
               ]}
               hitSlop={8}
               onPress={() => void onDelete(f)}
             >
-              <Ionicons name="trash-outline" size={20} color={p.danger} />
+              <Ionicons name="trash-outline" size={20} color={accentColor} />
             </Pressable>
           </View>
         )}
@@ -451,18 +452,28 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({ isActive = false }
   const confirmDelete = useCallback(async () => {
     const file = deleteDialog.file;
     if (!file) return;
+
+    // Supprimer immédiatement du state local pour un feedback instantané
+    setFiles(prev => prev.filter(f => f.uri !== file.uri));
+    setDeleteDialog({ visible: false, file: null });
+
     try {
-      // Use FolderService for SAF URIs
+      // Supprimer le fichier en arrière-plan
       if (file.uri.startsWith("content://")) {
         await FolderService.deleteFile(file.uri);
       } else {
         await deleteLocalFile(file.uri);
       }
-      await refresh();
     } catch (e) {
+      // En cas d'erreur, restaurer le fichier dans la liste et afficher l'erreur
+      setFiles(prev => [...prev, file].sort((a, b) => {
+        if (a.isDirectory && !b.isDirectory) return -1;
+        if (!a.isDirectory && b.isDirectory) return 1;
+        return (b.modified ?? 0) - (a.modified ?? 0);
+      }));
       Alert.alert("Erreur", "Impossible de supprimer le fichier.");
     }
-  }, [deleteDialog.file, deleteLocalFile, refresh]);
+  }, [deleteDialog.file, deleteLocalFile]);
 
   const onSharePress = useCallback(async (file: LocalFile) => {
     try {
@@ -526,11 +537,12 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({ isActive = false }
       file={f}
       palette={p}
       styles={styles}
+      accentColor={accent.accent}
       onPress={onFilePress}
       onDelete={onDeletePress}
       onShare={onSharePress}
     />
-  ), [p, styles, onFilePress, onDeletePress, onSharePress]);
+  ), [p, styles, accent, onFilePress, onDeletePress, onSharePress]);
 
   return (
     <View style={styles.container}>
@@ -702,8 +714,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({ isActive = false }
         confirmText="Supprimer"
         cancelText="Annuler"
         icon="trash"
-        variant="warning"
-        palette={{ ...p, warning: accent.accent }}
+        palette={p}
         accent={accent.accent}
       />
     </View>

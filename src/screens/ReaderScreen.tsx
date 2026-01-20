@@ -250,7 +250,7 @@ export const ReaderScreen: React.FC<ReaderScreenProps> = ({ uri, title, onClose 
                                     spacing={viewMode === "horizontal" ? 0 : 8}
                                     maxScale={3.0}
                                     minScale={1.0}
-                                    enableAntialiasing={true}
+                                    enableAntialiasing={false}
                                     enableDoubleTapZoom={true}
                                     renderActivityIndicator={renderLoading}
                                 />

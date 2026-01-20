@@ -1,5 +1,5 @@
-import React, { useEffect, useRef } from "react";
-import { LayoutAnimation, Platform, Pressable, ScrollView, StyleSheet, Text, View, Alert, FlatList, useWindowDimensions } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import { LayoutAnimation, Platform, Pressable, ScrollView, StyleSheet, Text, View, Alert, FlatList, useWindowDimensions, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 
@@ -9,6 +9,7 @@ import * as FolderService from "../services/FolderService";
 import { getT } from "../i18n";
 import { palette as defaultPalette, radius, spacing, tabAccents } from "../theme";
 import { DownloadItem } from "../types";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 
 type AccentType = {
   accent: string;
@@ -201,7 +202,11 @@ export const DownloadsScreen: React.FC = () => {
     cancelDownload,
     retryDownload,
     setReadingFile,
+    clearDownloads,
   } = useAppData();
+
+  // État pour le dialogue de confirmation
+  const [clearDialog, setClearDialog] = useState(false);
 
   // Memoize handlers to prevent checking unnecessary re-renders
   const handleLire = React.useCallback(async (item: DownloadItem) => {
@@ -257,6 +262,32 @@ export const DownloadsScreen: React.FC = () => {
     />
   ), [p, accent, t, styles, pauseDownload, resumeDownload, cancelDownload, retryDownload, handleLire, handleDossier]);
 
+  // Tri par priorité de statut (ordre UX optimisé)
+  // 1. En cours - élément dynamique principal
+  // 2. Erreur - nécessite une action immédiate
+  // 3. En attente - va s'activer automatiquement
+  // 4. En pause - décision utilisateur, moins urgent
+  // 5. Terminé - intérêt réduit
+  // 6. Annulé - le moins prioritaire
+  const statusPriority: Record<string, number> = {
+    downloading: 0,
+    error: 1,
+    pending: 2,
+    paused: 3,
+    completed: 4,
+    canceled: 5,
+  };
+
+  const sortedDownloads = React.useMemo(() => {
+    return [...downloads].sort((a, b) => {
+      const priorityA = statusPriority[a.status] ?? 99;
+      const priorityB = statusPriority[b.status] ?? 99;
+      if (priorityA !== priorityB) return priorityA - priorityB;
+      // À priorité égale, trier par date de création (plus récent d'abord)
+      return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+    });
+  }, [downloads]);
+
   const completedCount = downloads.filter((d) => d.status === "completed").length;
   const inProgressCount = downloads.filter((d) => ["downloading", "pending", "paused"].includes(d.status)).length;
   const totalCount = downloads.length;
@@ -285,8 +316,24 @@ export const DownloadsScreen: React.FC = () => {
             <Text style={styles.headerTitle}>{t.downloads.title}</Text>
             <Text style={styles.headerSubtitle}>{totalCount} {t.nav.downloads.toLowerCase()}</Text>
           </View>
-          <View style={styles.headerIcon}>
-            <Ionicons name="cloud-download" size={22} color={accent.accentBright} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            {downloads.length > 0 && (
+              <TouchableOpacity
+                onPress={() => setClearDialog(true)}
+                style={{
+                  padding: 8,
+                  backgroundColor: `${accent.accent}20`,
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  borderColor: `${accent.accent}40`,
+                }}
+              >
+                <Ionicons name="trash-outline" size={20} color={accent.accentBright} />
+              </TouchableOpacity>
+            )}
+            <View style={styles.headerIcon}>
+              <Ionicons name="cloud-download" size={22} color={accent.accentBright} />
+            </View>
           </View>
         </View>
 
@@ -324,7 +371,7 @@ export const DownloadsScreen: React.FC = () => {
           </View>
         ) : (
           <FlatList
-            data={downloads}
+            data={sortedDownloads}
             keyExtractor={(item) => item.id}
             renderItem={renderItem}
             key={screenWidth > 900 ? 'grid3' : screenWidth > 600 ? 'grid2' : 'list'}
@@ -350,6 +397,23 @@ export const DownloadsScreen: React.FC = () => {
           />
         )}
       </View>
+
+      {/* Dialog de confirmation pour effacer l'historique */}
+      <ConfirmDialog
+        visible={clearDialog}
+        onClose={() => setClearDialog(false)}
+        onConfirm={() => {
+          clearDownloads();
+          setClearDialog(false);
+        }}
+        title="Effacer l'historique"
+        message="Voulez-vous supprimer tous les téléchargements de la liste ?"
+        confirmText="Effacer"
+        cancelText="Annuler"
+        icon="trash"
+        palette={p}
+        accent={accent.accent}
+      />
     </View>
   );
 };

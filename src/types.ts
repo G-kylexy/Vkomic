@@ -38,5 +38,6 @@ export interface DownloadItem {
   path?: string; // Chemin local une fois termine
   subFolder?: string; // Sous-dossier optionnel
   resumeData?: string | null; // Mobile: reprise pause/resume
+  totalBytes?: number;
 }
 

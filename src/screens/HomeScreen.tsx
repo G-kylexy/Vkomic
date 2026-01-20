@@ -10,6 +10,7 @@ import {
   View,
   BackHandler,
   useWindowDimensions,
+  TouchableOpacity,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -65,10 +66,8 @@ const stylesWithPalette = (p: typeof defaultPalette, a: AccentType, screenWidth:
     breadcrumbs: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.sm, flexDirection: "row", alignItems: "center", overflow: "hidden" },
     breadcrumbScroll: { flex: 1, flexShrink: 1 },
     breadcrumbInner: { flexDirection: "row", alignItems: "center", paddingRight: spacing.sm },
-    crumb: { flexDirection: "row", alignItems: "center", gap: 6, marginRight: 8, flexShrink: 0, backgroundColor: `${p.surface}`, paddingHorizontal: 10, paddingVertical: 6, borderRadius: radius.md, borderWidth: 1, borderColor: `${p.border}50` },
-    crumbActive: { backgroundColor: `${a.accent}15`, borderColor: `${a.accent}30` },
+    crumb: { flexDirection: "row", alignItems: "center", gap: 6, marginRight: 8, flexShrink: 0, backgroundColor: `${p.surface}`, paddingHorizontal: 12, paddingVertical: 10, borderRadius: radius.md, borderWidth: 1, borderColor: `${p.border}50`, minHeight: 40 },
     crumbText: { color: p.muted, fontSize: 14, fontWeight: "700" },
-    crumbTextActive: { color: a.accentBright },
     container: { flex: 1 },
     content: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xs, gap: spacing.xs },
     statsRow: { flexDirection: "row", backgroundColor: p.surface, borderRadius: radius.lg, padding: spacing.lg, marginBottom: spacing.md, borderWidth: 1, borderColor: `${a.accent}30`, alignItems: "center" },
@@ -332,6 +331,9 @@ export const HomeScreen: React.FC<{ isActive?: boolean, onNavigate?: (tab: TabId
   const navPathRef = useRef(navPath);
   navPathRef.current = navPath;
 
+  // Ref pour auto-scroll du fil d'Ariane
+  const breadcrumbScrollRef = useRef<ScrollView>(null);
+
   // Handle hardware back button
   useEffect(() => {
     if (!isActive) return;
@@ -351,6 +353,8 @@ export const HomeScreen: React.FC<{ isActive?: boolean, onNavigate?: (tab: TabId
 
     return () => backHandler.remove();
   }, [isActive, goUp]);
+
+
 
   const isSearching = searchQuery.trim().length > 0;
   const displayNodes = isSearching ? globalSearchNodes : currentNodes;
@@ -433,27 +437,40 @@ export const HomeScreen: React.FC<{ isActive?: boolean, onNavigate?: (tab: TabId
 
       <View style={styles.breadcrumbs}>
         <ScrollView
+          ref={breadcrumbScrollRef}
           horizontal
           showsHorizontalScrollIndicator={false}
           style={styles.breadcrumbScroll}
           contentContainerStyle={styles.breadcrumbInner}
+          onContentSizeChange={() => {
+            breadcrumbScrollRef.current?.scrollToEnd({ animated: true });
+          }}
         >
-          <Pressable style={styles.crumb} onPress={goHome}>
+          <TouchableOpacity
+            style={styles.crumb}
+            onPress={goHome}
+            hitSlop={8}
+            activeOpacity={0.6}
+            delayPressIn={0}
+          >
             <Ionicons name="apps-outline" size={16} color={p.muted} />
-          </Pressable>
+          </TouchableOpacity>
           {navPath.map((node: VkNode, idx: number) => {
             const isLast = idx === navPath.length - 1;
             return (
-              <Pressable
+              <TouchableOpacity
                 key={`${node.id}-${idx}`}
-                style={[styles.crumb, isLast && styles.crumbActive]}
+                style={styles.crumb}
                 onPress={() => goUp(idx)}
+                hitSlop={8}
+                activeOpacity={0.6}
+                delayPressIn={0}
               >
                 {!isLast && <Ionicons name="chevron-forward" size={14} color={p.subtle} />}
-                <Text style={[styles.crumbText, isLast && styles.crumbTextActive]} numberOfLines={1} ellipsizeMode="tail">
+                <Text style={styles.crumbText} numberOfLines={1} ellipsizeMode="tail">
                   {node.title}
                 </Text>
-              </Pressable>
+              </TouchableOpacity>
             );
           })}
         </ScrollView>

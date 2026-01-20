@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { StatusBar } from "expo-status-bar";
-import { StyleSheet, View, ActivityIndicator, Animated } from "react-native";
+import { StyleSheet, View, ActivityIndicator, Animated, Linking, Platform, NativeModules } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { BottomNav, TabId } from "./src/components/BottomNav";
 
@@ -19,6 +19,23 @@ const AppContent = () => {
   const { readingFile, setReadingFile } = useAppData();
   const [activeTab, setActiveTab] = useState<TabId>("home");
   const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  // Écouter l'intent pour ouvrir l'onglet downloads depuis la notification
+  useEffect(() => {
+    if (Platform.OS === "android") {
+      // Vérifier l'intent initial au démarrage
+      const checkInitialIntent = async () => {
+        try {
+          const { DownloadNotificationModule } = NativeModules;
+          const openTab = await DownloadNotificationModule?.getInitialTab?.();
+          if (openTab === "downloads") {
+            setActiveTab("downloads");
+          }
+        } catch { }
+      };
+      checkInitialIntent();
+    }
+  }, []);
 
   useEffect(() => {
     if (isReady) {
