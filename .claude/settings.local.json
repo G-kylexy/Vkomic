@@ -33,7 +33,8 @@
       "Bash(Select-String -Pattern \"T24|Centile|refresh|DOWNLOAD\")",
       "Bash(Select-Object -Last 50)",
       "Bash(./gradlew assembleDebug:*)",
-      "Bash(adb shell am force-stop:*)"
+      "Bash(adb shell am force-stop:*)",
+      "Bash(powershell -Command:*)"
     ]
   }
 }

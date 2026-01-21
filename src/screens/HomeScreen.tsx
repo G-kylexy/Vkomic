@@ -340,7 +340,7 @@ export const HomeScreen: React.FC<{ isActive?: boolean, onNavigate?: (tab: TabId
 
     const backAction = () => {
       if (navPathRef.current.length > 0) {
-        goUp(navPathRef.current.length - 1);
+        goUp();
         return true; // Prevent app exit
       }
       return false; // Default behavior

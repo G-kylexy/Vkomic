@@ -91,17 +91,18 @@ const AppContent = () => {
   );
 };
 
+
 export default function App() {
   return (
-    <ErrorBoundary>
-      <VkProvider>
-        <AppDataProvider>
-          <SafeAreaProvider>
+    <SafeAreaProvider>
+      <ErrorBoundary>
+        <VkProvider>
+          <AppDataProvider>
             <AppContent />
-          </SafeAreaProvider>
-        </AppDataProvider>
-      </VkProvider>
-    </ErrorBoundary>
+          </AppDataProvider>
+        </VkProvider>
+      </ErrorBoundary>
+    </SafeAreaProvider>
   );
 }
 

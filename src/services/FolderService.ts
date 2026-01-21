@@ -286,7 +286,7 @@ export const listFiles = async (folderUri: string): Promise<FileInfo[]> => {
         try {
             // Use EXPO to list files
             const treeUri = getTreeUri(folderUri);
-            console.log(`listFiles: Listing via Expo SAF on [${treeUri}]...`);
+            // console.log(`listFiles: Listing via Expo SAF on [${treeUri}]...`);
 
             const uris = await FileSystem.StorageAccessFramework.readDirectoryAsync(treeUri);
 
@@ -315,7 +315,7 @@ export const listFiles = async (folderUri: string): Promise<FileInfo[]> => {
                 }
             }
 
-            console.log(`listFiles: Found ${fileInfos.length} items.`);
+            // console.log(`listFiles: Found ${fileInfos.length} items.`);
             return fileInfos;
         } catch (error) {
             console.error("Error listing files via Expo SAF:", error);

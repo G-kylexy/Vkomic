@@ -1,13 +1,14 @@
-import React, { useState, useEffect, useRef } from "react";
-import { View, StyleSheet, Pressable, Text, ActivityIndicator, BackHandler, useWindowDimensions } from "react-native";
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import { View, StyleSheet, Pressable, Text, ActivityIndicator, BackHandler, useWindowDimensions, Animated } from "react-native";
 import Pdf from "react-native-pdf";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
+import * as FileSystem from "expo-file-system/legacy";
+
 import { useVk } from "../context/VkContext";
 import { spacing, radius } from "../theme";
 import { getT } from "../i18n";
 import * as FolderService from "../services/FolderService";
-import * as FileSystem from "expo-file-system/legacy";
 
 interface ReaderScreenProps {
     uri: string;
@@ -15,10 +16,9 @@ interface ReaderScreenProps {
     onClose: () => void;
 }
 
-
 export const ReaderScreen: React.FC<ReaderScreenProps> = ({ uri, title, onClose }) => {
     const { activePalette: p, language } = useVk();
-    const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+    const { width, height } = useWindowDimensions();
     const t = getT(language);
     const [viewMode, setViewMode] = useState<"horizontal" | "vertical">("horizontal");
     const [loading, setLoading] = useState(true);
@@ -30,17 +30,32 @@ export const ReaderScreen: React.FC<ReaderScreenProps> = ({ uri, title, onClose 
     const [initialPage, setInitialPage] = useState(1);
     const isMountedRef = useRef(true);
 
-    // Track mounted state for async operations
+    // Fade-in animation for smooth transition
+    const fadeAnim = useRef(new Animated.Value(0)).current;
+
     useEffect(() => {
         isMountedRef.current = true;
         return () => { isMountedRef.current = false; };
     }, []);
 
-    // Load saved settings
+    // Fade in when PDF loads
+    const fadeIn = useCallback(() => {
+        Animated.timing(fadeAnim, {
+            toValue: 1,
+            duration: 300,
+            useNativeDriver: true,
+        }).start();
+    }, [fadeAnim]);
+
+    // Reset fade on view mode change
+    useEffect(() => {
+        fadeAnim.setValue(0);
+    }, [viewMode, fadeAnim]);
+
+    // Load saved progress
     useEffect(() => {
         const loadSettings = async () => {
             try {
-                // Load progress
                 const key = `progress_${uri}`;
                 const savedPage = await AsyncStorage.getItem(key);
                 if (savedPage) {
@@ -50,8 +65,6 @@ export const ReaderScreen: React.FC<ReaderScreenProps> = ({ uri, title, onClose 
                         setPageInfo(prev => ({ ...prev, current: pageNum }));
                     }
                 }
-
-
             } catch (e) {
                 console.warn("ReaderScreen: Failed to load settings", e);
             }
@@ -61,54 +74,52 @@ export const ReaderScreen: React.FC<ReaderScreenProps> = ({ uri, title, onClose 
 
     const saveProgress = async (page: number) => {
         try {
-            const key = `progress_${uri}`;
-            await AsyncStorage.setItem(key, page.toString());
+            await AsyncStorage.setItem(`progress_${uri}`, page.toString());
         } catch (e) {
             console.warn("ReaderScreen: Failed to save progress", e);
         }
     };
 
-
-
-    // Effect to copy content:// URI to local cache if needed
-    React.useEffect(() => {
+    // Prepare file (copy SAF to local if needed)
+    useEffect(() => {
         let isMounted = true;
+
         const prepareFile = async () => {
-            if (!uri.startsWith("content://")) {
-                setLocalUri(uri);
-                return;
-            }
-
             setPreparing(true);
+            setLoading(true);
+
             try {
-                const tempDir = `${FileSystem.cacheDirectory}reader-temp/`;
-                const dirInfo = await FileSystem.getInfoAsync(tempDir);
-                if (!dirInfo.exists) {
+                let pdfPath = uri;
+
+                if (uri.startsWith("content://")) {
+                    const tempDir = `${FileSystem.cacheDirectory}reader-cache/`;
                     await FileSystem.makeDirectoryAsync(tempDir, { intermediates: true });
-                }
 
-                // Create a unique temp name to avoid conflicts
-                const tempName = `reading_${Date.now()}.pdf`;
-                const destination = `${tempDir}${tempName}`;
+                    const uriHash = uri.split('/').pop() || `file_${Date.now()}`;
+                    const safeHash = uriHash.replace(/[^a-zA-Z0-9._-]/g, '_').substring(0, 100);
+                    const destination = `${tempDir}${safeHash}.pdf`;
 
-                console.log("ReaderScreen: Copying content URI to local cache:", { from: uri, to: destination });
-
-                // Use FolderService which handles SAF permissions correctly
-                const success = await FolderService.copySafToLocal(uri, destination);
-
-                if (isMounted) {
-                    if (success) {
-                        setLocalUri(destination);
-                        setError(false);
+                    const cacheInfo = await FileSystem.getInfoAsync(destination);
+                    if (cacheInfo.exists && (cacheInfo as any).size > 0) {
+                        pdfPath = destination;
                     } else {
-                        throw new Error("Failed to copy SAF file to local cache");
+                        const success = await FolderService.copySafToLocal(uri, destination);
+                        if (!success) throw new Error("Failed to copy SAF file");
+                        pdfPath = destination;
                     }
                 }
+
+                if (isMounted) {
+                    setLocalUri(pdfPath);
+                    setPreparing(false);
+                }
             } catch (err) {
-                console.error("ReaderScreen: Failed to copy file to cache:", err);
-                if (isMounted) setError(true);
-            } finally {
-                if (isMounted) setPreparing(false);
+                console.error("ReaderScreen: Failed to prepare file:", err);
+                if (isMounted) {
+                    setError(true);
+                    setLoading(false);
+                    setPreparing(false);
+                }
             }
         };
 
@@ -116,86 +127,51 @@ export const ReaderScreen: React.FC<ReaderScreenProps> = ({ uri, title, onClose 
         return () => { isMounted = false; };
     }, [uri]);
 
-    // Cleanup temp files on unmount
-    React.useEffect(() => {
-        return () => {
-            const cleanup = async () => {
-                try {
-                    const tempDir = `${FileSystem.cacheDirectory}reader-temp/`;
-                    const info = await FileSystem.getInfoAsync(tempDir);
-                    if (info.exists) {
-                        await FileSystem.deleteAsync(tempDir, { idempotent: true });
-                    }
-                } catch (e) {
-                    console.log("ReaderScreen: Cleanup failed", e);
-                }
-            };
-            cleanup();
-        };
-    }, []);
-
-    // Handle Android hardware back button
+    // Handle back button
     useEffect(() => {
         const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
             onClose();
-            return true; // Prevent default behavior (exit app)
+            return true;
         });
-
         return () => backHandler.remove();
     }, [onClose]);
 
     const isPdf = uri.toLowerCase().endsWith(".pdf") || (localUri && localUri.toLowerCase().endsWith(".pdf"));
 
-    const toggleControls = React.useCallback(() => {
-        setShowControls(prev => !prev);
-    }, []);
-
+    const toggleControls = useCallback(() => setShowControls(prev => !prev), []);
     const toggleViewMode = () => {
         setViewMode(prev => prev === "horizontal" ? "vertical" : "horizontal");
     };
 
-
-
-    const handleLoadComplete = React.useCallback((numberOfPages: number) => {
-        // Délai pour laisser le PDF se rendre en haute qualité avant d'afficher
-        setTimeout(() => {
-            if (isMountedRef.current) {
-                setLoading(false);
-            }
-        }, 350);
+    const handleLoadComplete = useCallback((numberOfPages: number) => {
+        setLoading(false);
         setPageInfo(prev => ({ ...prev, total: numberOfPages }));
-    }, []);
+        fadeIn(); // Smooth fade-in when loaded
+    }, [fadeIn]);
 
-    const handlePageChanged = React.useCallback((page: number, numberOfPages: number) => {
+    const handlePageChanged = useCallback((page: number, numberOfPages: number) => {
         setPageInfo({ current: page, total: numberOfPages });
         saveProgress(page);
-    }, [uri]);
+    }, []);
 
-    const handleError = React.useCallback((err: any) => {
+    const handleError = useCallback((err: any) => {
         console.error("PDF Error:", err);
         setLoading(false);
         setError(true);
     }, []);
 
-    const renderLoading = React.useCallback(() => (
+    const renderLoading = useCallback(() => (
         <ActivityIndicator size="large" color={p.primaryBright} />
     ), [p.primaryBright]);
 
-    const pdfSource = localUri ? {
-        uri: localUri,
-        cache: true,
-    } : null;
+    const pdfSource = localUri ? { uri: localUri, cache: true } : null;
 
     return (
         <View style={[styles.container, { backgroundColor: "#000" }]}>
+            {/* Header */}
             {showControls && (
                 <View style={[styles.header, { backgroundColor: `${p.background}F0` }]}>
-                    <Pressable
-                        onPress={onClose}
-                        style={({ pressed }) => [styles.backBtn, pressed && { opacity: 0.7 }]}
-                        accessibilityRole="button"
-                        accessibilityLabel="Fermer le lecteur"
-                    >
+                    <Pressable onPress={onClose} style={styles.backBtn}>
                         <Ionicons name="close" size={24} color={p.text} />
                     </Pressable>
                     <View style={styles.titleContainer}>
@@ -208,11 +184,7 @@ export const ReaderScreen: React.FC<ReaderScreenProps> = ({ uri, title, onClose 
                             </Text>
                         )}
                     </View>
-
-                    <Pressable
-                        onPress={toggleViewMode}
-                        style={({ pressed }) => [styles.modeBtn, pressed && { opacity: 0.7 }]}
-                    >
+                    <Pressable onPress={toggleViewMode} style={styles.modeBtn}>
                         <Ionicons
                             name={viewMode === "horizontal" ? "book-outline" : "document-text-outline"}
                             size={22}
@@ -222,9 +194,8 @@ export const ReaderScreen: React.FC<ReaderScreenProps> = ({ uri, title, onClose 
                 </View>
             )}
 
+            {/* PDF Viewer */}
             <View style={styles.viewer}>
-
-
                 {isPdf ? (
                     <View style={styles.pdfContainer}>
                         {error ? (
@@ -233,42 +204,44 @@ export const ReaderScreen: React.FC<ReaderScreenProps> = ({ uri, title, onClose 
                                 <Text style={[styles.errorText, { color: p.text }]}>
                                     Impossible de charger le PDF
                                 </Text>
-                                <Text style={[styles.errorSubtext, { color: p.muted }]}>
-                                    {uri.split('/').pop()}
-                                </Text>
                                 <Pressable
                                     style={[styles.retryBtn, { backgroundColor: p.primary }]}
-                                    onPress={() => setError(false)}
+                                    onPress={() => { setError(false); setLoading(true); }}
                                 >
-                                    <Ionicons name="refresh" size={16} color="#fff" />
                                     <Text style={styles.retryText}>Réessayer</Text>
                                 </Pressable>
                             </View>
-                        ) : (
-                            pdfSource && (
+                        ) : pdfSource ? (
+                            <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
                                 <Pdf
+                                    key={viewMode}
                                     source={pdfSource}
-                                    style={[styles.pdf, { width: screenWidth, height: screenHeight }]}
-                                    trustAllCerts={false}
+                                    style={[styles.pdf, { width, height }]}
                                     page={initialPage}
                                     onLoadComplete={handleLoadComplete}
                                     onPageChanged={handlePageChanged}
                                     onError={handleError}
                                     onPageSingleTap={toggleControls}
-                                    enablePaging={viewMode === "horizontal"}
-                                    horizontal={viewMode === "horizontal"}
-                                    fitPolicy={0}
-                                    spacing={viewMode === "horizontal" ? 0 : 8}
-                                    maxScale={5.0}
-                                    minScale={1.0}
-                                    scale={1.0}
+                                    // --- Performance & Cache ---
+                                    trustAllCerts={false}
                                     enableAntialiasing={true}
+                                    scale={1.1}
+                                    maxScale={3.0}
+                                    minScale={1.0}
+                                    // --- Expérience de Lecture ---
+                                    horizontal={viewMode === "horizontal"}
+                                    enablePaging={viewMode === "horizontal"}
+                                    fitPolicy={0}
+                                    spacing={10}
+                                    // --- Interaction ---
+                                    enableRTL={false}
                                     enableDoubleTapZoom={true}
-                                    enableAnnotationRendering={false}
                                     renderActivityIndicator={renderLoading}
+                                    showsHorizontalScrollIndicator={false}
+                                    showsVerticalScrollIndicator={false}
                                 />
-                            )
-                        )}
+                            </Animated.View>
+                        ) : null}
                     </View>
                 ) : (
                     <View style={styles.unsupported}>
@@ -276,22 +249,14 @@ export const ReaderScreen: React.FC<ReaderScreenProps> = ({ uri, title, onClose 
                         <Text style={[styles.unsupportedText, { color: p.muted }]}>
                             {t.reader.unsupported}
                         </Text>
-                        <Pressable
-                            style={({ pressed }) => [styles.shareBtn, { backgroundColor: p.primary }, pressed && { opacity: 0.8 }]}
-                            onPress={onClose}
-                            accessibilityRole="button"
-                            accessibilityLabel="Retour"
-                        >
-                            <Text style={styles.shareBtnText}>{t.reader.return}</Text>
-                        </Pressable>
                     </View>
                 )}
 
                 {(loading || preparing) && isPdf && !error && (
                     <View style={styles.loading}>
                         <ActivityIndicator size="large" color={p.primaryBright} />
-                        <Text style={[styles.loadingText, { color: "#fff" }]}>
-                            {preparing ? "Préparation du fichier..." : t.reader.loading}
+                        <Text style={styles.loadingText}>
+                            {preparing ? "Préparation..." : "Chargement..."}
                         </Text>
                     </View>
                 )}
@@ -301,9 +266,7 @@ export const ReaderScreen: React.FC<ReaderScreenProps> = ({ uri, title, onClose 
 };
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-    },
+    container: { flex: 1 },
     header: {
         position: "absolute",
         top: 0,
@@ -321,16 +284,13 @@ const styles = StyleSheet.create({
         height: 40,
         alignItems: "center",
         justifyContent: "center",
-        borderRadius: 20,
     },
     modeBtn: {
         width: 40,
         height: 40,
         alignItems: "center",
         justifyContent: "center",
-        borderRadius: 20,
     },
-
     titleContainer: {
         flex: 1,
         alignItems: "center",
@@ -345,26 +305,23 @@ const styles = StyleSheet.create({
         fontWeight: "600",
         marginTop: 2,
     },
-    viewer: {
-        flex: 1,
-    },
-    pdfContainer: {
-        flex: 1,
-    },
+    viewer: { flex: 1 },
+    pdfContainer: { flex: 1 },
     pdf: {
         flex: 1,
         backgroundColor: "#000",
     },
     loading: {
         ...StyleSheet.absoluteFillObject,
-        backgroundColor: "rgba(0,0,0,0.9)",
+        backgroundColor: "rgba(0,0,0,0.95)",
         alignItems: "center",
         justifyContent: "center",
         gap: 12,
     },
     loadingText: {
-        fontSize: 12,
-        fontWeight: "700",
+        color: "#fff",
+        fontSize: 14,
+        fontWeight: "600",
     },
     unsupported: {
         flex: 1,
@@ -377,16 +334,6 @@ const styles = StyleSheet.create({
         textAlign: "center",
         fontSize: 15,
         fontWeight: "700",
-        lineHeight: 22,
-    },
-    shareBtn: {
-        paddingHorizontal: 20,
-        paddingVertical: 12,
-        borderRadius: radius.md,
-    },
-    shareBtnText: {
-        color: "#fff",
-        fontWeight: "900",
     },
     errorContainer: {
         flex: 1,
@@ -400,23 +347,13 @@ const styles = StyleSheet.create({
         fontWeight: "800",
         textAlign: "center",
     },
-    errorSubtext: {
-        fontSize: 12,
-        textAlign: "center",
-    },
     retryBtn: {
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 8,
-        paddingHorizontal: 16,
+        paddingHorizontal: 20,
         paddingVertical: 10,
         borderRadius: radius.md,
-        marginTop: 8,
     },
     retryText: {
         color: "#fff",
         fontWeight: "800",
-        fontSize: 13,
     },
-
 });

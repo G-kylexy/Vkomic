@@ -326,6 +326,8 @@ export const SettingsScreen: React.FC = () => {
             </View>
           </Pressable>
         </Section>
+
+        <Text style={styles.versionText}>vkomic v1.0.0</Text>
       </ScrollView>
 
       {/* Bouton Sauvegarder global */}
@@ -703,5 +705,13 @@ const styles = StyleSheet.create({
   logoutText: {
     fontSize: 12,
     fontWeight: "800",
+  },
+  versionText: {
+    textAlign: "center",
+    fontSize: 11,
+    color: "#888",
+    marginTop: spacing.xl,
+    marginBottom: spacing.md,
+    opacity: 0.6,
   },
 });

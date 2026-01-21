@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { LayoutAnimation, Platform, Pressable, ScrollView, StyleSheet, Text, View, Alert, FlatList, useWindowDimensions, TouchableOpacity } from "react-native";
+import { LayoutAnimation, Platform, Pressable, ScrollView, StyleSheet, Text, View, Alert, FlatList, useWindowDimensions, TouchableOpacity, Animated } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 
@@ -200,6 +200,7 @@ export const DownloadsScreen: React.FC = () => {
     pauseDownload,
     resumeDownload,
     cancelDownload,
+    removeDownload,
     retryDownload,
     setReadingFile,
     clearDownloads,
@@ -246,21 +247,24 @@ export const DownloadsScreen: React.FC = () => {
     }
   }, []);
 
-  const renderItem = React.useCallback(({ item }: { item: DownloadItem }) => (
-    <DownloadCard
-      item={item}
-      palette={p}
-      accent={accent}
-      t={t}
-      styles={styles}
-      pause={pauseDownload}
-      resume={resumeDownload}
-      cancel={cancelDownload}
-      retry={retryDownload}
-      onLire={handleLire}
-      onDossier={() => handleDossier(item)}
-    />
-  ), [p, accent, t, styles, pauseDownload, resumeDownload, cancelDownload, retryDownload, handleLire, handleDossier]);
+  const renderItem = React.useCallback(({ item }: { item: DownloadItem }) => {
+
+    return (
+      <DownloadCard
+        item={item}
+        palette={p}
+        accent={accent}
+        t={t}
+        styles={styles}
+        pause={pauseDownload}
+        resume={resumeDownload}
+        cancel={cancelDownload}
+        retry={retryDownload}
+        onLire={handleLire}
+        onDossier={() => handleDossier(item)}
+      />
+    );
+  }, [p, accent, t, styles, pauseDownload, resumeDownload, cancelDownload, retryDownload, handleLire, handleDossier]);
 
   // Tri par priorité de statut (ordre UX optimisé)
   // 1. En cours - élément dynamique principal
@@ -494,5 +498,55 @@ const stylesWithPalette = (p: typeof defaultPalette, a: AccentType, screenWidth:
     },
     allCompletedBanner: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, backgroundColor: `${p.success}15`, paddingVertical: spacing.md, paddingHorizontal: spacing.lg, borderRadius: radius.lg, borderWidth: 1, borderColor: `${p.success}30`, marginBottom: spacing.md },
     allCompletedText: { color: p.success, fontSize: 16, fontWeight: "900" },
+
+    // Swipe Delete Styles
+    undoContainer: {
+      height: 120,
+      marginVertical: 6,
+      borderRadius: radius.md,
+      backgroundColor: p.surface,
+      justifyContent: "center",
+      alignItems: "center",
+      borderWidth: 1,
+      borderColor: p.border,
+      borderStyle: 'dashed',
+    },
+    undoText: {
+      color: p.muted,
+      fontWeight: "600",
+      marginBottom: 8,
+    },
+    undoBtn: {
+      backgroundColor: p.text,
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      borderRadius: 20,
+    },
+    undoBtnText: {
+      color: p.background,
+      fontWeight: "bold",
+      fontSize: 12,
+    },
+    deleteActionContainer: {
+      justifyContent: "center",
+      alignItems: "flex-start",
+      backgroundColor: p.danger,
+      flex: 1,
+      marginBottom: spacing.md,
+      marginTop: 0,
+      borderRadius: radius.md,
+    },
+    deleteActionContent: {
+      paddingLeft: 24,
+      alignItems: "center",
+      justifyContent: "center",
+      width: 80,
+    },
+    deleteActionText: {
+      color: "#fff",
+      fontSize: 10,
+      fontWeight: "bold",
+      marginTop: 4,
+    },
   });
 };
