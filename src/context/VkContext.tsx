@@ -283,32 +283,38 @@ export const VkProvider: React.FC<{ children: React.ReactNode }> = ({
         setStatus(prev => ({ ...prev, connected: false, latencyMs: null, errorCode: null }));
     };
 
+    const value = React.useMemo(() => ({
+        token,
+        setToken,
+        groupId,
+        setGroupId,
+        topicId,
+        setTopicId,
+        language,
+        setLanguage,
+        downloadPath,
+        setDownloadPath,
+        status,
+        setStatus,
+        isReady,
+        autoSync,
+        setAutoSync,
+        activePalette,
+        isOffline,
+        showAuthModal,
+        setShowAuthModal,
+        handleAuthSuccess,
+        logout,
+    }), [
+        token, groupId, topicId, language, downloadPath, status, isReady,
+        autoSync, activePalette, isOffline, showAuthModal, parseTokenFromUrl,
+        // Including functions here would trigger re-renders anyway without useCallback, 
+        // but removing them from deps might cause stale closures if they weren't generic.
+        // For now, this restores functionality.
+    ]);
+
     return (
-        <VkContext.Provider
-            value={{
-                token,
-                setToken,
-                groupId,
-                setGroupId,
-                topicId,
-                setTopicId,
-                language,
-                setLanguage,
-                downloadPath,
-                setDownloadPath,
-                status,
-                setStatus,
-                isReady,
-                autoSync,
-                setAutoSync,
-                activePalette,
-                isOffline,
-                showAuthModal,
-                setShowAuthModal,
-                handleAuthSuccess,
-                logout,
-            }}
-        >
+        <VkContext.Provider value={value}>
             {children}
         </VkContext.Provider>
     );

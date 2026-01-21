@@ -6,7 +6,8 @@ import ReactNativeBlobUtil from "react-native-blob-util";
 
 import { expandNodesStructure, fetchNodeContent, fetchRootIndex, fetchFolderTreeUpToDepth } from "../services/vk-service";
 import * as FolderService from "../services/FolderService";
-import { notifyDownloadCompleted, notifyDownloadError, notifyDownloadStarted, notifyDownloadProgress, cancelDownloadNotification, setupNotifications } from "../services/NotificationService";
+import * as NativeNotification from "../services/NativeNotification";
+import { setupNotifications } from "../services/NotificationService";
 import { getT } from "../i18n";
 import { DownloadItem, VkNode } from "../types";
 import { useVk } from "./VkContext";
@@ -324,7 +325,7 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
       return true; // Will auto-retry
     }
     // Max retries reached, notify user
-    void notifyDownloadError(id, title);
+    NativeNotification.showErrorNotification(id, title);
     return false;
   };
 
@@ -342,7 +343,8 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const runAndroidDownload = async (item: DownloadItem) => {
     // 1. Prepare Path & Offset using helper
-    const tempPath = getTempFilePath(item.id, item.extension);
+    const tempPath = getTempFilePath(item.id, item.extension); // The main accumulator file
+    const sessionPath = `${tempPath}.session`; // The current chunk file
 
     let startOffset = 0;
     try {
@@ -352,119 +354,119 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
         startOffset = parseInt(String(stats.size));
         console.log(`[Surgery] Finding existing file for ${item.title}: ${startOffset} bytes`);
       } else {
-        await ReactNativeBlobUtil.fs.createFile(tempPath, '', 'utf8');
+        console.log(`[Surgery] Finding existing file for ${item.title}: 0 bytes`);
+      }
+
+      // Ensure session file is clean
+      if (await ReactNativeBlobUtil.fs.exists(sessionPath)) {
+        await ReactNativeBlobUtil.fs.unlink(sessionPath);
       }
     } catch (e) {
-      console.log("[Surgery] Error preparing file:", e);
+      console.log("[Surgery] Error checking file size:", e);
     }
 
-    console.log(`[Surgery] Starting download for ${item.title} from ${startOffset}`);
+    let pendingProgressRefVal = pendingProgressRef.current.get(item.id);
+    let lockedTotal = item.size || (pendingProgressRefVal && typeof pendingProgressRefVal === 'object' ? pendingProgressRefVal.totalBytes : 0) || 0;
+    let skipDownload = false;
 
-    // 2. Lock Total Bytes
-    let lockedTotal = item.totalBytes || 0;
+    // Check if duplicate download
+    if (startOffset > 0 && lockedTotal > 0 && startOffset >= lockedTotal) {
+      console.log(`[Surgery] Download already completed (offset ${startOffset} >= total ${lockedTotal})`);
+      skipDownload = true;
+    }
 
     // 3. Start Download 
-    // We use fileCache: true to allow the library to handle buffering if streams fail
-    const task = ReactNativeBlobUtil.config({
-      fileCache: true,
-    }).fetch("GET", encodeURI(item.url), {
-      'Range': `bytes=${startOffset}-`
-    });
-
-    let isStreaming = false;
+    let task: any = null;
     let writeStream: any = null;
 
-    // 4. Try Surgical Stream Connection
-    try {
-      if (typeof (task as any).readStream === 'function') {
-        console.log("[Surgery] Stream detected! Activating fast-write.");
-        writeStream = await ReactNativeBlobUtil.fs.writeStream(tempPath, 'base64', true);
-        (task as any).readStream((chunk: any) => {
-          if (writeStream) writeStream.write(chunk);
-        });
-        isStreaming = true;
-      } else {
-        console.log("[Surgery] Stream API not available. Using robust session-append.");
-      }
-    } catch (e) {
-      console.log("[Surgery] Stream setup failed, falling back to session-append:", e);
-    }
+    if (!skipDownload) {
+      const config: any = {
+        path: sessionPath, // Always download to session file
+        overwrite: true,
+      };
 
-    // Progress updates
-    task.progress({ count: 10, interval: 250 }, (received, total) => {
-      const receivedNumber = Number(received);
-      const totalNumber = Number(total);
-
-      if (lockedTotal === 0 && totalNumber > 0) {
-        lockedTotal = startOffset + totalNumber;
-        queueProgressUpdate(item.id, { totalBytes: lockedTotal });
+      const headers: Record<string, string> = {};
+      if (startOffset > 0) {
+        headers['Range'] = `bytes=${startOffset}-`;
       }
 
-      const denominator = lockedTotal > 0 ? lockedTotal : (startOffset + totalNumber);
-      const bytesOnDisk = startOffset + receivedNumber;
-      const pct = denominator > 0 ? Math.round((bytesOnDisk / denominator) * 100) : 0;
+      task = ReactNativeBlobUtil.config(config).fetch("GET", encodeURI(item.url), headers);
+      console.log(`[Surgery] Download config: startOffset=${startOffset}, sessionPath=${sessionPath}`);
 
-      const now = Date.now();
-      const prev = speedRef.current.get(item.id);
-      let speed = "";
-      if (prev && receivedNumber > prev.bytes) {
-        const dt = Math.max(1, now - prev.at);
-        const db = receivedNumber - prev.bytes;
-        const bps = (db * 1000) / dt;
-        speed = `${formatBytes(bps)}/s`;
-      }
-      speedRef.current.set(item.id, { bytes: receivedNumber, at: now });
+      // Progress updates
+      task.progress({ count: 10, interval: 250 }, (received: any, total: any) => {
+        const receivedNumber = Number(received);
+        const totalNumber = Number(total);
 
-      if (pct < 100) {
-        queueProgressUpdate(item.id, {
-          progress: pct,
-          speed,
-          size: denominator > 0 ? formatBytes(denominator) : item.size,
-        });
-      }
-    });
-
-    // 6. Register Cancel Handler
-    androidTasksRef.current.set(item.id, {
-      cancel: () => {
-        task.cancel();
-        if (writeStream) {
-          writeStream.close();
-          writeStream = null;
+        if (lockedTotal === 0 && totalNumber > 0) {
+          lockedTotal = startOffset + totalNumber;
+          queueProgressUpdate(item.id, { totalBytes: lockedTotal });
         }
-      }
-    });
 
-    // 7. Await completion
-    const res = await task;
+        const currentTotal = startOffset + receivedNumber;
+        const pct = lockedTotal > 0 ? Math.floor((currentTotal / lockedTotal) * 100) : 0;
 
-    // Cleanup stream if it was used
-    if (writeStream) {
-      writeStream.close();
-      writeStream = null;
-    }
+        // Speed calculation...
+        const now = Date.now();
+        const prev = speedRef.current.get(item.id);
+        let speed = "";
+        if (prev && receivedNumber > prev.bytes) {
+          const dt = Math.max(1, now - prev.at);
+          const db = receivedNumber - prev.bytes;
+          const bps = (db * 1000) / dt;
+          speed = `${formatBytes(bps)}/s`;
+        }
+        speedRef.current.set(item.id, { bytes: receivedNumber, at: now });
 
-    // 8. Handle File Data
-    // If we streamed, the data is already in tempPath. We just remove the dup cache file.
-    // If we didn't stream, we must append the cache file to tempPath.
+        queueProgressUpdate(item.id, { progress: pct, speed, size: lockedTotal > 0 ? formatBytes(lockedTotal) : item.size });
 
-    let cachePath = null;
-    if (res && typeof res.path === 'function') {
-      cachePath = res.path();
-    }
+        // Notification Throttling
+        const lastNotif = lastNotifRef.current.get(item.id) || 0;
+        if (now - lastNotif > 1000) {
+          NativeNotification.showProgressNotification(item.id, item.title, pct, speed);
+          lastNotifRef.current.set(item.id, now);
+        }
+      });
 
-    if (cachePath) {
-      if (!isStreaming) {
-        // Fallback Mode: Append the downloaded session file to main file
-        console.log("[Surgery] Appending session file to main...");
-        if (await ReactNativeBlobUtil.fs.exists(cachePath)) {
-          const sessionData = await ReactNativeBlobUtil.fs.readFile(cachePath, 'base64');
+      // 6. Register Cancel Handler
+      // IMPORTANT: On cancel, we try to flush whatever we have in session to main
+      androidTasksRef.current.set(item.id, {
+        cancel: async () => {
+          task.cancel();
+          try {
+            if (await ReactNativeBlobUtil.fs.exists(sessionPath)) {
+              console.log("[Surgery] Cancel/Pause detected - saving partial session...");
+              const sessionData = await ReactNativeBlobUtil.fs.readFile(sessionPath, 'base64');
+              await ReactNativeBlobUtil.fs.appendFile(tempPath, sessionData, 'base64');
+              await ReactNativeBlobUtil.fs.unlink(sessionPath);
+            }
+          } catch (err) {
+            console.warn("[Surgery] Failed to save partial session on cancel:", err);
+          }
+        }
+      });
+
+      // 7. Await completion
+      const res = await task;
+      const statusCode = res?.respInfo?.status;
+
+      // 8. Merge Session to Main
+      if (await ReactNativeBlobUtil.fs.exists(sessionPath)) {
+        if (startOffset === 0 && statusCode === 200) {
+          // Fresh download or server ignored range -> Move session to main (replace)
+          console.log("[Surgery] Full download - moving session to main");
+          if (await ReactNativeBlobUtil.fs.exists(tempPath)) await ReactNativeBlobUtil.fs.unlink(tempPath);
+          await ReactNativeBlobUtil.fs.mv(sessionPath, tempPath);
+        } else {
+          // Append session to main
+          console.log("[Surgery] Appending session chunk to main");
+          const sessionData = await ReactNativeBlobUtil.fs.readFile(sessionPath, 'base64');
           await ReactNativeBlobUtil.fs.appendFile(tempPath, sessionData, 'base64');
+          await ReactNativeBlobUtil.fs.unlink(sessionPath);
         }
       }
-      // Always clean up the library's cache file
-      try { await ReactNativeBlobUtil.fs.unlink(cachePath); } catch { }
     }
+
 
     // 9. Finalize (Move to SAF)
     const dir = getDownloadDirUri();
@@ -504,7 +506,13 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
     clearSpeed(speedRef, item.id);
 
 
-    void notifyDownloadCompleted(item.id, item.title);
+    // Cancel progress notification and show completed
+    try {
+      NativeNotification.cancelNotification(item.id);
+      NativeNotification.showCompletedNotification(item.id, item.title);
+    } catch (e) {
+      console.warn("Error showing completion notification:", e);
+    }
   };
 
   const processDownload = async (item: DownloadItem) => {
@@ -537,9 +545,12 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
 
     // For SAF, we'll download to temp then copy
     // For regular paths, download directly
-    const tempPath = usingSaf
-      ? `${ReactNativeBlobUtil.fs.dirs.CacheDir}/${item.id}${dottedExt}`
-      : `${dir}/${fileName}`;
+    // Android: Always use getTempFilePath for consistent pause/resume support
+    const tempPath = Platform.OS === 'android'
+      ? getTempFilePath(item.id, extension)
+      : usingSaf
+        ? `${ReactNativeBlobUtil.fs.dirs.CacheDir}/${item.id}${dottedExt}`
+        : `${dir}/${fileName}`;
 
     upsertDownload(item.id, { status: "downloading", path: tempPath, resumeData: item.resumeData ?? null });
     clearSpeed(speedRef, item.id);
@@ -559,7 +570,8 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
           const willRetry = scheduleAutoRetry(item.id, item.title);
           if (!willRetry) {
             upsertDownload(item.id, { status: "error", speed: "" });
-            void notifyDownloadError(item.id, item.title);
+            NativeNotification.cancelNotification(item.id);
+            NativeNotification.showErrorNotification(item.id, item.title);
           }
         }
       }
@@ -608,7 +620,7 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
         startingRef.current.delete(item.id);
         clearRetryCount(item.id);
         clearSpeed(speedRef, item.id);
-        void notifyDownloadCompleted(item.id, item.title);
+        NativeNotification.showCompletedNotification(item.id, item.title);
       }
     } catch (err: any) {
       console.warn("Download error:", err);
@@ -947,6 +959,13 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
 
     startingRef.current.delete(id);
     clearSpeed(speedRef, id);
+
+    // Show paused notification
+    const current = downloads.find(d => d.id === id);
+    if (current) {
+      NativeNotification.cancelNotification(id);
+      NativeNotification.showPausedNotification(id, current.title, current.progress);
+    }
   };
 
   const resumeDownload = async (id: string) => {
@@ -1002,7 +1021,7 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
           upsertDownload(id, { status: "completed", progress: 100, speed: "", resumeData: null, path: result.uri });
           resumablesRef.current.delete(id);
           clearSpeed(speedRef, id);
-          void notifyDownloadCompleted(id, current.title);
+          NativeNotification.showCompletedNotification(id, current.title);
         }
         return;
       } catch (e) {
@@ -1013,6 +1032,13 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
 
     // Android: Resume using Surgical Method
     if (Platform.OS === 'android') {
+      // Prevent double-start race condition
+      if (startingRef.current.has(id)) {
+        console.log("Resume skipped - already starting:", current.title);
+        return;
+      }
+      startingRef.current.add(id);
+
       console.log("Resuming via Surgical Method for:", current.title);
       setDownloads(prev => prev.map(d => d.id === id ? { ...d, status: 'downloading', speed: "" } : d));
 
@@ -1020,6 +1046,7 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
         await runAndroidDownload(current);
       } catch (e: any) {
         console.log("Resume failed:", e);
+        startingRef.current.delete(id); // Clean up on failure
         const isCanceled = e?.message?.includes('canceled') || e?.message?.includes('Canceled');
         if (!isCanceled) {
           upsertDownload(id, { status: "error", speed: "" });
@@ -1034,6 +1061,7 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const cancelDownload = async (id: string) => {
+    const item = downloads.find((d) => d.id === id);
     setDownloads(prev => prev.map(d => d.id === id ? { ...d, status: 'canceled', speed: "", resumeData: null } : d));
 
     // Cancel Android task if exists
@@ -1052,7 +1080,13 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
 
     startingRef.current.delete(id);
     clearSpeed(speedRef, id);
-    const item = downloads.find((d) => d.id === id);
+
+    // Cancel notification
+    NativeNotification.cancelNotification(id);
+    if (item) {
+      NativeNotification.showCancelledNotification(id, item.title);
+    }
+
     if (item?.path) {
       try {
         if (Platform.OS === "android" && !item.path.startsWith("file://")) {
@@ -1135,13 +1169,17 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
-  const value: AppDataContextType = {
+  const value = useMemo<AppDataContextType>(() => ({
     syncedData, navPath, isSyncing, isLoadingNode, error, searchQuery, setSearchQuery,
     hasFullSynced, currentNodes, currentFolder, syncRoot, syncAll, resetLibrary, openNode, goHome, goUp, refreshCurrent, downloads,
     addDownload, pauseDownload, resumeDownload, cancelDownload, retryDownload,
     clearDownloads, downloadAll, cancelAll, clearCache, getDownloadDirUri, deleteLocalFile, globalSearchNodes,
     readingFile, setReadingFile,
-  };
+  }), [
+    syncedData, navPath, isSyncing, isLoadingNode, error, searchQuery,
+    hasFullSynced, currentNodes, currentFolder, downloads, readingFile,
+    globalSearchNodes, token, isReady, autoSync
+  ]);
 
   return (
     <AppDataContext.Provider value={value}>

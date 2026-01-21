@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { View, StyleSheet, Pressable, Text, ActivityIndicator, BackHandler, useWindowDimensions } from "react-native";
 import Pdf from "react-native-pdf";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -28,7 +28,13 @@ export const ReaderScreen: React.FC<ReaderScreenProps> = ({ uri, title, onClose 
     const [localUri, setLocalUri] = useState<string | null>(null);
     const [preparing, setPreparing] = useState(false);
     const [initialPage, setInitialPage] = useState(1);
+    const isMountedRef = useRef(true);
 
+    // Track mounted state for async operations
+    useEffect(() => {
+        isMountedRef.current = true;
+        return () => { isMountedRef.current = false; };
+    }, []);
 
     // Load saved settings
     useEffect(() => {
@@ -151,7 +157,12 @@ export const ReaderScreen: React.FC<ReaderScreenProps> = ({ uri, title, onClose 
 
 
     const handleLoadComplete = React.useCallback((numberOfPages: number) => {
-        setLoading(false);
+        // Délai pour laisser le PDF se rendre en haute qualité avant d'afficher
+        setTimeout(() => {
+            if (isMountedRef.current) {
+                setLoading(false);
+            }
+        }, 350);
         setPageInfo(prev => ({ ...prev, total: numberOfPages }));
     }, []);
 
@@ -248,10 +259,12 @@ export const ReaderScreen: React.FC<ReaderScreenProps> = ({ uri, title, onClose 
                                     horizontal={viewMode === "horizontal"}
                                     fitPolicy={0}
                                     spacing={viewMode === "horizontal" ? 0 : 8}
-                                    maxScale={3.0}
+                                    maxScale={5.0}
                                     minScale={1.0}
-                                    enableAntialiasing={false}
+                                    scale={1.0}
+                                    enableAntialiasing={true}
                                     enableDoubleTapZoom={true}
+                                    enableAnnotationRendering={false}
                                     renderActivityIndicator={renderLoading}
                                 />
                             )
