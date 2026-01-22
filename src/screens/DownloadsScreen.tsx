@@ -248,7 +248,6 @@ export const DownloadsScreen: React.FC = () => {
     }
 
     try {
-      console.log("DownloadsScreen: Opening PDF with internal reader:", item.path);
       setReadingFile({ uri: item.path, title: item.title });
     } catch (error: any) {
       console.error("DownloadsScreen: Error opening file:", error);
@@ -270,7 +269,6 @@ export const DownloadsScreen: React.FC = () => {
           Alert.alert("Erreur", "Impossible d'ouvrir le dossier.");
         }
       } catch (e) {
-        console.log("Opening folder failed:", e);
         Alert.alert("Erreur", "Impossible d'ouvrir le dossier.");
       }
     } else {

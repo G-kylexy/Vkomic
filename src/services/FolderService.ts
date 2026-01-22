@@ -94,7 +94,6 @@ export const ensureDocumentUri = (uri: string): string => {
         const docIdEncoded = encodeURIComponent(docId);
 
         const finalUri = `${provider}/tree/${treeIdEncoded}/document/${docIdEncoded}`;
-        console.log(`ensureDocumentUri: tree+path -> tree+document: [${finalUri}]`);
         return finalUri;
     }
 
@@ -716,7 +715,6 @@ export const openFile = async (fileUri: string): Promise<boolean> => {
 
         if (fileUri.includes("/tree/") && !fileUri.includes("/document/")) {
             documentUri = ensureDocumentUri(fileUri);
-            console.log("openFile: converted to document URI:", documentUri);
         }
 
         // Determine MIME type from extension
@@ -829,7 +827,6 @@ export const createFileRobust = async (
         }
 
         const finalUri = ensureProperFileUri(resultUri, cleanFolderUri);
-        console.log("createFileRobust: success, finalUri =", finalUri);
         return finalUri;
     } catch (error: any) {
         const msg = error?.message?.toLowerCase() || "";
@@ -1003,9 +1000,6 @@ export const copySafToCache = async (
             const destPath = `${cacheDir}/${cleanFileName}`;
             const destUri = `file://${destPath}`;
 
-            console.log("copySafToCache: reading from", safUri);
-            console.log("copySafToCache: writing to", destPath);
-
             // Use SafX native copy - no base64, no memory issues
             const sourceUri = ensureDocumentUri(safUri);
             const result = await SafX.copyFile(sourceUri, destUri, { replaceIfDestinationExists: true });
@@ -1042,7 +1036,6 @@ export const openFileLocation = async (folderUri: string): Promise<boolean> => {
 
     try {
         const uriToOpen = ensureFolderUri(folderUri);
-        console.log("openFileLocation: opening", uriToOpen);
 
         // Try using expo-intent-launcher first
         if (IntentLauncher) {
@@ -1147,7 +1140,6 @@ export const cleanupCachedFile = async (cachePath: string): Promise<void> => {
         } else {
             await FileSystem.deleteAsync(cachePath, { idempotent: true });
         }
-        console.log("cleanupCachedFile: deleted", cachePath);
     } catch (error) {
         console.warn("cleanupCachedFile: failed to delete", cachePath, error);
     }

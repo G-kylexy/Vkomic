@@ -127,7 +127,7 @@ const ensureDir = async (uri: string) => {
       await FileSystem.makeDirectoryAsync(uri, { intermediates: true });
     }
   } catch (err) {
-    console.log("ensureDir failed:", err);
+    // console.log("ensureDir failed:", err);
   }
 };
 
@@ -455,7 +455,6 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
     if (!fileName.toLowerCase().endsWith(dottedExt)) {
       fileName = `${fileName}${dottedExt}`;
     }
-    console.log("processDownload: Filename:", fileName);
 
     // Check if we're using SAF (content:// URI)
     const usingSaf = isSafUri(dir);
@@ -477,7 +476,6 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
       try {
         await runAndroidDownload(item);
       } catch (err: any) {
-        console.log("Download error:", err);
         startingRef.current.delete(item.id);
         clearSpeed(speedRef, item.id);
         lastNotifRef.current.delete(item.id);

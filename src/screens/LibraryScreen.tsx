@@ -450,7 +450,6 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({ isActive = false }
       try {
         if (file.uri.startsWith("content://")) {
           // SAF URIs: use system PDF viewer directly (no cache copy needed)
-          console.log("LibraryScreen: Opening PDF with system viewer:", file.uri);
           const opened = await FolderService.openFile(file.uri);
           if (!opened) {
             Alert.alert("Erreur", "Aucune application PDF n'est installée.");
