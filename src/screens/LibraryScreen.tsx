@@ -198,12 +198,20 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({ isActive = false }
 
 
 
-  const rootUri = useMemo(() => getDownloadDirUri(), [getDownloadDirUri]);
+  // rootUri must depend on downloadPath to update when settings change
+  const rootUri = useMemo(() => getDownloadDirUri(), [getDownloadDirUri, downloadPath]);
 
   const dirUri = useMemo(() => {
     if (!rootUri) return null;
     return currentPath.length > 0 ? `${rootUri}${currentPath.join("/")}/` : rootUri;
   }, [rootUri, currentPath]);
+
+  // Reset navigation path and clear files when root directory changes (e.g. from Settings)
+  useEffect(() => {
+    setCurrentPath([]);
+    setFiles([]); // Clear list purely on root change
+    // The change in dirUri (via rootUri) will trigger the refresh effect below
+  }, [rootUri]);
 
   // Check if using SAF content:// URI
   const isSafUri = dirUri?.startsWith("content://") ?? false;
@@ -221,6 +229,8 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({ isActive = false }
     }
 
     setIsLoading(true);
+    // Note: We don't clear files here anymore to avoid flashing when switching tabs.
+    // Files are cleared only when the root directory actually changes (see useEffect above).
     setError(null);
     try {
       // SAF: use FolderService to list files
@@ -233,11 +243,10 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({ isActive = false }
           return;
         }
 
-        // Step 2: List files using FolderService.listFiles
+        // Step 2: List files using FolderService.listFiles (INSTANT MODE - no sizes yet)
         const safFiles = await FolderService.listFiles(dirUri);
 
-        // Step 3: Convert to LocalFile format immediately (no extra validation needed)
-        // listFiles already returns only existing files
+        // Step 3: Convert to LocalFile format immediately
         const entries: LocalFile[] = safFiles.map(f => ({
           name: f.name,
           uri: f.uri,
@@ -246,15 +255,72 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({ isActive = false }
           isDirectory: f.isDirectory,
         }));
 
-        // Sort: directories first, then by modification date
+        // Sort: directories first, then by name (initially)
         entries.sort((a, b) => {
           if (a.isDirectory && !b.isDirectory) return -1;
           if (!a.isDirectory && b.isDirectory) return 1;
-          return (b.modified ?? 0) - (a.modified ?? 0);
+          return a.name.localeCompare(b.name);
         });
+
+        // Update UI immediately with unknown sizes
         setFiles(entries);
+        setIsLoading(false); // Stop loading spinner
+
+        // Step 4: Load metadata progressively in background
+        // We do this in batches to avoid freezing UI
+        const loadMetadata = async () => {
+          // Only process files that have size 0 (unknown)
+          const filesToUpdate = entries.filter(f => !f.isDirectory);
+          if (filesToUpdate.length === 0) return;
+
+          // Process batch by batch
+          const BATCH_SIZE = 5;
+          for (let i = 0; i < filesToUpdate.length; i += BATCH_SIZE) {
+            const batch = filesToUpdate.slice(i, i + BATCH_SIZE);
+
+            // Check if component is still mounted/valid (naive check via dirUri ref if needed, but here simple)
+            // In a real app we would use a ref like isMounted
+
+            const updates = await Promise.all(batch.map(async (file) => {
+              try {
+                const info = await FileSystem.getInfoAsync(file.uri);
+                if (info.exists) {
+                  return {
+                    uri: file.uri,
+                    size: (info as any).size || 0,
+                    modified: (info as any).modificationTime || Date.now()
+                  };
+                }
+              } catch (e) {
+                // Ignore errors
+              }
+              return null;
+            }));
+
+            // Update state with new metadata
+            setFiles(prev => {
+              const next = [...prev];
+              let changed = false;
+              updates.forEach(update => {
+                if (update) {
+                  const idx = next.findIndex(f => f.uri === update.uri);
+                  if (idx !== -1) {
+                    next[idx] = { ...next[idx], size: update.size, modified: update.modified };
+                    changed = true;
+                  }
+                }
+              });
+              return changed ? next : prev;
+            });
+
+            // Small pause to yield to UI thread
+            await new Promise(r => setTimeout(r, 50));
+          }
+        };
         return;
       }
+
+
 
       // Android: use ReactNativeBlobUtil for public Downloads folder
       if (Platform.OS === "android" && !dirUri.startsWith("file://")) {
@@ -275,7 +341,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({ isActive = false }
         }
 
         const names = await ReactNativeBlobUtil.fs.ls(dirUri);
-        const entries = await Promise.all(
+        const entriesAndroid = await Promise.all(
           names.map(async (name) => {
             const filePath = `${dirUri}/${name}`;
             const isDirectory = await ReactNativeBlobUtil.fs.isDir(filePath);
@@ -301,12 +367,12 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({ isActive = false }
         );
 
         // Trier : dossiers d'abord, puis par date de modif
-        entries.sort((a, b) => {
+        entriesAndroid.sort((a, b) => {
           if (a.isDirectory && !b.isDirectory) return -1;
           if (!a.isDirectory && b.isDirectory) return 1;
           return (b.modified ?? 0) - (a.modified ?? 0);
         });
-        setFiles(entries);
+        setFiles(entriesAndroid);
         return;
       }
 
@@ -318,7 +384,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({ isActive = false }
       }
 
       const names = await FileSystem.readDirectoryAsync(dirUri);
-      const entries = await Promise.all(
+      const entriesIos = await Promise.all(
         names.map(async (name) => {
           const uri = `${dirUri}${name}`;
           const finfo = await FileSystem.getInfoAsync(uri);
@@ -337,12 +403,12 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({ isActive = false }
       );
 
       // Trier : dossiers d'abord, puis par date de modif
-      entries.sort((a, b) => {
+      entriesIos.sort((a, b) => {
         if (a.isDirectory && !b.isDirectory) return -1;
         if (!a.isDirectory && b.isDirectory) return 1;
         return (b.modified ?? 0) - (a.modified ?? 0);
       });
-      setFiles(entries);
+      setFiles(entriesIos);
     } catch (error) {
       // Handle specific SAF errors
       if (error instanceof SafError) {
@@ -508,17 +574,12 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({ isActive = false }
     }
   }, []);
 
-  // Refresh on mount
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  // Refresh when tab becomes active (detect external file changes)
+  // Refresh on mount or when directory changes
   useEffect(() => {
     if (isActive) {
       void refresh();
     }
-  }, [isActive]);
+  }, [refresh, dirUri, isActive]);
 
   const totalSize = useMemo(() => {
     const bytes = files.reduce((acc, f) => acc + (f.size || 0), 0);

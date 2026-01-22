@@ -1,7 +1,8 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import { LayoutAnimation, Platform, Pressable, ScrollView, StyleSheet, Text, View, Alert, FlatList, useWindowDimensions, TouchableOpacity, Animated } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import Swipeable from 'react-native-gesture-handler/Swipeable';
 
 import { useAppData } from "../context/AppDataContext";
 import { useVk } from "../context/VkContext";
@@ -209,6 +210,36 @@ export const DownloadsScreen: React.FC = () => {
   // État pour le dialogue de confirmation
   const [clearDialog, setClearDialog] = useState(false);
 
+  // Gérer la suppression différée avec "Annuler"
+  const [pendingDeletions, setPendingDeletions] = useState<Record<string, any>>({});
+
+  const undoDelete = useCallback((id: string) => {
+    setPendingDeletions(prev => {
+      const next = { ...prev };
+      if (next[id]) {
+        clearTimeout(next[id].timer);
+        delete next[id];
+      }
+      return next;
+    });
+  }, []);
+
+  const handleSwipeDelete = useCallback((id: string) => {
+    const timer = setTimeout(() => {
+      removeDownload(id);
+      setPendingDeletions(prev => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+    }, 5000); // 5 secondes pour annuler
+
+    setPendingDeletions(prev => ({
+      ...prev,
+      [id]: { timer }
+    }));
+  }, [removeDownload]);
+
   // Memoize handlers to prevent checking unnecessary re-renders
   const handleLire = React.useCallback(async (item: DownloadItem) => {
     if (!item.path) {
@@ -247,9 +278,38 @@ export const DownloadsScreen: React.FC = () => {
     }
   }, []);
 
-  const renderItem = React.useCallback(({ item }: { item: DownloadItem }) => {
+  const renderItem = useCallback(({ item }: { item: DownloadItem }) => {
+    if (pendingDeletions[item.id]) {
+      return (
+        <View style={styles.undoContainer}>
+          <Text style={styles.undoText}>Téléchargement retiré de la liste</Text>
+          <Pressable
+            style={({ pressed }: any) => [styles.undoBtn, pressed && { opacity: 0.7 }]}
+            onPress={() => undoDelete(item.id)}
+          >
+            <Text style={styles.undoBtnText}>ANNULER</Text>
+          </Pressable>
+        </View>
+      );
+    }
 
-    return (
+    const renderLeftActions = (progress: Animated.AnimatedInterpolation<number>, dragX: Animated.AnimatedInterpolation<number>) => {
+      const scale = dragX.interpolate({
+        inputRange: [0, 80],
+        outputRange: [0, 1],
+        extrapolate: 'clamp',
+      });
+      return (
+        <View style={[styles.deleteActionContainer, { backgroundColor: p.danger, width: 80, alignItems: 'center', justifyContent: 'center' }]}>
+          <Animated.View style={{ transform: [{ scale }], alignItems: 'center' }}>
+            <Ionicons name="trash-outline" size={24} color="#fff" />
+            <Text style={{ color: '#fff', fontSize: 10, fontWeight: 'bold', marginTop: 4 }}>Libérer</Text>
+          </Animated.View>
+        </View>
+      );
+    };
+
+    const card = (
       <DownloadCard
         item={item}
         palette={p}
@@ -264,7 +324,22 @@ export const DownloadsScreen: React.FC = () => {
         onDossier={() => handleDossier(item)}
       />
     );
-  }, [p, accent, t, styles, pauseDownload, resumeDownload, cancelDownload, retryDownload, handleLire, handleDossier]);
+
+    // Activé seulement en mode liste (mobile)
+    if (screenWidth <= 600) {
+      return (
+        <Swipeable
+          renderLeftActions={renderLeftActions}
+          onSwipeableLeftOpen={() => handleSwipeDelete(item.id)}
+          containerStyle={{ overflow: 'visible' }}
+        >
+          {card}
+        </Swipeable>
+      );
+    }
+
+    return card;
+  }, [p, accent, t, styles, pauseDownload, resumeDownload, cancelDownload, retryDownload, handleLire, handleDossier, screenWidth, handleSwipeDelete, undoDelete, pendingDeletions]);
 
   // Tri par priorité de statut (ordre UX optimisé)
   // 1. En cours - élément dynamique principal

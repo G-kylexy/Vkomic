@@ -3,6 +3,7 @@ import * as FileSystem from "expo-file-system/legacy";
 import ReactNativeBlobUtil from "react-native-blob-util";
 
 import SafX from "react-native-saf-x";
+import { nativeDownload } from "./NativeDownload";
 
 // Uses react-native-saf-x for native SAF operations (no base64 memory issues)
 
@@ -284,39 +285,55 @@ export const listFiles = async (folderUri: string): Promise<FileInfo[]> => {
     }
     if (Platform.OS === "android" && folderUri.startsWith("content://")) {
         try {
-            // Use EXPO to list files
-            const treeUri = getTreeUri(folderUri);
+            // OPTIMIZATION: Try to use native module
+            const fastList = await nativeDownload.listSafDirectory(folderUri);
 
+            // Only trust native result if it found something.
+            // If it returns empty, it might be a permission/URI issue that Expo handles better.
+            // So on empty, we fall through to Expo just in case.
+            if (fastList && fastList.length > 0) {
+                return fastList.map(f => ({
+                    uri: f.uri,
+                    name: f.name,
+                    size: f.size,
+                    lastModified: f.lastModified,
+                    isDirectory: f.isDirectory,
+                    mime: undefined
+                }));
+            }
+            console.log("Native list returned empty, trying Expo fallback...");
+        } catch (e) {
+            console.warn("Native optimized list failed, falling back to Expo:", e);
+        }
+
+        try {
+            // Fallback: Use EXPO to list files (slower or missing metadata)
+            const treeUri = getTreeUri(folderUri);
             const uris = await FileSystem.StorageAccessFramework.readDirectoryAsync(treeUri);
 
-            // Parallelize getInfoAsync calls for better performance
-            const fileInfoPromises = uris.map(async (uri): Promise<FileInfo | null> => {
-                try {
-                    const info = await FileSystem.getInfoAsync(uri);
-                    if (info.exists) {
-                        // Extract name from URI (SAF URIs end with the encoded filename/docId)
-                        const decodedUri = decodeURIComponent(uri);
-                        const parts = decodedUri.split("/");
-                        const name = parts[parts.length - 1] || "Sans nom";
+            // ... (reste du fallback)
 
-                        return {
-                            uri: uri,
-                            name: name,
-                            size: (info as any).size || 0,
-                            lastModified: (info as any).modificationTime || Date.now(),
-                            isDirectory: (info as any).isDirectory || false,
-                            mime: (info as any).mimeType,
-                        };
-                    }
-                    return null;
-                } catch (e) {
-                    console.warn(`listFiles: Error getting info for ${uri}:`, e);
-                    return null;
-                }
+            // FAST MODE: Extract file info directly from URI without slow getInfoAsync calls
+            // This makes the library load instantly
+            const fileInfos: FileInfo[] = uris.map((uri) => {
+                // Extract name from URI (SAF URIs end with the encoded filename/docId)
+                const decodedUri = decodeURIComponent(uri);
+                const parts = decodedUri.split("/");
+                const name = parts[parts.length - 1] || "Sans nom";
+
+                // Detect if directory based on URI pattern (no extension = likely directory)
+                const hasExtension = name.includes(".") && name.lastIndexOf(".") > name.length - 6;
+                const isDirectory = !hasExtension && !name.match(/\.(pdf|cbz|cbr|zip|rar|jpg|jpeg|png|webp)$/i);
+
+                return {
+                    uri: uri,
+                    name: name,
+                    size: 0, // Not available without getInfoAsync
+                    lastModified: Date.now(),
+                    isDirectory: isDirectory,
+                    mime: undefined,
+                };
             });
-
-            const results = await Promise.all(fileInfoPromises);
-            const fileInfos = results.filter((f): f is FileInfo => f !== null);
 
             return fileInfos;
         } catch (error) {
@@ -1147,7 +1164,21 @@ export const cleanupCachedFile = async (cachePath: string): Promise<void> => {
  * @returns The folder info with URI and name, or null if user cancelled
  */
 export const requestFolderPermission = async (): Promise<FolderInfo | null> => {
-    return pickFolder();
+    if (Platform.OS !== 'android') return null;
+
+    try {
+        const permissions = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+        if (permissions.granted) {
+            const uri = permissions.directoryUri;
+            const name = getFolderDisplayName(uri);
+            console.log("requestFolderPermission: Granted:", uri);
+            return { uri, name };
+        }
+        return null;
+    } catch (e) {
+        console.error("requestFolderPermission failed:", e);
+        return null;
+    }
 };
 
 /**

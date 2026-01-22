@@ -1124,7 +1124,7 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
   }), [
     syncedData, navPath, isSyncing, isLoadingNode, error, searchQuery,
     hasFullSynced, currentNodes, currentFolder, downloads, readingFile,
-    globalSearchNodes, token, isReady, autoSync
+    globalSearchNodes, token, isReady, autoSync, downloadPath
   ]);
 
   return (

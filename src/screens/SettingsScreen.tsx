@@ -20,7 +20,7 @@ import { useVk } from "../context/VkContext";
 import { useAppData } from "../context/AppDataContext";
 import { getT, Language } from "../i18n";
 import { radius, spacing, tabAccents } from "../theme";
-import { pickFolder, getFolderDisplayName } from "../services/FolderService";
+import { requestFolderPermission, getFolderDisplayName } from "../services/FolderService";
 
 // Écran Paramètres (mobile).
 export const SettingsScreen: React.FC = () => {
@@ -119,7 +119,7 @@ export const SettingsScreen: React.FC = () => {
 
   const handlePickFolder = async () => {
     try {
-      const folder = await pickFolder();
+      const folder = await requestFolderPermission();
       if (folder) {
         // Ouvrir le dialogue de confirmation
         setFolderDialog({

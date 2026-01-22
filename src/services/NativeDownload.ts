@@ -204,11 +204,32 @@ class NativeDownloadService {
     /**
      * Finalise le téléchargement (copie rapide vers SAF)
      */
-    async finalizeDownload(tempPath: string, folderUri: string, fileName: string, mimeType: string): Promise<string | null> {
+    async finalizeDownload(tempPath: string, folderUri: String, fileName: string, mimeType: string): Promise<string | null> {
         if (!this.isAvailable() || !NativeDownloadModule.finalizeDownload) {
             throw new Error("Native optimization not available");
         }
         return await NativeDownloadModule.finalizeDownload(tempPath, folderUri, fileName, mimeType);
+    }
+
+    /**
+     * Liste rapide d'un dossier SAF avec métadonnées
+     */
+    async listSafDirectory(folderUri: string): Promise<Array<{
+        uri: string;
+        name: string;
+        size: number;
+        lastModified: number;
+        isDirectory: boolean;
+    }>> {
+        if (!this.isAvailable() || !NativeDownloadModule.listSafDirectory) {
+            return [];
+        }
+        try {
+            return await NativeDownloadModule.listSafDirectory(folderUri);
+        } catch (e) {
+            console.error("listSafDirectory error", e);
+            return [];
+        }
     }
 
     /**

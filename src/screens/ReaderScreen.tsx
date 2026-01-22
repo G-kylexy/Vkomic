@@ -95,6 +95,33 @@ export const ReaderScreen: React.FC<ReaderScreenProps> = ({ uri, title, onClose 
                     const tempDir = `${FileSystem.cacheDirectory}reader-cache/`;
                     await FileSystem.makeDirectoryAsync(tempDir, { intermediates: true });
 
+                    // --- NETTOYAGE DU CACHE (LRU) ---
+                    try {
+                        const files = await FileSystem.readDirectoryAsync(tempDir);
+                        if (files.length > 3) {
+                            // On récupère les infos de tous les fichiers pour trier par date
+                            const fileInfos = await Promise.all(
+                                files.map(async (filename) => {
+                                    const path = `${tempDir}${filename}`;
+                                    const info = await FileSystem.getInfoAsync(path);
+                                    return { name: filename, path, time: (info as any).modificationTime || 0 };
+                                })
+                            );
+
+                            // On trie par date (plus vieux d'abord)
+                            fileInfos.sort((a, b) => a.time - b.time);
+
+                            // On supprime les plus vieux pour n'en garder que 2 (le nouveau sera le 3ème)
+                            const toDelete = fileInfos.slice(0, fileInfos.length - 2);
+                            for (const f of toDelete) {
+                                await FileSystem.deleteAsync(f.path, { idempotent: true });
+                            }
+                        }
+                    } catch (e) {
+                        console.warn("ReaderScreen: Cache cleanup failed:", e);
+                    }
+                    // --------------------------------
+
                     const uriHash = uri.split('/').pop() || `file_${Date.now()}`;
                     const safeHash = uriHash.replace(/[^a-zA-Z0-9._-]/g, '_').substring(0, 100);
                     const destination = `${tempDir}${safeHash}.pdf`;
