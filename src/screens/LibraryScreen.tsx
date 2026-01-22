@@ -236,30 +236,23 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({ isActive = false }
         // Step 2: List files using FolderService.listFiles
         const safFiles = await FolderService.listFiles(dirUri);
 
-        // Step 3: Validate each file still exists (handles manual deletion)
-        const validatedEntries: LocalFile[] = [];
-        for (const f of safFiles) {
-          // For directories, we trust listFiles result
-          // For files, optionally verify with exists() if needed
-          const exists = f.isDirectory || await FolderService.fileExists(f.uri);
-          if (exists) {
-            validatedEntries.push({
-              name: f.name,
-              uri: f.uri,
-              size: f.size,
-              modified: f.lastModified,
-              isDirectory: f.isDirectory,
-            });
-          }
-        }
+        // Step 3: Convert to LocalFile format immediately (no extra validation needed)
+        // listFiles already returns only existing files
+        const entries: LocalFile[] = safFiles.map(f => ({
+          name: f.name,
+          uri: f.uri,
+          size: f.size,
+          modified: f.lastModified,
+          isDirectory: f.isDirectory,
+        }));
 
         // Sort: directories first, then by modification date
-        validatedEntries.sort((a, b) => {
+        entries.sort((a, b) => {
           if (a.isDirectory && !b.isDirectory) return -1;
           if (!a.isDirectory && b.isDirectory) return 1;
           return (b.modified ?? 0) - (a.modified ?? 0);
         });
-        setFiles(validatedEntries);
+        setFiles(entries);
         return;
       }
 

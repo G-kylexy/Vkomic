@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { StatusBar } from "expo-status-bar";
-import { StyleSheet, View, ActivityIndicator, Animated, Linking, Platform, NativeModules } from "react-native";
+import { StyleSheet, View, ActivityIndicator, Animated, Platform, NativeModules } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { BottomNav, TabId } from "./src/components/BottomNav";
 
@@ -23,7 +23,6 @@ const AppContent = () => {
   // Écouter l'intent pour ouvrir l'onglet downloads depuis la notification
   useEffect(() => {
     if (Platform.OS === "android") {
-      // Vérifier l'intent initial au démarrage
       const checkInitialIntent = async () => {
         try {
           const { DownloadNotificationModule } = NativeModules;
@@ -54,6 +53,7 @@ const AppContent = () => {
       </View>
     );
   }
+
   return (
     <Animated.View style={[styles.safeArea, { opacity: fadeAnim, backgroundColor: activePalette.background }]}>
       <SafeAreaView style={styles.safeArea}>
@@ -61,7 +61,6 @@ const AppContent = () => {
         <OfflineBanner />
 
         <View style={styles.screen}>
-          {/* ... screens ... */}
           <View style={[styles.screen, activeTab !== "home" && styles.hidden]}>
             <HomeScreen isActive={activeTab === "home"} onNavigate={setActiveTab} />
           </View>

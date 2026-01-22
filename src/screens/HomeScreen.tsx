@@ -365,8 +365,15 @@ export const HomeScreen: React.FC<{ isActive?: boolean, onNavigate?: (tab: TabId
     let seriesCount = 0;
 
     const countSeries = (nodes: VkNode[]) => {
+      if (!nodes) return;
       nodes.forEach((n) => {
-        if (n.type === "genre" || n.type === "series") seriesCount++;
+        // Compter uniquement les noeuds explicitement marqués comme "series"
+        // Ou les dossiers qui contiennent des fichiers (feuilles) pour être plus large si le type manque
+        const hasFiles = n.children?.some(c => c.type === "file");
+        if (n.type === "series" || (n.type !== "file" && hasFiles)) {
+          seriesCount++;
+        }
+
         if (n.children && n.children.length > 0) {
           countSeries(n.children);
         }

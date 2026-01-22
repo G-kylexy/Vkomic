@@ -286,14 +286,12 @@ export const listFiles = async (folderUri: string): Promise<FileInfo[]> => {
         try {
             // Use EXPO to list files
             const treeUri = getTreeUri(folderUri);
-            // console.log(`listFiles: Listing via Expo SAF on [${treeUri}]...`);
 
             const uris = await FileSystem.StorageAccessFramework.readDirectoryAsync(treeUri);
 
-            const fileInfos: FileInfo[] = [];
-            for (const uri of uris) {
+            // Parallelize getInfoAsync calls for better performance
+            const fileInfoPromises = uris.map(async (uri): Promise<FileInfo | null> => {
                 try {
-                    // Expo's getInfoAsync for SAF URIs provides some metadata
                     const info = await FileSystem.getInfoAsync(uri);
                     if (info.exists) {
                         // Extract name from URI (SAF URIs end with the encoded filename/docId)
@@ -301,25 +299,28 @@ export const listFiles = async (folderUri: string): Promise<FileInfo[]> => {
                         const parts = decodedUri.split("/");
                         const name = parts[parts.length - 1] || "Sans nom";
 
-                        fileInfos.push({
+                        return {
                             uri: uri,
                             name: name,
                             size: (info as any).size || 0,
                             lastModified: (info as any).modificationTime || Date.now(),
                             isDirectory: (info as any).isDirectory || false,
                             mime: (info as any).mimeType,
-                        });
+                        };
                     }
+                    return null;
                 } catch (e) {
                     console.warn(`listFiles: Error getting info for ${uri}:`, e);
+                    return null;
                 }
-            }
+            });
 
-            // console.log(`listFiles: Found ${fileInfos.length} items.`);
+            const results = await Promise.all(fileInfoPromises);
+            const fileInfos = results.filter((f): f is FileInfo => f !== null);
+
             return fileInfos;
         } catch (error) {
             console.error("Error listing files via Expo SAF:", error);
-            // Si Expo échoue, on peut tenter un fallback ou retourner vide
             return [];
         }
     }
