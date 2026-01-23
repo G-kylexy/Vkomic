@@ -278,15 +278,6 @@ export const ReaderScreen: React.FC<ReaderScreenProps> = ({ uri, title, onClose 
                         </Text>
                     </View>
                 )}
-
-                {(loading || preparing) && isPdf && !error && (
-                    <View style={styles.loading}>
-                        <ActivityIndicator size="large" color={p.primaryBright} />
-                        <Text style={styles.loadingText}>
-                            {preparing ? "Préparation..." : "Chargement..."}
-                        </Text>
-                    </View>
-                )}
             </View>
         </View>
     );
