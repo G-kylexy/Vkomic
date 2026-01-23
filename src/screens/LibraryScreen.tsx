@@ -255,11 +255,11 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({ isActive = false }
           isDirectory: f.isDirectory,
         }));
 
-        // Sort: directories first, then by name (initially)
+        // Sort: directories first, then by modification date (most recent first)
         entries.sort((a, b) => {
           if (a.isDirectory && !b.isDirectory) return -1;
           if (!a.isDirectory && b.isDirectory) return 1;
-          return a.name.localeCompare(b.name);
+          return (b.modified ?? 0) - (a.modified ?? 0);
         });
 
         // Update UI immediately with unknown sizes
