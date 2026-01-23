@@ -38,5 +38,8 @@ yarn-error.*
 
 # generated native folders
 /ios
-/android
+
+# Release keystore (keep this file safe locally!)
+*.keystore
+!debug.keystore
 claude
