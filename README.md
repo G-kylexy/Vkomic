@@ -10,6 +10,7 @@ Une application qui se branche sur https://vk.com/board203785966 et permet de te
 - Windows portable : archive `.zip`
 - macOS : `.dmg` (installation) ou `.zip` (auto-update)
 - Linux : binaire `.AppImage` (ou archive `.tar.gz` selon la release)
+- Android : `.apk` (installation manuelle)
 
 Rendez-vous sur la derniere release : https://github.com/G-kylexy/vkomic/releases/latest
 
@@ -19,6 +20,7 @@ Rendez-vous sur la derniere release : https://github.com/G-kylexy/vkomic/release
 - macOS : ouvrez le `.dmg` puis glissez `Vkomic.app` dans `Applications` (ou utilisez le `.zip`).
 - Linux (AppImage) : `chmod +x Vkomic-*.AppImage && ./Vkomic-*.AppImage`.
 - Linux (archive) : decompressez puis lancez le binaire fourni.
+- Android : telechargez le `.apk`, ouvrez-le et autorisez l'installation depuis les sources inconnues.
 
 ## Mises a jour automatiques (macOS)
 
@@ -36,11 +38,5 @@ Prerequis : Node.js, npm
 3. Build (vite) : `npm run build`
 4. Build desktop (electron-builder) : `npm run dist`
 
-## Mobile (Expo)
 
-Le dossier `mobile/` contient une application Expo (React Native) avec une UI de base inspirée de la version desktop.
 
-- Installer les deps : `cd mobile && npm install`
-- Lancer : `npm run start` (ou depuis la racine : `npm run mobile:start`)
-- Android : `npm run android` (ou `npm run mobile:android`)
-- Web : `npm run web` (ou `npm run mobile:web`)

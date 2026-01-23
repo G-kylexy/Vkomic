@@ -15,7 +15,7 @@ release
 out
 build
 *.exe
-
+android
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.jsonz
@@ -31,3 +31,4 @@ mobile
 .claude
 tmpclaude-*
 tmpclaude-0872-cwd tmpclaude-0a7b-cwd tmpclaude-11de-cwd tmpclaude-5e55-cwd tmpclaude-6c63-cwd tmpclaude-8534-cwd tmpclaude-936b-cwd tmpclaude-a01d-cwd tmpclaude-ac4f-cwd tmpclaude-b733-cwd tmpclaude-c1f9-cwd tmpclaude-d1ab-cwd tmpclaude-d861-cwd tmpclaude-dc7a-cwd tmpclaude-f2d4-cwd
+.expo
