@@ -22,13 +22,6 @@ Rendez-vous sur la derniere release : https://github.com/G-kylexy/vkomic/release
 - Linux (archive) : decompressez puis lancez le binaire fourni.
 - Android : telechargez le `.apk`, ouvrez-le et autorisez l'installation depuis les sources inconnues.
 
-## Mises a jour automatiques (macOS)
-
-L'auto-update macOS (electron-updater) utilise les assets de la release GitHub, notamment `latest-mac.yml` + le `.zip` (et eventuellement les fichiers `.blockmap`).
-Le fichier `latest-mac.yml` n'est pas "dans" le `.dmg` : il apparait comme un asset sur la page de release quand la publication est faite par `electron-builder`.
-
-Pour un auto-update "100%" sur macOS, l'app doit etre signee (et idealement notarized) et installee dans `Applications`.
-
 ## Construire depuis les sources (optionnel)
 
 Prerequis : Node.js, npm
