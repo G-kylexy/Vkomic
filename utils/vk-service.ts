@@ -281,14 +281,21 @@ export const searchVkBoard = async (
 
 // --- LOGIQUE DE PARSING (ANALYSE DE TEXTE) ---
 
+const RE_CLEAN_ARROW_SUFFIX = /\s*[-–—=]+[>→»]\s*.*$/i;
+const RE_CLEAN_URL_SUFFIX = /https?:\/\/.*$/i;
+const RE_CLEAN_TRAILING_PUNCT = /[:\->]+$/;
+const RE_CLEAN_LEADING_DECORATION = /^\s*[•*·\-"»«]+\s*/;
+const RE_CLEAN_TRAILING_DECORATION = /\s*[•*·\-"»«]+\s*$/;
+const RE_CLEAN_LIEN_TAG = /\(lien\)/gi;
+
 const cleanTitle = (text: string) => {
   return text
-    .replace(/\s*[-–—=]+[>→»]\s*.*$/i, '')
-    .replace(/https?:\/\/.*$/i, '')
-    .replace(/[:\->]+$/, '')
-    .replace(/^\s*[•*·\-"»«]+\s*/, '')
-    .replace(/\s*[•*·\-"»«]+\s*$/, '')
-    .replace(/\(lien\)/gi, '')
+    .replace(RE_CLEAN_ARROW_SUFFIX, '')
+    .replace(RE_CLEAN_URL_SUFFIX, '')
+    .replace(RE_CLEAN_TRAILING_PUNCT, '')
+    .replace(RE_CLEAN_LEADING_DECORATION, '')
+    .replace(RE_CLEAN_TRAILING_DECORATION, '')
+    .replace(RE_CLEAN_LIEN_TAG, '')
     .trim();
 };
 
