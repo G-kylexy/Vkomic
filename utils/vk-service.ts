@@ -292,6 +292,8 @@ const cleanTitle = (text: string) => {
     .trim();
 };
 
+const LINE_URL_REGEX = /vk\.com\/topic-(\d+)_(\d+)(?:\?post=(\d+))?/g;
+
 // Analyse le texte brut des messages pour trouver "Titre de la BD -> Lien VK"
 const parseTopicBody = (text: string, excludeTopicId?: string): VkNode[] => {
   const nodes: VkNode[] = [];
@@ -362,10 +364,10 @@ const parseTopicBody = (text: string, excludeTopicId?: string): VkNode[] => {
     const line = lines[i];
     if (!line.includes('vk.com/topic-')) continue;
 
-    const lineUrlRegex = /vk\.com\/topic-(\d+)_(\d+)(?:\?post=(\d+))?/g;
+    LINE_URL_REGEX.lastIndex = 0;
     let match;
 
-    while ((match = lineUrlRegex.exec(line)) !== null) {
+    while ((match = LINE_URL_REGEX.exec(line)) !== null) {
       const [, groupId, topicId, postId] = match;
       if (excludeTopicId && topicId === excludeTopicId) continue;
 
