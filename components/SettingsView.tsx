@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Save, Folder, ChevronDown, Trash2, AlertCircle } from "./Icons";
 import { useTranslation, Language } from "../i18n";
+import ConfirmationModal from "./ConfirmationModal";
 
 interface SettingsViewProps {
   vkToken: string;
@@ -309,38 +310,21 @@ const SettingsView: React.FC<
         </div>
 
         {/* Modal de confirmation personnalisé (évite le bug de focus Electron) */}
-        {showResetConfirm && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-            <div className="bg-[#0f1523] border border-slate-700 rounded-xl p-6 max-w-md w-full shadow-2xl">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-full bg-rose-500/20 flex items-center justify-center">
-                  <AlertCircle className="text-rose-400" size={20} />
-                </div>
-                <h3 className="text-lg font-bold text-white">{t.settings.resetDatabase}</h3>
-              </div>
-              <p className="text-slate-400 text-sm mb-6">{t.settings.resetWarning}</p>
-              <div className="flex gap-3 justify-end">
-                <button
-                  onClick={() => setShowResetConfirm(false)}
-                  className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium transition-colors"
-                >
-                  Annuler
-                </button>
-                <button
-                  onClick={() => {
-                    onResetDatabase();
-                    setShowResetConfirm(false);
-                    setIsSaved(true);
-                    setTimeout(() => setIsSaved(false), 2000);
-                  }}
-                  className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-sm font-bold transition-colors"
-                >
-                  Confirmer
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        <ConfirmationModal
+          isOpen={showResetConfirm}
+          onClose={() => setShowResetConfirm(false)}
+          onConfirm={() => {
+            onResetDatabase();
+            setShowResetConfirm(false);
+            setIsSaved(true);
+            setTimeout(() => setIsSaved(false), 2000);
+          }}
+          title={t.settings.resetDatabase}
+          message={t.settings.resetWarning}
+          cancelLabel="Annuler"
+          confirmLabel="Confirmer"
+          variant="danger"
+        />
       </>
     );
   };
