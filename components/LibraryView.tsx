@@ -83,7 +83,9 @@ const computeParentWithinBase = (current: string, base: string) => {
   return target;
 };
 
-// Parcourt le dossier de téléchargement local via l'IPC exposé par Electron
+import { tauriFs } from "../lib/tauri";
+
+// Parcourt le dossier de téléchargement local via Rust
 const LibraryView: React.FC<LibraryViewProps> = ({
   downloadPath,
   onNavigateToSettings,
@@ -95,19 +97,14 @@ const LibraryView: React.FC<LibraryViewProps> = ({
   const [error, setError] = useState<string | null>(null);
 
   const effectivePath = downloadPath?.trim();
-  const hasFsBridge =
-    typeof window !== "undefined" && Boolean(window.fs?.listDirectory);
+  const hasFsBridge = true; // Tauri handles FS
 
   const loadPath = useCallback(
     async (target: string) => {
-      if (typeof window === "undefined" || !window.fs?.listDirectory) {
-        setError(t.library.desktopOnly);
-        return;
-      }
       setIsLoading(true);
       setError(null);
       try {
-        const result = await window.fs.listDirectory(target);
+        const result = await tauriFs.listDirectory(target);
         setEntries(result.entries);
         setCurrentPath(result.path);
       } catch (err) {
@@ -117,15 +114,14 @@ const LibraryView: React.FC<LibraryViewProps> = ({
         setIsLoading(false);
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
+    [t.library.readError],
   );
 
   useEffect(() => {
-    if (effectivePath && hasFsBridge) {
+    if (effectivePath) {
       loadPath(effectivePath);
     }
-  }, [effectivePath, hasFsBridge, loadPath]);
+  }, [effectivePath, loadPath]);
 
   const breadcrumbs = useMemo(() => {
     if (!effectivePath || !currentPath) return [];
@@ -148,15 +144,13 @@ const LibraryView: React.FC<LibraryViewProps> = ({
   const handleEntryClick = (entry: FsEntry) => {
     if (entry.isDirectory) {
       loadPath(entry.path);
-    } else if (typeof window !== "undefined" && window.fs?.openPath) {
-      window.fs.openPath(entry.path);
+    } else {
+      tauriFs.openPath(entry.path).catch(console.error);
     }
   };
 
   const handleOpenFile = (entry: FsEntry) => {
-    if (typeof window !== "undefined" && window.fs?.openPath) {
-      window.fs.openPath(entry.path);
-    }
+    tauriFs.openPath(entry.path).catch(console.error);
   };
 
   if (!effectivePath) {

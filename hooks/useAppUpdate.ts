@@ -1,5 +1,7 @@
-import { useState, useEffect } from "react";
-import { GITHUB_REPO } from "../utils/constants";
+import { useState, useEffect, useCallback } from "react";
+import { tauriUpdater, tauriShell } from "../lib/tauri";
+import { ask, message } from "@tauri-apps/plugin-dialog";
+import { relaunch } from "@tauri-apps/plugin-process";
 
 export interface UpdateInfo {
     version: string;
@@ -11,102 +13,124 @@ export interface UpdateInfo {
 
 export const useAppUpdate = () => {
     const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+    const [update, setUpdate] = useState<any>(null);
 
+    // Vérifier les mises à jour au démarrage
     useEffect(() => {
-        const checkUpdate = async () => {
-            if ((window as any).app?.checkUpdate) {
-                const result = await (window as any).app.checkUpdate();
-                if (result.updateAvailable && result.version) {
+        const checkForUpdates = async () => {
+            try {
+                const updateResult = await tauriUpdater.check();
+                
+                if (updateResult?.available) {
+                    setUpdate(updateResult);
                     setUpdateInfo({
-                        version: result.version,
-                        url: result.url,
-                        notes: result.notes || "",
+                        version: updateResult.version,
+                        notes: updateResult.body || "Nouvelle version disponible",
                         status: "available",
                     });
                 }
+            } catch (error) {
+                console.error("Error checking for updates:", error);
             }
         };
 
-        const unsubAvailable =
-            (window as any).app?.onUpdateAvailable?.((payload: any) => {
-                if (!payload?.version) return;
-                setUpdateInfo({
-                    version: payload.version,
-                    notes: payload.notes || "",
-                    url: `https://github.com/${GITHUB_REPO}/releases`,
-                    status: "available",
-                });
-            }) || null;
+        // Vérifier au démarrage
+        checkForUpdates();
 
-        const unsubProgress =
-            (window as any).app?.onUpdateProgress?.((payload: any) => {
-                setUpdateInfo((prev) =>
-                    prev
-                        ? {
-                            ...prev,
-                            status: "downloading",
-                            progress:
-                                typeof payload?.percent === "number"
-                                    ? Math.min(Math.max(payload.percent, 0), 100)
-                                    : prev.progress,
-                        }
-                        : prev
-                );
-            }) || null;
-
-        const unsubReady =
-            (window as any).app?.onUpdateReady?.((payload: any) => {
-                setUpdateInfo((prev) => ({
-                    version: payload?.version || prev?.version || "",
-                    notes: payload?.notes || prev?.notes || "",
-                    url: `https://github.com/${GITHUB_REPO}/releases`,
-                    status: "ready",
-                    progress: 100,
-                }));
-            }) || null;
-
-        const unsubError =
-            (window as any).app?.onUpdateError?.(() => {
-                setUpdateInfo(null);
-            }) || null;
-
-        // Vérifier après 2 secondes pour ne pas ralentir le démarrage
-        const timer = setTimeout(checkUpdate, 2000);
-        return () => {
-            clearTimeout(timer);
-            unsubAvailable && unsubAvailable();
-            unsubProgress && unsubProgress();
-            unsubReady && unsubReady();
-            unsubError && unsubError();
-        };
+        // Vérifier toutes les 30 minutes
+        const interval = setInterval(checkForUpdates, 30 * 60 * 1000);
+        
+        return () => clearInterval(interval);
     }, []);
 
-    const handleDownloadUpdate = async () => {
-        if (updateInfo?.url) {
-            setUpdateInfo(null);
-            if (window.shell?.openExternal) {
-                window.shell.openExternal(updateInfo.url);
-            } else {
-                window.open(updateInfo.url, "_blank");
-            }
-        }
-    };
+    const handleDownloadUpdate = useCallback(async () => {
+        if (!update) return;
 
-    const handleInstallUpdate = async () => {
-        if (updateInfo?.url) {
-            setUpdateInfo(null);
-            if (window.shell?.openExternal) {
-                window.shell.openExternal(updateInfo.url);
-            } else {
-                window.open(updateInfo.url, "_blank");
-            }
+        try {
+            setUpdateInfo((prev) => prev ? { ...prev, status: "downloading" } : null);
+            
+            // Télécharger et installer
+            await update.downloadAndInstall((event: any) => {
+                switch (event.event) {
+                    case "Progress":
+                        setUpdateInfo((prev) => 
+                            prev ? { 
+                                ...prev, 
+                                status: "downloading", 
+                                progress: event.data.percent 
+                            } : null
+                        );
+                        break;
+                    case "Finished":
+                        setUpdateInfo((prev) => 
+                            prev ? { ...prev, status: "ready" } : null
+                        );
+                        break;
+                }
+            });
+
+            // Relancer l'application
+            await relaunch();
+        } catch (error) {
+            console.error("Error downloading update:", error);
+            setUpdateInfo((prev) => 
+                prev ? { ...prev, status: "available" } : null
+            );
         }
-    };
+    }, [update]);
+
+    const handleInstallUpdate = useCallback(async () => {
+        // Relancer l'application pour appliquer la mise à jour
+        try {
+            await relaunch();
+        } catch (error) {
+            console.error("Error relaunching app:", error);
+        }
+    }, []);
+
+    const checkForUpdatesManual = useCallback(async () => {
+        try {
+            const updateResult = await tauriUpdater.check();
+            
+            if (updateResult?.available) {
+                setUpdate(updateResult);
+                
+                const yes = await ask(
+                    `Mise à jour ${updateResult.version} disponible !\n\nNotes de version:\n${updateResult.body || "Nouvelle version disponible"}`,
+                    {
+                        title: "Mise à jour disponible",
+                        kind: "info",
+                        okLabel: "Mettre à jour",
+                        cancelLabel: "Plus tard",
+                    }
+                );
+
+                if (yes) {
+                    setUpdateInfo({
+                        version: updateResult.version,
+                        notes: updateResult.body || "",
+                        status: "available",
+                    });
+                    await handleDownloadUpdate();
+                }
+            } else {
+                await message("Vous utilisez déjà la dernière version !", {
+                    title: "Aucune mise à jour",
+                    kind: "info",
+                });
+            }
+        } catch (error) {
+            console.error("Error checking for updates:", error);
+            // Fallback: ouvrir la page GitHub
+            tauriShell.openExternal("https://github.com/G-kylexy/vkomic/releases/latest");
+        }
+    }, [handleDownloadUpdate]);
 
     return {
         updateInfo,
         setUpdateInfo,
         handleDownloadUpdate,
         handleInstallUpdate,
+        checkForUpdatesManual,
     };
 };

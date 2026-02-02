@@ -2,9 +2,9 @@
 
 # Vkomic
 
-Une application qui se branche sur https://vk.com/board203785966 et permet de telecharger les BD, mangas et comics disponibles.
+Une application **Rust + Tauri** qui se branche sur https://vk.com/board203785966 et permet de télécharger les BD, mangas et comics disponibles.
 
-## Telechargements
+## Téléchargements
 
 - Windows installeur : `.exe`
 - Windows portable : archive `.zip`
@@ -12,31 +12,59 @@ Une application qui se branche sur https://vk.com/board203785966 et permet de te
 - Linux : binaire `.AppImage` (ou archive `.tar.gz` selon la release)
 - Android : `.apk` (installation manuelle)
 
-Rendez-vous sur la derniere release : https://github.com/G-kylexy/vkomic/releases/latest
+Rendez-vous sur la dernière release : https://github.com/G-kylexy/vkomic/releases/latest
 
 ### Lancer
 
-- Windows : telechargez l'`.exe` ou decompressez le `.zip` et lancez Vkomic.
+- Windows : téléchargez l'`.exe` ou décompressez le `.zip` et lancez Vkomic.
 - macOS : ouvrez le `.dmg` puis glissez `Vkomic.app` dans `Applications` (ou utilisez le `.zip`).
 - Linux (AppImage) : `chmod +x Vkomic-*.AppImage && ./Vkomic-*.AppImage`.
-- Linux (archive) : decompressez puis lancez le binaire fourni.
-- Android : telechargez le `.apk`, ouvrez-le et autorisez l'installation depuis les sources inconnues.
+- Linux (archive) : décompressez puis lancez le binaire fourni.
+- Android : téléchargez le `.apk`, ouvrez-le et autorisez l'installation depuis les sources inconnues.
 
-## Mises a jour automatiques (macOS)
+## Mises à jour automatiques
 
-L'auto-update macOS (electron-updater) utilise les assets de la release GitHub, notamment `latest-mac.yml` + le `.zip` (et eventuellement les fichiers `.blockmap`).
-Le fichier `latest-mac.yml` n'est pas "dans" le `.dmg` : il apparait comme un asset sur la page de release quand la publication est faite par `electron-builder`.
-
-Pour un auto-update "100%" sur macOS, l'app doit etre signee (et idealement notarized) et installee dans `Applications`.
+L'application utilise le système de mise à jour intégré de Tauri pour vérifier automatiquement les nouvelles versions disponibles sur GitHub Releases.
 
 ## Construire depuis les sources (optionnel)
 
-Prerequis : Node.js, npm
+**Prérequis :** Node.js, npm, Rust
 
-1. Installer les dependances : `npm install`
-2. Lancer en dev : `npm run dev`
-3. Build (vite) : `npm run build`
-4. Build desktop (electron-builder) : `npm run dist`
+1. **Installer les dépendances :**
+   ```bash
+   npm install
+   ```
 
+2. **Lancer en mode développement :**
+   ```bash
+   npm run tauri:dev
+   ```
 
+3. **Build production (frontend) :**
+   ```bash
+   npm run build
+   ```
 
+4. **Build desktop (Tauri) :**
+   ```bash
+   npm run tauri:build
+   ```
+
+5. **Build Android :**
+   ```bash
+   npm run mobile:android
+   ```
+
+## Architecture
+
+- **Frontend :** React + TypeScript + Vite + TailwindCSS
+- **Backend :** Rust + Tauri
+- **Fonctionnalités :**
+  - API VK intégrée (lecture de topics, téléchargement de documents)
+  - Gestionnaire de téléchargements avec reprise
+  - Interface réactive et performante
+  - Support multi-plateforme (Windows, macOS, Linux, Android)
+
+## Licence
+
+MIT

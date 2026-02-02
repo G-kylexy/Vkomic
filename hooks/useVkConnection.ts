@@ -4,6 +4,8 @@ import { VkConnectionStatus } from "../types";
 import { UI } from "../utils/constants";
 import { mapRegion } from "../utils/region";
 
+import { tauriVk } from "../lib/tauri";
+
 export const useVkConnection = (vkToken: string) => {
     const [vkStatus, setVkStatus] = useState<VkConnectionStatus>({
         connected: false,
@@ -82,15 +84,7 @@ export const useVkConnection = (vkToken: string) => {
             }
 
             try {
-                let latency: number | null = null;
-
-                if ((window as any).vk?.ping) {
-                    const res = await (window as any).vk.ping(vkToken);
-                    latency = res.latency !== null ? res.latency : null;
-                } else {
-                    // Fallback pour le développement web
-                    throw new Error("VK IPC not available");
-                }
+                const latency = await tauriVk.ping(vkToken);
 
                 setVkStatus((prev) => {
                     const threshold = 50;

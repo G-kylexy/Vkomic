@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Save, Folder, ChevronDown, Trash2, AlertCircle } from "./Icons";
 import { useTranslation, Language } from "../i18n";
+import { tauriDialog, tauriShell } from "../lib/tauri";
 
 interface SettingsViewProps {
   vkToken: string;
@@ -91,13 +92,13 @@ const SettingsView: React.FC<
 
     // Ouvre le sélecteur natif (si dispo) pour définir le dossier de téléchargement
     const handleBrowseFolder = async () => {
-      if (window.dialog?.selectFolder) {
-        const folder = await window.dialog.selectFolder();
+      try {
+        const folder = await tauriDialog.selectFolder();
         if (folder) {
           setLocalDownloadPath(folder);
           setDownloadPath(folder);
         }
-      } else {
+      } catch (e) {
         window.alert(t.settings.folderDialogWarning);
       }
     };
@@ -110,12 +111,9 @@ const SettingsView: React.FC<
     const openAuthLink = () => {
       const url =
         "https://oauth.vk.com/authorize?client_id=2685278&scope=offline,docs,groups,wall&redirect_uri=https://oauth.vk.com/blank.html&display=page&response_type=token&revoke=1";
-
-      if (window.shell) {
-        window.shell.openExternal(url);
-      } else {
+      tauriShell.openExternal(url).catch(() => {
         window.open(url, "_blank");
-      }
+      });
     };
 
     return (

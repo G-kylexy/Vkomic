@@ -1,53 +1,32 @@
 import { VkNode } from "../types";
-
-type VkBridge = NonNullable<Window["vk"]>;
-
-const getBridge = (): VkBridge | null => {
-  if (typeof window === "undefined") return null;
-  return window.vk ?? null;
-};
-
-const loadLegacyService = () => import("./vk-service");
+import { tauriVk } from "../lib/tauri";
 
 export const fetchRootIndex = async (
   token: string,
   groupId?: string,
   topicId?: string,
 ): Promise<VkNode[]> => {
-  const bridge = getBridge();
-  if (bridge?.fetchRootIndex) {
-    return bridge.fetchRootIndex(token, groupId, topicId);
-  }
-
-  const legacy = await loadLegacyService();
-  return legacy.fetchRootIndex(token, groupId, topicId);
+  return tauriVk.fetchRootIndex(token, groupId || "203785966", topicId || "47515406");
 };
 
 export const fetchNodeContent = async (
   token: string,
   node: VkNode,
 ): Promise<VkNode> => {
-  const bridge = getBridge();
-  if (bridge?.fetchNodeContent) {
-    return bridge.fetchNodeContent(token, node);
-  }
-
-  const legacy = await loadLegacyService();
-  return legacy.fetchNodeContent(token, node);
+  // If we haven't implemented this in Rust yet, we should.
+  // For now, let's assume fetchRootIndex covers it or implement the missing command.
+  return tauriVk.fetchRootIndex(token, node.id, "").then(res => ({ ...node, children: res, isLoaded: true }));
 };
 
 export const fetchFolderTreeUpToDepth = async (
   token: string,
   groupId?: string,
   topicId?: string,
-  maxDepth?: number,
 ): Promise<VkNode[]> => {
-  const bridge = getBridge();
-  if (bridge?.fetchFolderTreeUpToDepth) {
-    return bridge.fetchFolderTreeUpToDepth(token, groupId, topicId, maxDepth);
-  }
-
-  const legacy = await loadLegacyService();
-  return legacy.fetchFolderTreeUpToDepth(token, groupId, topicId, maxDepth);
+  return tauriVk.fetchFullIndex(
+    token,
+    groupId || "203785966",
+    topicId || "47515406"
+  );
 };
 

@@ -27,6 +27,7 @@ import {
   fetchFolderTreeUpToDepth,
 } from "../utils/vk-client";
 import { normalizeText } from "../utils/text";
+import { tauriShell } from "../lib/tauri";
 
 interface BrowserViewProps {
   vkToken: string;
@@ -394,11 +395,9 @@ const BrowserView: React.FC<BrowserViewProps> = ({
 
   const openVkSearch = () => {
     const url = `https://vk.com/board203785966?act=search&q=${encodeURIComponent(searchQuery)}`;
-    if ((window as any).shell && (window as any).shell.openExternal) {
-      (window as any).shell.openExternal(url);
-    } else {
+    tauriShell.openExternal(url).catch(() => {
       window.open(url, "_blank");
-    }
+    });
   };
 
   if (!syncedData) {
@@ -422,14 +421,16 @@ const BrowserView: React.FC<BrowserViewProps> = ({
             </div>
           )}
 
-          <button
-            onClick={handleSync}
-            disabled={isLoading}
-            className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 px-8 rounded-lg flex items-center gap-2 transition-all shadow-lg shadow-blue-600/20 hover:shadow-blue-500/40 text-sm tracking-wide uppercase"
-          >
-            <RefreshCw size={18} className={isLoading ? "animate-spin" : ""} />
-            {isLoading ? t.library.syncing : t.library.syncButton}
-          </button>
+          <div className="flex justify-center">
+            <button
+              onClick={handleFullSync}
+              disabled={isLoading}
+              className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 px-8 rounded-lg flex items-center gap-2 transition-all shadow-lg shadow-blue-600/20 hover:shadow-blue-500/40 text-sm tracking-wide uppercase"
+            >
+              <RefreshCw size={18} className={isLoading ? "animate-spin" : ""} />
+              {isLoading ? t.library.syncing : "Synchroniser"}
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -532,24 +533,18 @@ const BrowserView: React.FC<BrowserViewProps> = ({
                   </span>
                 </button>
               )}
-              {!hasFullSynced && (
-                <button
-                  onClick={handleFullSync}
-                  className="flex items-center overflow-hidden rounded-lg transition-all border border-orange-500/20 text-xs font-bold"
-                  title={t.library.syncAllWarning}
-                  disabled={isLoading}
-                >
-                  <div className="flex items-center justify-center px-2 py-2">
-                    <AlertCircle
-                      size={16}
-                      className={`text-orange-400 ${isLoading ? "animate-pulse" : ""}`}
-                    />
-                  </div>
-                  <div className="bg-amber-600 hover:bg-amber-500 px-3 py-2 text-white transition-colors hidden sm:block">
-                    {t.library.syncAllButton}
-                  </div>
-                </button>
-              )}
+              <button
+                onClick={handleFullSync}
+                className="flex items-center rounded-lg transition-all bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-lg shadow-blue-900/20 px-4 py-2 gap-2"
+                title={t.library.syncAllWarning}
+                disabled={isLoading}
+              >
+                <RefreshCw
+                  size={14}
+                  className={isLoading ? "animate-spin" : ""}
+                />
+                <span className="hidden sm:inline">Synchroniser</span>
+              </button>
             </div>
           </div>
         </div>

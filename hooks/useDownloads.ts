@@ -4,6 +4,7 @@ import { DownloadItem, VkNode } from "../types";
 import { DEFAULT_DOWNLOAD_PATH, UI } from "../utils/constants";
 import { formatBytes, formatSpeed } from "../utils/formatters";
 import { idbDel, idbGet, idbSet, migrateLocalStorageJsonToIdb } from "../utils/storage";
+import { tauriFs, tauriEvents } from "../lib/tauri";
 
 export const useDownloads = (downloadPath: string, vkToken?: string) => {
     const [downloads, setDownloads] = useState<DownloadItem[]>([]);
@@ -120,11 +121,6 @@ export const useDownloads = (downloadPath: string, vkToken?: string) => {
 
     useEffect(() => {
         if (!downloadsHydrated) return;
-        if (typeof window === "undefined" || !window.fs) return;
-
-        const canQueue = typeof window.fs.queueDownload === "function";
-        const canDownload = typeof window.fs.downloadFile === "function";
-        if (!canQueue && !canDownload) return;
 
         const snapshot = downloadsRef.current;
         const enqueued = enqueuedPendingDownloadsRef.current;
@@ -161,11 +157,7 @@ export const useDownloads = (downloadPath: string, vkToken?: string) => {
 
             const enqueue = async () => {
                 try {
-                    if (canQueue && window.fs?.queueDownload) {
-                        await window.fs.queueDownload(d.id, d.url, targetPath, fileName, vkToken, d.vkOwnerId, d.vkDocId, d.vkAccessKey);
-                    } else if (canDownload && window.fs?.downloadFile) {
-                        void window.fs.downloadFile(d.id, d.url, targetPath, fileName, vkToken, d.vkOwnerId, d.vkDocId, d.vkAccessKey).catch(() => { });
-                    }
+                    await tauriFs.queueDownload(d.id, d.url!, targetPath, fileName, vkToken);
                 } catch {
                     enqueued.delete(d.id);
                     setDownloads((prev) =>
@@ -183,9 +175,7 @@ export const useDownloads = (downloadPath: string, vkToken?: string) => {
 
     // 4. Progress Listeners
     useEffect(() => {
-        if (!window.fs || !window.fs.onDownloadProgress) return;
-
-        const removeListener = window.fs.onDownloadProgress((payload: any) => {
+        const unlisten = tauriEvents.onDownloadProgress((payload: any) => {
             const { id, progress, speedBytes } = payload;
             const now = Date.now();
 
@@ -212,12 +202,11 @@ export const useDownloads = (downloadPath: string, vkToken?: string) => {
                 })
             );
         });
-        return () => { if (removeListener) removeListener(); };
+        return () => { unlisten.then(f => f()); };
     }, []);
 
     useEffect(() => {
-        if (!window.fs || !window.fs.onDownloadResult) return;
-        const removeListener = window.fs.onDownloadResult((payload: any) => {
+        const unlisten = tauriEvents.onDownloadResult((payload: any) => {
             const { id, ok, status, path, size } = payload || {};
             if (!id) return;
             const formattedSize = typeof size === "number" ? formatBytes(size) || undefined : undefined;
@@ -231,15 +220,13 @@ export const useDownloads = (downloadPath: string, vkToken?: string) => {
                         ...(formattedSize ? { size: formattedSize } : {}),
                     };
                     if (ok) return { ...next, status: "completed", speed: "0 MB/s" };
-                    // Si l'utilisateur a mis en pause ou annulé, ne pas changer le statut
                     if (next.status === "paused" || next.status === "canceled") return next;
-                    // Si aborted par le système, marquer en erreur pour retry
                     if (status === "aborted") return { ...next, status: "error", speed: "Interrompu" };
                     return { ...next, status: "error", speed: "Erreur" };
                 })
             );
         });
-        return () => { if (removeListener) removeListener(); };
+        return () => { unlisten.then(f => f()); };
     }, []);
 
     // 5. Persistence
@@ -264,7 +251,7 @@ export const useDownloads = (downloadPath: string, vkToken?: string) => {
 
     // 6. Actions
     const pauseDownload = useCallback((id: string) => {
-        if (window.fs && window.fs.cancelDownload) window.fs.cancelDownload(id);
+        tauriFs.cancelDownload(id).catch(console.error);
         setDownloads((prev) =>
             prev.map((d) => (d.id === id ? { ...d, status: "paused", speed: "0 MB/s" } : d))
         );
@@ -277,7 +264,7 @@ export const useDownloads = (downloadPath: string, vkToken?: string) => {
     }, []);
 
     const cancelDownload = useCallback((id: string) => {
-        if (window.fs && window.fs.cancelDownload) window.fs.cancelDownload(id);
+        tauriFs.cancelDownload(id).catch(console.error);
         setDownloads((prev) =>
             prev.map((d) =>
                 d.id === id ? { ...d, status: "canceled", speed: "0 MB/s", progress: d.progress } : d
@@ -296,7 +283,7 @@ export const useDownloads = (downloadPath: string, vkToken?: string) => {
     }, []);
 
     const clearDownloads = useCallback(() => {
-        if (window.fs?.clearDownloadQueue) window.fs.clearDownloadQueue();
+        tauriFs.clearDownloadQueue().catch(console.error);
         enqueuedPendingDownloadsRef.current.clear();
         setDownloads([]);
     }, []);
