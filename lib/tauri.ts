@@ -10,6 +10,8 @@ export const tauriVk = {
         invoke<any[]>("vk_fetch_root_index", { token, groupId, topicId: topic_id }),
     fetchFullIndex: (token: string, groupId: string, topic_id: string) =>
         invoke<any[]>("vk_fetch_full_index", { token, groupId, topicId: topic_id }),
+    fetchNodeContent: (token: string, groupId: string, topicId: string) =>
+        invoke<any>("vk_fetch_node_content", { token, groupId, topicId }),
 };
 
 export const tauriFs = {

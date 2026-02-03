@@ -13,9 +13,20 @@ export const fetchNodeContent = async (
   token: string,
   node: VkNode,
 ): Promise<VkNode> => {
-  // If we haven't implemented this in Rust yet, we should.
-  // For now, let's assume fetchRootIndex covers it or implement the missing command.
-  return tauriVk.fetchRootIndex(token, node.id, "").then(res => ({ ...node, children: res, isLoaded: true }));
+  if (!node.vkGroupId || !node.vkTopicId) {
+    return { ...node, isLoaded: true, children: [] };
+  }
+
+  const result = await tauriVk.fetchNodeContent(token, node.vkGroupId, node.vkTopicId);
+
+  // Merge with existing node data (keep original title, etc.)
+  return {
+    ...node,
+    ...result,
+    title: node.title, // Keep original title
+    isLoaded: true,
+    structureOnly: false,
+  };
 };
 
 export const fetchFolderTreeUpToDepth = async (

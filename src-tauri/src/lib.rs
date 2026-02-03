@@ -32,6 +32,12 @@ async fn vk_fetch_full_index(token: String, group_id: String, topic_id: String) 
 }
 
 #[tauri::command]
+async fn vk_fetch_node_content(token: String, group_id: String, topic_id: String) -> Result<VkNode, String> {
+    let api = VkApi::new(token);
+    api.fetch_node_content(&group_id, &topic_id).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 async fn fs_list_directory(path: String) -> Result<DirList, String> {
     list_directory(&path).map_err(|e| e.to_string())
 }
@@ -88,6 +94,7 @@ pub fn run() {
             vk_ping,
             vk_fetch_root_index,
             vk_fetch_full_index,
+            vk_fetch_node_content,
             fs_list_directory,
             fs_open_path,
             fs_queue_download,

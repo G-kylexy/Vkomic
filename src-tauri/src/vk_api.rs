@@ -1,4 +1,4 @@
-use crate::vk_parser::{VkNode, parse_topic_body};
+use crate::vk_parser::{VkNode, parse_topic_body, extract_documents};
 use serde_json::Value;
 use reqwest::Client;
 use anyhow::Result;
@@ -27,13 +27,11 @@ impl VkApi {
     }
 
     pub async fn ping(&self) -> Result<u64> {
-        info!("Pinging VK API...");
         let start = std::time::Instant::now();
         let url = format!("https://api.vk.com/method/utils.getServerTime?access_token={}&v=5.131", self.token);
         let res = self.client.get(url).send().await?.json::<Value>().await?;
         
         if let Some(err) = res.get("error") {
-            error!("VK Ping error: {:?}", err);
             return Err(anyhow::anyhow!("VK API error: {}", err));
         }
         
@@ -63,6 +61,56 @@ impl VkApi {
         }
         
         Ok(nodes)
+    }
+
+    /// Fetch the full content of a VK topic node: sub-topics + attached documents
+    pub async fn fetch_node_content(&self, group_id: &str, topic_id: &str) -> Result<VkNode> {
+        info!("Fetching node content for group {} topic {}", group_id, topic_id);
+        
+        let items = self.fetch_all_comments(group_id, topic_id).await?;
+        info!("Fetched {} comments for node content", items.len());
+
+        // 1. Extract sub-topics from text
+        let full_text = items.iter()
+            .filter_map(|i| i.get("text").and_then(|t| t.as_str()))
+            .collect::<Vec<_>>()
+            .join("\n");
+        
+        let sub_topics = parse_topic_body(&full_text, Some(topic_id));
+        info!("Found {} sub-topics", sub_topics.len());
+
+        // 2. Extract documents from attachments
+        let documents = extract_documents(&items);
+        info!("Found {} documents", documents.len());
+
+        // 3. Combine children
+        let mut children = sub_topics;
+        children.extend(documents);
+
+        // 4. Determine node type based on content
+        let node_type = if children.iter().any(|c| c.node_type == "file") {
+            "series".to_string()
+        } else {
+            "genre".to_string()
+        };
+
+        Ok(VkNode {
+            id: format!("topic_{}", topic_id),
+            title: format!("Topic {}", topic_id),
+            node_type,
+            url: Some(format!("https://vk.com/topic-{}_{}", group_id, topic_id)),
+            vk_group_id: Some(group_id.to_string()),
+            vk_topic_id: Some(topic_id.to_string()),
+            children: Some(children),
+            is_loaded: Some(true),
+            count: None,
+            extension: None,
+            structure_only: Some(false),
+            vk_owner_id: None,
+            vk_doc_id: None,
+            vk_access_key: None,
+            size_bytes: None,
+        })
     }
 
     /// Fetch folder tree level-by-level (like the old app), not recursively per-node.
@@ -117,11 +165,64 @@ impl VkApi {
             }
         }
 
-        info!("Sync complete!");
+        if max_depth <= 3 {
+            return Ok(root_nodes);
+        }
+
+        // Level 4: Only for Comics (topic 47543940) which uses alphabetical ranges (A-C, D-F, etc.)
+        // BDs Européennes have their series directly at level 3, no need to go deeper
+        let mut level3_nodes: Vec<VkNode> = Vec::new();
+        let mut level3_refs: Vec<(usize, usize, usize)> = Vec::new(); // (root_idx, l2_idx, l3_idx)
+
+        for (ri, root) in root_nodes.iter().enumerate() {
+            // Only process Comics topic (47543940)
+            let is_comics = root.vk_topic_id.as_deref() == Some("47543940");
+            if !is_comics {
+                continue;
+            }
+
+            if let Some(l2_children) = &root.children {
+                for (l2i, l2) in l2_children.iter().enumerate() {
+                    if let Some(l3_children) = &l2.children {
+                        for (l3i, l3) in l3_children.iter().enumerate() {
+                            // Only folders (not files) go to level 4
+                            if l3.vk_group_id.is_some() && l3.vk_topic_id.is_some() {
+                                level3_nodes.push(l3.clone());
+                                level3_refs.push((ri, l2i, l3i));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if !level3_nodes.is_empty() {
+            info!("Level 4: Fetching {} items (Comics only)...", level3_nodes.len());
+            self.batch_expand_nodes(&mut level3_nodes).await?;
+
+            // Put them back into the tree
+            let mut l3_iter = level3_nodes.into_iter();
+            for &(ri, l2i, l3i) in &level3_refs {
+                if let Some(root) = root_nodes.get_mut(ri) {
+                    if let Some(l2_children) = root.children.as_mut() {
+                        if let Some(l2) = l2_children.get_mut(l2i) {
+                            if let Some(l3_children) = l2.children.as_mut() {
+                                if let Some(expanded) = l3_iter.next() {
+                                    l3_children[l3i] = expanded;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        info!("Sync complete! {} levels loaded.", max_depth);
         Ok(root_nodes)
     }
 
     /// Batch-expand a list of nodes by fetching their children 25 at a time using VK execute.
+    /// Runs up to 5 batches in parallel for speed.
     async fn batch_expand_nodes(&self, nodes: &mut [VkNode]) -> Result<()> {
         // Filter to only expandable nodes
         let target_indices: Vec<usize> = nodes.iter().enumerate()
@@ -137,37 +238,64 @@ impl VkApi {
             return Ok(());
         }
 
-        // Process in batches of 25
-        for chunk in target_indices.chunks(25) {
-            let mut calls = Vec::new();
-            for &idx in chunk {
+        // Prepare batch data: (chunk_indices, VKScript code, topic_ids for parsing)
+        let chunks: Vec<Vec<usize>> = target_indices.chunks(25).map(|c| c.to_vec()).collect();
+        
+        let batch_requests: Vec<(Vec<usize>, String, Vec<Option<String>>)> = chunks.iter().map(|chunk| {
+            let calls: Vec<String> = chunk.iter().map(|&idx| {
                 let node = &nodes[idx];
                 let gid = node.vk_group_id.as_ref().unwrap().replace('-', "");
                 let tid = node.vk_topic_id.as_ref().unwrap();
-                calls.push(format!("API.board.getComments({{\"group_id\":{},\"topic_id\":{},\"count\":100}})", gid, tid));
-            }
-
+                format!("API.board.getComments({{\"group_id\":{},\"topic_id\":{},\"count\":100}})", gid, tid)
+            }).collect();
+            let topic_ids: Vec<Option<String>> = chunk.iter()
+                .map(|&idx| nodes[idx].vk_topic_id.clone())
+                .collect();
             let code = format!("return [{}];", calls.join(","));
-            let url = format!(
-                "https://api.vk.com/method/execute?access_token={}&v=5.131&code={}",
-                self.token, urlencoding::encode(&code)
-            );
+            (chunk.clone(), code, topic_ids)
+        }).collect();
 
-            let res = self.client.get(&url).send().await?.json::<Value>().await?;
+        // Execute batches in parallel using join_all (max 5 at a time via semaphore)
+        let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(5));
+        let client = self.client.clone();
+        let token = self.token.clone();
 
-            if let Some(responses) = res.get("response").and_then(|r| r.as_array()) {
-                for (i, &idx) in chunk.iter().enumerate() {
-                    if let Some(resp) = responses.get(i) {
-                        if let Some(items) = resp.get("items").and_then(|it| it.as_array()) {
-                            let full_text = items.iter()
-                                .filter_map(|item| item.get("text").and_then(|t| t.as_str()))
-                                .collect::<Vec<_>>()
-                                .join("\n");
+        let handles: Vec<_> = batch_requests.into_iter().map(|(chunk_indices, code, topic_ids)| {
+            let sem = semaphore.clone();
+            let cli = client.clone();
+            let tok = token.clone();
+            
+            tokio::spawn(async move {
+                let _permit = sem.acquire().await.unwrap();
+                let url = format!(
+                    "https://api.vk.com/method/execute?access_token={}&v=5.131&code={}",
+                    tok, urlencoding::encode(&code)
+                );
+                let res = cli.get(&url).send().await.ok()?.json::<Value>().await.ok()?;
+                Some((chunk_indices, res, topic_ids))
+            })
+        }).collect();
 
-                            let children = parse_topic_body(&full_text, nodes[idx].vk_topic_id.as_deref());
-                            nodes[idx].children = Some(children);
-                            nodes[idx].is_loaded = Some(true);
-                            nodes[idx].structure_only = Some(true);
+        let results = futures::future::join_all(handles).await;
+
+        // Process results
+        for result in results {
+            if let Ok(Some((chunk_indices, res, topic_ids))) = result {
+                if let Some(responses) = res.get("response").and_then(|r| r.as_array()) {
+                    for (i, &idx) in chunk_indices.iter().enumerate() {
+                        if let Some(resp) = responses.get(i) {
+                            if let Some(items) = resp.get("items").and_then(|it| it.as_array()) {
+                                let full_text = items.iter()
+                                    .filter_map(|item| item.get("text").and_then(|t| t.as_str()))
+                                    .collect::<Vec<_>>()
+                                    .join("\n");
+
+                                let exclude_tid = topic_ids.get(i).and_then(|t| t.as_deref());
+                                let children = parse_topic_body(&full_text, exclude_tid);
+                                nodes[idx].children = Some(children);
+                                nodes[idx].is_loaded = Some(true);
+                                nodes[idx].structure_only = Some(true);
+                            }
                         }
                     }
                 }

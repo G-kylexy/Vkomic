@@ -186,3 +186,54 @@ pub fn parse_topic_body(text: &str, exclude_topic_id: Option<&str>) -> Vec<VkNod
 
     nodes
 }
+
+/// Extract documents (PDF, CBZ, CBR, ZIP...) from VK comment attachments
+pub fn extract_documents(items: &[serde_json::Value]) -> Vec<VkNode> {
+    let mut nodes = Vec::new();
+    let mut seen_urls = std::collections::HashSet::new();
+
+    for item in items {
+        if let Some(attachments) = item.get("attachments").and_then(|a| a.as_array()) {
+            for att in attachments {
+                if att.get("type").and_then(|t| t.as_str()) != Some("doc") {
+                    continue;
+                }
+
+                if let Some(doc) = att.get("doc") {
+                    let url = doc.get("url").and_then(|u| u.as_str()).unwrap_or("");
+                    if url.is_empty() || seen_urls.contains(url) {
+                        continue;
+                    }
+                    seen_urls.insert(url.to_string());
+
+                    let doc_id = doc.get("id").and_then(|i| i.as_u64()).unwrap_or(0);
+                    let title = doc.get("title").and_then(|t| t.as_str()).unwrap_or("Document");
+                    let ext = doc.get("ext").and_then(|e| e.as_str()).map(|e| e.to_uppercase());
+                    let size = doc.get("size").and_then(|s| s.as_u64());
+                    let owner_id = doc.get("owner_id").and_then(|o| o.as_i64());
+                    let access_key = doc.get("access_key").and_then(|a| a.as_str());
+
+                    nodes.push(VkNode {
+                        id: format!("doc_{}", doc_id),
+                        title: title.to_string(),
+                        node_type: "file".to_string(),
+                        url: Some(url.to_string()),
+                        extension: ext,
+                        size_bytes: size,
+                        vk_owner_id: owner_id.map(|o| o.to_string()),
+                        vk_doc_id: Some(doc_id.to_string()),
+                        vk_access_key: access_key.map(|a| a.to_string()),
+                        is_loaded: Some(true),
+                        children: None,
+                        count: None,
+                        structure_only: None,
+                        vk_group_id: None,
+                        vk_topic_id: None,
+                    });
+                }
+            }
+        }
+    }
+
+    nodes
+}
