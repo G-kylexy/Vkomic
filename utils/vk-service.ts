@@ -1,8 +1,11 @@
 import { VkNode } from '../types';
 import { VK_API } from './constants';
 import { logSync, logWarn, logError } from './logger';
+import { fetch } from '@tauri-apps/plugin-http'; // Import Tauri fetch
 
 const API_VERSION = VK_API.VERSION;
+
+// ... (MOCK_ROOT_NODES and LIMITER constants remain the same) ...
 
 // --- DONNEES DE SECOURS (FALLBACK) ---
 // Utilisees si l'API VK echoue ou si le token est invalide,
@@ -62,9 +65,19 @@ const executeRequest = <T>(url: string): Promise<T> => {
   return new Promise((resolve, reject) => {
     const task = async () => {
       try {
-        const res = await fetch(url);
+        const res = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+          }
+        });
+
+        if (!res.ok) {
+          throw new Error(`HTTP Error ${res.status}`);
+        }
+
         const json = await res.json();
-        resolve(json);
+        resolve(json as T);
       } catch (err) {
         reject(err);
       }

@@ -11,6 +11,7 @@ import {
   Trash2,
   ChevronDown,
 } from "./Icons";
+import { tauriFs } from "../lib/tauri";
 import { useTranslation } from "../i18n";
 import { DownloadItem } from "../types";
 import { formatDateISO } from "../utils/formatters";
@@ -104,12 +105,15 @@ const DownloadsView: React.FC<DownloadsViewProps> = ({
   }, []);
 
   const openFolder = useCallback((path?: string) => {
-    if (typeof window === "undefined" || !window.fs) return;
-    if (window.fs.revealPath && path) {
-      window.fs.revealPath(path);
-    } else if (window.fs.openPath) {
-      const folder = getFolderFromPath(path) || downloadPath;
-      if (folder) window.fs.openPath(folder);
+    if (!path) return;
+    // Sur Tauri, on peut utiliser openPath sur le dossier parent ou le fichier
+    // openPath sur un fichier l'ouvre (execute).
+    // Pour "Show in folder", souvent on ouvre le dossier parent.
+
+    // Si on a un path de fichier, on veut ouvrir le dossier le contenant
+    const folder = getFolderFromPath(path) || downloadPath;
+    if (folder) {
+      tauriFs.openPath(folder).catch(console.error);
     }
   }, [getFolderFromPath, downloadPath]);
 
@@ -299,14 +303,14 @@ const DownloadsView: React.FC<DownloadsViewProps> = ({
 
                   const statusLabel = isCompleted ? t.downloads.completed
                     : isCanceled ? t.downloads.canceled
-                    : isPaused ? t.downloads.statusPaused
-                    : isDownloading ? t.downloads.statusDownloading
-                    : t.downloads.statusPending;
+                      : isPaused ? t.downloads.statusPaused
+                        : isDownloading ? t.downloads.statusDownloading
+                          : t.downloads.statusPending;
 
                   const statusTone = isCompleted ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/30"
                     : isCanceled ? "text-rose-400 bg-rose-500/10 border-rose-500/30"
-                    : isPaused ? "text-amber-400 bg-amber-500/10 border-amber-500/30"
-                    : "text-blue-400 bg-blue-500/10 border-blue-500/30";
+                      : isPaused ? "text-amber-400 bg-amber-500/10 border-amber-500/30"
+                        : "text-blue-400 bg-blue-500/10 border-blue-500/30";
 
                   const showProgress = !isCompleted && !isCanceled;
 

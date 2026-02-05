@@ -102,6 +102,9 @@ pub fn run() {
             fs_clear_download_queue
         ])
         .setup(|app| {
+            // Plugin HTTP pour les requêtes sans CORS
+            app.handle().plugin(tauri_plugin_http::init())?;
+            
             if cfg!(debug_assertions) {
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()

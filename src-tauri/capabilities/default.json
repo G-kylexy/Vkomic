@@ -16,6 +16,15 @@
     "core:window:allow-start-dragging",
     "dialog:default",
     "shell:default",
-    "log:default"
+    "log:default",
+    "http:default",
+    {
+      "identifier": "http:default",
+      "allow": [
+        {
+          "url": "https://api.vk.com/*"
+        }
+      ]
+    }
   ]
 }
