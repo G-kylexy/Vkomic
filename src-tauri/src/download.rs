@@ -5,8 +5,7 @@ use std::collections::{VecDeque, HashMap};
 use tauri::{AppHandle, Emitter};
 use anyhow::Result;
 use futures_util::StreamExt;
-use std::io::SeekFrom;
-use tokio::io::{AsyncWriteExt, AsyncSeekExt};
+use tokio::io::AsyncWriteExt;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DownloadTask {

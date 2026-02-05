@@ -118,7 +118,7 @@ const DownloadsView: React.FC<DownloadsViewProps> = ({
   }, [getFolderFromPath, downloadPath]);
 
   return (
-    <div className="flex-1 px-4 sm:px-8 pt-6 sm:pt-8 pb-24 flex flex-col animate-fade-in overflow-y-auto custom-scrollbar">
+    <div className="flex-1 min-h-0 px-4 sm:px-8 pt-6 sm:pt-8 pb-10 flex flex-col animate-fade-in overflow-y-auto custom-scrollbar">
       <div className="w-full flex flex-col">
         {/* Stats */}
         <div className="mb-10">
