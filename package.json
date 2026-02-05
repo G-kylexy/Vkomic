@@ -26,7 +26,6 @@
     "@tauri-apps/plugin-http": "^2.5.7",
     "@tauri-apps/plugin-process": "^2.3.1",
     "@tauri-apps/plugin-shell": "^2.3.4",
-    "@tauri-apps/plugin-updater": "^2.9.0",
     "lucide-react": "^0.555.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

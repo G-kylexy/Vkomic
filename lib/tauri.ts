@@ -2,7 +2,6 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { open as selectFolder } from "@tauri-apps/plugin-dialog";
-import { check, type Update } from "@tauri-apps/plugin-updater";
 
 export const tauriVk = {
     ping: (token: string) => invoke<number>("vk_ping", { token }),
@@ -80,8 +79,4 @@ export const tauriEvents = {
         listen("download-progress", (event) => callback(event.payload)),
     onDownloadResult: (callback: (payload: any) => void) =>
         listen("download-result", (event) => callback(event.payload)),
-};
-
-export const tauriUpdater = {
-    check: () => check(),
 };

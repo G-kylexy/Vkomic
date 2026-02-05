@@ -1,32 +1,40 @@
 import { useState, useEffect, useCallback } from "react";
-import { tauriUpdater, tauriShell } from "../lib/tauri";
+import { tauriShell } from "../lib/tauri";
 import { ask, message } from "@tauri-apps/plugin-dialog";
-import { relaunch } from "@tauri-apps/plugin-process";
+import { getVersion } from "@tauri-apps/api/app";
+
+const GITHUB_RELEASES_URL = "https://github.com/G-kylexy/vkomic/releases/latest";
+const GITHUB_API_URL = "https://api.github.com/repos/G-kylexy/vkomic/releases/latest";
 
 export interface UpdateInfo {
     version: string;
-    url?: string;
+    currentVersion: string;
     notes: string;
-    status: "available" | "downloading" | "ready";
-    progress?: number;
+    url: string;
 }
 
 export const useAppUpdate = () => {
     const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
-    const [update, setUpdate] = useState<any>(null);
 
     // Vérifier les mises à jour au démarrage
     useEffect(() => {
         const checkForUpdates = async () => {
             try {
-                const updateResult = await tauriUpdater.check();
-                
-                if (updateResult?.available) {
-                    setUpdate(updateResult);
+                const currentVersion = await getVersion();
+
+                const response = await fetch(GITHUB_API_URL);
+                if (!response.ok) return;
+
+                const release = await response.json();
+                const latestVersion = release.tag_name?.replace(/^v/, "") || "";
+
+                // Comparer les versions (simple comparaison de string pour semver)
+                if (latestVersion && latestVersion !== currentVersion && isNewerVersion(latestVersion, currentVersion)) {
                     setUpdateInfo({
-                        version: updateResult.version,
-                        notes: updateResult.body || "Nouvelle version disponible",
-                        status: "available",
+                        version: latestVersion,
+                        currentVersion,
+                        notes: release.body || "Nouvelle version disponible",
+                        url: release.html_url || GITHUB_RELEASES_URL,
                     });
                 }
             } catch (error) {
@@ -34,87 +42,51 @@ export const useAppUpdate = () => {
             }
         };
 
-        // Vérifier au démarrage
-        checkForUpdates();
+        // Vérifier au démarrage (avec délai pour ne pas bloquer)
+        setTimeout(checkForUpdates, 3000);
 
         // Vérifier toutes les 30 minutes
         const interval = setInterval(checkForUpdates, 30 * 60 * 1000);
-        
+
         return () => clearInterval(interval);
     }, []);
 
-    const handleDownloadUpdate = useCallback(async () => {
-        if (!update) return;
+    const openReleasePage = useCallback(async () => {
+        const url = updateInfo?.url || GITHUB_RELEASES_URL;
+        await tauriShell.openExternal(url);
+        setUpdateInfo(null);
+    }, [updateInfo]);
 
-        try {
-            setUpdateInfo((prev) => prev ? { ...prev, status: "downloading" } : null);
-            
-            // Télécharger et installer
-            await update.downloadAndInstall((event: any) => {
-                switch (event.event) {
-                    case "Progress":
-                        setUpdateInfo((prev) => 
-                            prev ? { 
-                                ...prev, 
-                                status: "downloading", 
-                                progress: event.data.percent 
-                            } : null
-                        );
-                        break;
-                    case "Finished":
-                        setUpdateInfo((prev) => 
-                            prev ? { ...prev, status: "ready" } : null
-                        );
-                        break;
-                }
-            });
-
-            // Relancer l'application
-            await relaunch();
-        } catch (error) {
-            console.error("Error downloading update:", error);
-            setUpdateInfo((prev) => 
-                prev ? { ...prev, status: "available" } : null
-            );
-        }
-    }, [update]);
-
-    const handleInstallUpdate = useCallback(async () => {
-        // Relancer l'application pour appliquer la mise à jour
-        try {
-            await relaunch();
-        } catch (error) {
-            console.error("Error relaunching app:", error);
-        }
+    const dismissUpdate = useCallback(() => {
+        setUpdateInfo(null);
     }, []);
 
     const checkForUpdatesManual = useCallback(async () => {
         try {
-            const updateResult = await tauriUpdater.check();
-            
-            if (updateResult?.available) {
-                setUpdate(updateResult);
-                
+            const currentVersion = await getVersion();
+
+            const response = await fetch(GITHUB_API_URL);
+            if (!response.ok) throw new Error("Failed to fetch");
+
+            const release = await response.json();
+            const latestVersion = release.tag_name?.replace(/^v/, "") || "";
+
+            if (latestVersion && isNewerVersion(latestVersion, currentVersion)) {
                 const yes = await ask(
-                    `Mise à jour ${updateResult.version} disponible !\n\nNotes de version:\n${updateResult.body || "Nouvelle version disponible"}`,
+                    `Mise à jour ${latestVersion} disponible !\n\nVersion actuelle: ${currentVersion}\n\nVoulez-vous ouvrir la page de téléchargement ?`,
                     {
                         title: "Mise à jour disponible",
                         kind: "info",
-                        okLabel: "Mettre à jour",
+                        okLabel: "Ouvrir GitHub",
                         cancelLabel: "Plus tard",
                     }
                 );
 
                 if (yes) {
-                    setUpdateInfo({
-                        version: updateResult.version,
-                        notes: updateResult.body || "",
-                        status: "available",
-                    });
-                    await handleDownloadUpdate();
+                    await tauriShell.openExternal(release.html_url || GITHUB_RELEASES_URL);
                 }
             } else {
-                await message("Vous utilisez déjà la dernière version !", {
+                await message(`Vous utilisez la dernière version (${currentVersion}) !`, {
                     title: "Aucune mise à jour",
                     kind: "info",
                 });
@@ -122,15 +94,28 @@ export const useAppUpdate = () => {
         } catch (error) {
             console.error("Error checking for updates:", error);
             // Fallback: ouvrir la page GitHub
-            tauriShell.openExternal("https://github.com/G-kylexy/vkomic/releases/latest");
+            await tauriShell.openExternal(GITHUB_RELEASES_URL);
         }
-    }, [handleDownloadUpdate]);
+    }, []);
 
     return {
         updateInfo,
-        setUpdateInfo,
-        handleDownloadUpdate,
-        handleInstallUpdate,
+        openReleasePage,
+        dismissUpdate,
         checkForUpdatesManual,
     };
 };
+
+// Compare deux versions semver (retourne true si v1 > v2)
+function isNewerVersion(v1: string, v2: string): boolean {
+    const parts1 = v1.split(".").map(Number);
+    const parts2 = v2.split(".").map(Number);
+
+    for (let i = 0; i < Math.max(parts1.length, parts2.length); i++) {
+        const p1 = parts1[i] || 0;
+        const p2 = parts2[i] || 0;
+        if (p1 > p2) return true;
+        if (p1 < p2) return false;
+    }
+    return false;
+}

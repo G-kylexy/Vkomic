@@ -34,7 +34,6 @@ futures-util = "0.3"
 log = "0.4"
 tauri-plugin-dialog = "2.6.0"
 tauri-plugin-shell = "2.3.4"
-tauri-plugin-updater = "2"
 
 [features]
 # Needed because tauri CLI runs with --no-default-features
