@@ -62,11 +62,9 @@ const executeRequest = <T>(url: string): Promise<T> => {
   return new Promise((resolve, reject) => {
     const task = async () => {
       try {
-        if (!window.vk || !window.vk.request) {
-          throw new Error("VK Bridge not available");
-        }
-        const result = await window.vk.request(url);
-        resolve(result);
+        const res = await fetch(url);
+        const json = await res.json();
+        resolve(json);
       } catch (err) {
         reject(err);
       }

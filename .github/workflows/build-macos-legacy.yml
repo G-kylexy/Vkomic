@@ -1,0 +1,48 @@
+name: Build macOS High Sierra (Legacy Electron)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos-highsierra:
+    runs-on: macos-14  # ARM runner, cross-compile to x64
+    
+    steps:
+      - name: Check out legacy commit
+        uses: actions/checkout@v4
+        with:
+          ref: d32d22430465a99be6be48a540753f9c9ed2ac6f
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Electron App for macOS x64
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MACOSX_DEPLOYMENT_TARGET: "10.13"
+        run: |
+          npm run dist -- --mac --x64
+
+      - name: Rename DMG files with highsierra suffix
+        run: |
+          cd release
+          for f in *.dmg; do
+            mv "$f" "${f%.dmg}-highsierra.dmg"
+          done
+
+      - name: Upload macOS Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: vkomic-macos-highsierra-x64
+          path: |
+            release/*-highsierra.dmg
+
