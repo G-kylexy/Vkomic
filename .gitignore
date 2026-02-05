@@ -31,4 +31,5 @@ mobile
 .claude
 tmpclaude-*
 .expo
+
 src-tauri/
