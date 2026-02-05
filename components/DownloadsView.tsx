@@ -105,17 +105,20 @@ const DownloadsView: React.FC<DownloadsViewProps> = ({
   }, []);
 
   const openFolder = useCallback((path?: string) => {
-    if (!path) return;
-    // Sur Tauri, on peut utiliser openPath sur le dossier parent ou le fichier
-    // openPath sur un fichier l'ouvre (execute).
-    // Pour "Show in folder", souvent on ouvre le dossier parent.
-
-    // Si on a un path de fichier, on veut ouvrir le dossier le contenant
-    const folder = getFolderFromPath(path) || downloadPath;
-    if (folder) {
-      tauriFs.openPath(folder).catch(console.error);
+    if (!path) {
+      if (downloadPath) tauriFs.openPath(downloadPath).catch(console.error);
+      return;
     }
+
+    // Utilise revealPath pour ouvrir le dossier et SÉLECTIONNER le fichier (ou dossier)
+    tauriFs.revealPath(path).catch((err) => {
+      console.error("Failed to reveal path, falling back to openPath:", err);
+      // Fallback si revealPath échoue
+      const folder = getFolderFromPath(path) || downloadPath;
+      if (folder) tauriFs.openPath(folder).catch(console.error);
+    });
   }, [getFolderFromPath, downloadPath]);
+
 
   return (
     <div className="flex-1 min-h-0 px-4 sm:px-8 pt-6 sm:pt-8 pb-10 flex flex-col animate-fade-in overflow-y-auto custom-scrollbar">

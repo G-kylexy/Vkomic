@@ -2,7 +2,7 @@ use crate::vk_parser::{VkNode, parse_topic_body, extract_documents};
 use serde_json::Value;
 use reqwest::Client;
 use anyhow::Result;
-use log::{info, error};
+use log::info;
 
 pub struct VkApi {
     client: Client,
@@ -55,12 +55,20 @@ impl VkApi {
 
         let nodes = parse_topic_body(&full_text, None);
         info!("Parsed {} nodes from topic body", nodes.len());
+
+        // Filtrage heuristique comme dans la version classique pour éviter le bruit
+        let filtered: Vec<VkNode> = nodes.iter()
+            .filter(|n| n.title.to_uppercase().contains("EN FRANCAIS"))
+            .cloned()
+            .collect();
+
+        let final_nodes = if filtered.is_empty() { nodes } else { filtered };
         
-        for node in &nodes {
+        for node in &final_nodes {
             info!("Found node: {} (ID: {}, Type: {})", node.title, node.id, node.node_type);
         }
         
-        Ok(nodes)
+        Ok(final_nodes)
     }
 
     /// Fetch the full content of a VK topic node: sub-topics + attached documents
@@ -255,8 +263,8 @@ impl VkApi {
             (chunk.clone(), code, topic_ids)
         }).collect();
 
-        // Execute batches in parallel using join_all (max 5 at a time via semaphore)
-        let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(5));
+        // Parallélisation plus agressive (10 batches à la fois)
+        let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(10));
         let client = self.client.clone();
         let token = self.token.clone();
 
@@ -267,11 +275,14 @@ impl VkApi {
             
             tokio::spawn(async move {
                 let _permit = sem.acquire().await.unwrap();
-                let url = format!(
-                    "https://api.vk.com/method/execute?access_token={}&v=5.131&code={}",
-                    tok, urlencoding::encode(&code)
-                );
-                let res = cli.get(&url).send().await.ok()?.json::<Value>().await.ok()?;
+                let url = "https://api.vk.com/method/execute";
+                let params = [
+                    ("access_token", tok),
+                    ("v", "5.131".to_string()),
+                    ("code", code),
+                ];
+                
+                let res = cli.post(url).form(&params).send().await.ok()?.json::<Value>().await.ok()?;
                 Some((chunk_indices, res, topic_ids))
             })
         }).collect();
@@ -316,11 +327,9 @@ impl VkApi {
                 group_id.replace('-', ""), topic_id, count, offset, self.token
             );
             
-            info!("Requesting comments offset {}", offset);
             let res = self.client.get(url).send().await?.json::<Value>().await?;
             
             if let Some(err) = res.get("error") {
-                error!("VK API Error in fetch_all_comments: {:?}", err);
                 return Err(anyhow::anyhow!("VK error: {}", err));
             }
 
@@ -340,9 +349,11 @@ impl VkApi {
             }
             offset += count;
             
-            tokio::time::sleep(std::time::Duration::from_millis(350)).await;
+            // On réduit le sleep au minimum pour la version Desktop
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         }
 
         Ok(all_items)
     }
 }
+

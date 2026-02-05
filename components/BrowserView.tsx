@@ -240,9 +240,10 @@ const BrowserView: React.FC<BrowserViewProps> = ({
       try {
         const updatedNode = await fetchNodeContent(vkToken, node);
 
-        // Si on avait des enfants "structure only", on les fusionne avec les nouveaux
-        // Pour garder les sous-dossiers déjà synchronisés tout en ajoutant les documents
-        let finalNode = updatedNode;
+        // On préserve absolument le titre original car le backend Rust ne le connaît pas
+        // (il ne reçoit que l'ID et renvoie un titre technique par défaut)
+        let finalNode = { ...updatedNode, title: node.title };
+
         if (node.structureOnly && node.children && node.children.length > 0) {
           const existingChildIds = new Set(node.children.map((c) => c.id));
           const newChildren = (updatedNode.children || []).filter(
@@ -428,7 +429,7 @@ const BrowserView: React.FC<BrowserViewProps> = ({
               className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 px-8 rounded-lg flex items-center gap-2 transition-all shadow-lg shadow-blue-600/20 hover:shadow-blue-500/40 text-sm tracking-wide uppercase"
             >
               <RefreshCw size={18} className={isLoading ? "animate-spin" : ""} />
-              {isLoading ? t.library.syncing : "Synchroniser"}
+              {isLoading ? t.library.syncing : t.library.syncButton}
             </button>
           </div>
         </div>
@@ -533,18 +534,19 @@ const BrowserView: React.FC<BrowserViewProps> = ({
                   </span>
                 </button>
               )}
-              <button
-                onClick={handleFullSync}
-                className="flex items-center rounded-lg transition-all bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-lg shadow-blue-900/20 px-4 py-2 gap-2"
-                title={t.library.syncAllWarning}
-                disabled={isLoading}
-              >
-                <RefreshCw
-                  size={14}
-                  className={isLoading ? "animate-spin" : ""}
-                />
-                <span className="hidden sm:inline">Synchroniser</span>
-              </button>
+              {navPath.length === 0 && !isSearching && (
+                <button
+                  onClick={handleFullSync}
+                  className="flex items-center justify-center rounded-lg transition-all bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/20 w-9 h-9"
+                  disabled={isLoading}
+                  title="Synchroniser"
+                >
+                  <RefreshCw
+                    size={18}
+                    className={isLoading ? "animate-spin" : ""}
+                  />
+                </button>
+              )}
             </div>
           </div>
         </div>

@@ -69,3 +69,33 @@ pub fn open_path(target_path: &str) -> Result<()> {
     }
     Ok(())
 }
+
+pub fn reveal_path(target_path: &str) -> Result<()> {
+    #[cfg(target_os = "windows")]
+    {
+        // Sur Windows, explorer /select,chemin ouvre le dossier et sélectionne le fichier
+        // On remplace les / par des \ pour être sûr que l'explorateur comprenne le chemin
+        let normalized = target_path.replace("/", "\\");
+        
+        std::process::Command::new("explorer")
+            .arg("/select,")
+            .arg(normalized)
+            .spawn()?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        // Sur macOS, -R ouvre dans le Finder et sélectionne
+        std::process::Command::new("open")
+            .arg("-R")
+            .arg(target_path)
+            .spawn()?;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        // Sur Linux, xdg-open ne supporte pas nativement la sélection. 
+        // On se contente d'ouvrir le dossier parent ou le fichier.
+        std::process::Command::new("xdg-open").arg(target_path).spawn()?;
+    }
+    Ok(())
+}
+

@@ -7,7 +7,7 @@ use tauri::{AppHandle, State};
 use crate::vk_api::VkApi;
 use crate::vk_parser::VkNode;
 use crate::download::{DownloadManager, DownloadTask};
-use crate::fs_ops::{DirList, open_path, list_directory};
+use crate::fs_ops::{DirList, open_path, reveal_path, list_directory};
 
 struct AppState {
     download_manager: DownloadManager,
@@ -45,6 +45,11 @@ async fn fs_list_directory(path: String) -> Result<DirList, String> {
 #[tauri::command]
 async fn fs_open_path(path: String) -> Result<(), String> {
     open_path(&path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn fs_reveal_path(path: String) -> Result<(), String> {
+    reveal_path(&path).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -97,6 +102,7 @@ pub fn run() {
             vk_fetch_node_content,
             fs_list_directory,
             fs_open_path,
+            fs_reveal_path,
             fs_queue_download,
             fs_cancel_download,
             fs_clear_download_queue

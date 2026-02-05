@@ -17,6 +17,7 @@ export const tauriVk = {
 export const tauriFs = {
     listDirectory: (path: string) => invoke<any>("fs_list_directory", { path }),
     openPath: (path: string) => invoke<void>("fs_open_path", { path }),
+    revealPath: (path: string) => invoke<void>("fs_reveal_path", { path }),
     queueDownload: (
         id: string,
         url: string,

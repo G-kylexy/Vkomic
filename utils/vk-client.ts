@@ -5,8 +5,8 @@ import {
   fetchFolderTreeUpToDepth as vkFetchFolderTree,
 } from "./vk-service";
 
-// Utilise le code TypeScript natif (comme sur mobile) pour la synchronisation VK
-// Les téléchargements restent en Rust pour les performances
+// Utilise le code TypeScript natif (optimisé avec VK execute batching)
 export const fetchRootIndex = vkFetchRootIndex;
 export const fetchNodeContent = vkFetchNodeContent;
 export const fetchFolderTreeUpToDepth = vkFetchFolderTree;
+
