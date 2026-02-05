@@ -62,6 +62,7 @@
     },
     "mac": {
       "icon": "public/icon.png",
+      "minimumSystemVersion": "10.13.0",
       "target": [
         {
           "target": "dmg",
