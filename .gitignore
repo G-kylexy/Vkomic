@@ -33,3 +33,9 @@ tmpclaude-*
 .expo
 
 src-tauri/
+
+android/
+ios/
+eas.json
+app.json
+App.tsx
