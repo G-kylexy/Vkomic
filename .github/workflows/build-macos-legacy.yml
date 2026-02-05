@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   build-macos-highsierra:
-    runs-on: macos-13  # Intel runner for x86_64 build
+    runs-on: macos-14  # ARM runner, cross-compile to x64
     
     steps:
       - name: Check out legacy commit
@@ -25,17 +25,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build Electron App for macOS
+      - name: Build Electron App for macOS x64
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           MACOSX_DEPLOYMENT_TARGET: "10.13"
         run: |
-          npm run dist -- --mac
+          npm run dist -- --mac --x64
 
       - name: Upload macOS Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: vkomic-macos-highsierra
+          name: vkomic-macos-highsierra-x64
           path: |
             release/*.dmg
             release/*.zip
