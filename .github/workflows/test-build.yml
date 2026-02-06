@@ -9,7 +9,7 @@ on:
         default: 'macos-intel'
         type: choice
         options:
-          - windows
+          - windows-setup
           - macos-intel
           - macos-apple-silicon
           - linux
