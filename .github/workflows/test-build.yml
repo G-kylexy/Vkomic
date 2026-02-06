@@ -26,7 +26,7 @@ jobs:
         include:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            name: windows
+            name: windows-setup
           - os: macos-15
             target: x86_64-apple-darwin
             name: macos-intel

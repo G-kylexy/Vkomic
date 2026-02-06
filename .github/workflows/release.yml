@@ -17,7 +17,7 @@ jobs:
         include:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            name: windows
+            name: windows-setup
             ext: .exe
           - os: macos-14
             target: aarch64-apple-darwin
@@ -84,7 +84,7 @@ jobs:
             ### 📥 Nouveaux Binaires
             * 🍎 **macOS Intel** : `vkomic-macos-intel.dmg` (Compatible High Sierra 10.13+)
             * 🍎 **macOS Silicon** : `vkomic-macos-apple-silicon.dmg` (M1/M2/M3)
-            * 🪟 **Windows** : `vkomic-windows.exe`
+            * 🪟 **Windows** : `vkomic-windows-setup.exe`
             * 🐧 **Linux** : `vkomic-linux.AppImage`
           releaseDraft: false
           prerelease: false
