@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback, useState } from "react";
+import React, { useMemo, useCallback, useState, useRef, useEffect } from "react";
 import {
   Download,
   Pause,
@@ -9,7 +9,6 @@ import {
   Folder,
   RefreshCw,
   Trash2,
-  ChevronDown,
 } from "./Icons";
 import { tauriFs } from "../lib/tauri";
 import { useTranslation } from "../i18n";
@@ -35,8 +34,8 @@ interface PreparedDownload extends DownloadItem {
   displaySize: string;
 }
 
-// Nombre d'items affichés par page
-const ITEMS_PER_PAGE = 50;
+// Nombre d'items chargés initialement et à chaque scroll
+const ITEMS_PER_BATCH = 50;
 
 const DownloadsView: React.FC<DownloadsViewProps> = ({
   downloads,
@@ -49,7 +48,8 @@ const DownloadsView: React.FC<DownloadsViewProps> = ({
   clearDownloads,
 }) => {
   const { t } = useTranslation();
-  const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE);
+  const [visibleCount, setVisibleCount] = useState(ITEMS_PER_BATCH);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const downloadCounts = useMemo(() => {
     const downloaded = downloads.filter((d) => d.status === "completed").length;
@@ -84,17 +84,31 @@ const DownloadsView: React.FC<DownloadsViewProps> = ({
       }));
   }, [downloads]);
 
-  // Items visibles (pagination)
+  // Items visibles (chargement progressif)
   const visibleDownloads = useMemo(() => {
     return sortedDownloads.slice(0, visibleCount);
   }, [sortedDownloads, visibleCount]);
 
   const hasMore = visibleCount < sortedDownloads.length;
-  const remainingCount = sortedDownloads.length - visibleCount;
 
-  const loadMore = useCallback(() => {
-    setVisibleCount((prev) => Math.min(prev + ITEMS_PER_PAGE, sortedDownloads.length));
-  }, [sortedDownloads.length]);
+  // Infinite scroll handler
+  const handleScroll = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (!container || !hasMore) return;
+
+    const { scrollTop, scrollHeight, clientHeight } = container;
+    // Charge plus quand on est à 200px du bas
+    if (scrollHeight - scrollTop - clientHeight < 200) {
+      setVisibleCount((prev) => Math.min(prev + ITEMS_PER_BATCH, sortedDownloads.length));
+    }
+  }, [hasMore, sortedDownloads.length]);
+
+  // Reset du count quand les downloads changent significativement
+  useEffect(() => {
+    if (downloads.length <= ITEMS_PER_BATCH) {
+      setVisibleCount(ITEMS_PER_BATCH);
+    }
+  }, [downloads.length]);
 
   const getFolderFromPath = useCallback((p?: string) => {
     if (!p) return undefined;
@@ -121,7 +135,11 @@ const DownloadsView: React.FC<DownloadsViewProps> = ({
 
 
   return (
-    <div className="flex-1 min-h-0 px-4 sm:px-8 pt-6 sm:pt-8 pb-10 flex flex-col animate-fade-in overflow-y-auto custom-scrollbar">
+    <div
+      ref={scrollContainerRef}
+      onScroll={handleScroll}
+      className="flex-1 min-h-0 px-4 sm:px-8 pt-6 sm:pt-8 pb-10 flex flex-col animate-fade-in overflow-y-auto custom-scrollbar"
+    >
       <div className="w-full flex flex-col">
         {/* Stats */}
         <div className="mb-10">
@@ -378,18 +396,7 @@ const DownloadsView: React.FC<DownloadsViewProps> = ({
                 })}
               </div>
 
-              {/* Bouton "Voir plus" */}
-              {hasMore && (
-                <div className="p-4 border-t border-slate-800">
-                  <button
-                    onClick={loadMore}
-                    className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg font-medium flex items-center justify-center gap-2 transition-colors"
-                  >
-                    <ChevronDown size={18} />
-                    <span>Voir plus ({remainingCount} restants)</span>
-                  </button>
-                </div>
-              )}
+
             </>
           )}
         </div>
