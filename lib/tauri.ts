@@ -49,7 +49,6 @@ const getWindow = () => getCurrentWindow();
 
 export const tauriWin = {
     minimize: async () => {
-        console.log("Minimizing window");
         try {
             await getWindow().minimize();
         } catch (e) {
@@ -57,7 +56,6 @@ export const tauriWin = {
         }
     },
     maximize: async () => {
-        console.log("Toggling maximize");
         try {
             await getWindow().toggleMaximize();
         } catch (e) {
@@ -65,7 +63,6 @@ export const tauriWin = {
         }
     },
     close: async () => {
-        console.log("Closing window");
         try {
             await getWindow().close();
         } catch (e) {
