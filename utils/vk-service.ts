@@ -310,143 +310,139 @@ const cleanTitle = (text: string) => {
 };
 
 const LINE_URL_REGEX = /vk\.com\/topic-(\d+)_(\d+)(?:\?post=(\d+))?/g;
+const BBCODE_REGEX = /\[topic-(\d+)_(\d+)\|([^\]]+)\]/g;
+const MENTION_REGEX = /@topic-(\d+)_(\d+)(?:\?post=(\d+))?(?:\s*\(([^)]+)\))?/g;
+const PIPE_TITLE_REGEX = /^\|([^\]]+)\]/;
 
 // Analyse le texte brut des messages pour trouver "Titre de la BD -> Lien VK"
 // Optimisé en 3 passes pour éviter la concaténation de chaînes géantes
+// Analyse le texte brut des messages pour trouver "Titre de la BD -> Lien VK"
+// Optimisé (Single-pass + Memory efficient)
 const parseTopicBody = (items: { text?: string }[], excludeTopicId?: string): VkNode[] => {
-  const nodes: VkNode[] = [];
-  const seenIds = new Set<string>();
+  const nodesMap = new Map<string, { node: VkNode, priority: number }>();
 
-  const bbcodeRegex = /\[topic-(\d+)_(\d+)\|([^\]]+)\]/g;
-  const mentionRegex = /@topic-(\d+)_(\d+)(?:\?post=(\d+))?(?:\s*\(([^)]+)\))?/g;
-  const lineUrlRegex = /vk\.com\/topic-(\d+)_(\d+)(?:\?post=(\d+))?/g;
+  // Priorités: BBCode > Mention > URL simple
+  const PRIORITY_BBCODE = 3;
+  const PRIORITY_MENTION = 2;
+  const PRIORITY_URL = 1;
 
-  // === Pass 1. Parser les BBCode VK: [topic-GROUP_TOPIC|Texte] ===
-  // Format le plus fiable car le titre est inclus dans le lien
-  for (const item of items) {
-    const text = item.text || '';
-    if (!text) continue;
-
-    bbcodeRegex.lastIndex = 0;
-    let bbMatch;
-    while ((bbMatch = bbcodeRegex.exec(text)) !== null) {
-      const [, groupId, topicId, linkText] = bbMatch;
-      if (excludeTopicId && topicId === excludeTopicId) continue;
-
-      const uniqueId = `topic_${topicId}`;
-      if (seenIds.has(uniqueId)) continue;
-
-      let title = cleanTitle(linkText);
-      if (!title || title.length < 2) title = `Topic ${topicId}`;
-
-      if (title.length < 200) {
-        seenIds.add(uniqueId);
-        nodes.push({
-          id: uniqueId,
-          title,
-          type: 'genre',
-          url: `https://vk.com/topic-${groupId}_${topicId}`,
-          vkGroupId: groupId,
-          vkTopicId: topicId,
-          children: [],
-          isLoaded: false,
-        });
-      }
-    }
-  }
-
-  // === Pass 2. Parser les mentions: @topic-GROUP_TOPIC (Titre) ===
-  for (const item of items) {
-    const text = item.text || '';
-    if (!text) continue;
-
-    mentionRegex.lastIndex = 0;
-    let mentionMatch;
-    while ((mentionMatch = mentionRegex.exec(text)) !== null) {
-      const [, groupId, topicId, postId, linkText] = mentionMatch;
-      if (excludeTopicId && topicId === excludeTopicId) continue;
-
-      const uniqueId = postId ? `topic_${topicId}_post${postId}` : `topic_${topicId}`;
-      if (seenIds.has(uniqueId)) continue;
-
-      let title = linkText ? cleanTitle(linkText) : `Topic ${topicId}`;
-      if (!title || title.length < 2) title = `Topic ${topicId}`;
-
-      if (title.length < 200) {
-        seenIds.add(uniqueId);
-        nodes.push({
-          id: uniqueId,
-          title,
-          type: 'genre',
-          url: `https://vk.com/topic-${groupId}_${topicId}`,
-          vkGroupId: groupId,
-          vkTopicId: topicId,
-          children: [],
-          isLoaded: false,
-        });
-      }
-    }
-  }
-
-  // === Pass 3. Parser les URLs en clair (fallback) ===
-  // Format: "Titre : https://vk.com/topic-XXX" ou titre sur ligne précédente
   let previousLine = '';
 
   for (const item of items) {
     const text = item.text || '';
     if (!text) continue;
 
-    const lines = text.split('\n').map((l) => l.trim()).filter((l) => l.length > 0);
+    // 1. Scan BBCode
+    BBCODE_REGEX.lastIndex = 0;
+    let match;
+    while ((match = BBCODE_REGEX.exec(text)) !== null) {
+      const [, groupId, topicId, linkText] = match;
+      if (excludeTopicId && topicId === excludeTopicId) continue;
 
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      if (!line.includes('vk.com/topic-')) continue;
+      const uniqueId = `topic_${topicId}`;
+      const existing = nodesMap.get(uniqueId);
+      if (existing && existing.priority >= PRIORITY_BBCODE) continue;
 
-      lineUrlRegex.lastIndex = 0;
-      let match;
+      let title = cleanTitle(linkText);
+      if (!title || title.length < 2) title = `Topic ${topicId}`;
+      if (title.length >= 200) continue;
 
-      while ((match = lineUrlRegex.exec(line)) !== null) {
+      nodesMap.set(uniqueId, {
+        priority: PRIORITY_BBCODE,
+        node: {
+          id: uniqueId,
+          title,
+          type: 'genre',
+          url: `https://vk.com/topic-${groupId}_${topicId}`,
+          vkGroupId: groupId,
+          vkTopicId: topicId,
+          children: [],
+          isLoaded: false,
+        }
+      });
+    }
+
+    // 2. Scan Mentions
+    MENTION_REGEX.lastIndex = 0;
+    while ((match = MENTION_REGEX.exec(text)) !== null) {
+      const [, groupId, topicId, postId, linkText] = match;
+      if (excludeTopicId && topicId === excludeTopicId) continue;
+
+      const uniqueId = postId ? `topic_${topicId}_post${postId}` : `topic_${topicId}`;
+      const existing = nodesMap.get(uniqueId);
+      if (existing && existing.priority >= PRIORITY_MENTION) continue;
+
+      let title = linkText ? cleanTitle(linkText) : `Topic ${topicId}`;
+      if (!title || title.length < 2) title = `Topic ${topicId}`;
+      if (title.length >= 200) continue;
+
+      nodesMap.set(uniqueId, {
+        priority: PRIORITY_MENTION,
+        node: {
+          id: uniqueId,
+          title,
+          type: 'genre',
+          url: `https://vk.com/topic-${groupId}_${topicId}`,
+          vkGroupId: groupId,
+          vkTopicId: topicId,
+          children: [],
+          isLoaded: false,
+        }
+      });
+    }
+
+    // 3. Scan URLs (Line by line manual iteration to avoid split('\n') allocation)
+    let lineStart = 0;
+    let lineEnd = 0;
+
+    while (lineEnd < text.length) {
+      // Find next newline
+      lineEnd = text.indexOf('\n', lineStart);
+      if (lineEnd === -1) lineEnd = text.length;
+
+      const line = text.substring(lineStart, lineEnd).trim();
+      lineStart = lineEnd + 1; // Prepare next iteration
+
+      if (!line) continue;
+      if (!line.includes('vk.com/topic-')) {
+        previousLine = line; // Save context
+        continue;
+      }
+
+      LINE_URL_REGEX.lastIndex = 0;
+      while ((match = LINE_URL_REGEX.exec(line)) !== null) {
         const [, groupId, topicId, postId] = match;
         if (excludeTopicId && topicId === excludeTopicId) continue;
 
         const uniqueId = postId ? `topic_${topicId}_post${postId}` : `topic_${topicId}`;
-        if (seenIds.has(uniqueId)) continue;
+        const existing = nodesMap.get(uniqueId);
+        if (existing && existing.priority >= PRIORITY_URL) continue;
 
-        // Extraction du titre
+        // Title Extraction Logic
         let title = '';
 
-        // NOUVEAU: Format VK inversé "https://vk.com/topic-XXX|Titre]"
-        // Le titre est APRÈS l'URL, séparé par un pipe |
+        // Pipe syntax
         const afterMatch = line.substring(match.index + match[0].length);
-        const pipeMatch = afterMatch.match(/^\|([^\]]+)\]/);
+        const pipeMatch = afterMatch.match(PIPE_TITLE_REGEX);
         if (pipeMatch) {
           title = pipeMatch[1].trim();
         }
 
-        // Fallback: Extraction avant l'URL
+        // Before syntax
         if (!title) {
           const beforeMatch = line.substring(0, match.index);
           const rawTitle = beforeMatch.replace(/https?:\/\/$/, '').trim();
-
-          // Cas 1: "Naruto -> https://vk.com..." (sur la meme ligne)
           if (rawTitle.length > 2) {
             title = rawTitle;
           } else {
-            // Cas 2: "Naruto" (ligne precedente)
-            if (i > 0) {
-              const prevLine = lines[i - 1];
-              if (!prevLine.includes('vk.com') && prevLine.length > 2) {
-                title = prevLine;
-              }
-            } else if (previousLine) {
-              // Regarder la ligne précédente issue de l'item précédent
-              if (!previousLine.includes('vk.com') && previousLine.length > 2) {
-                title = previousLine;
-              }
+            // Previous line context
+            if (previousLine && !previousLine.includes('vk.com') && previousLine.length > 2) {
+              title = previousLine;
             }
           }
         }
 
+        // After syntax
         if (!title) {
           const afterUrl = line.substring(match.index + match[0].length).trim();
           if (afterUrl.length > 2 && !afterUrl.includes('vk.com')) {
@@ -456,10 +452,11 @@ const parseTopicBody = (items: { text?: string }[], excludeTopicId?: string): Vk
 
         title = cleanTitle(title);
         if (!title || title.length < 2) title = `Topic ${topicId}`;
+        if (title.length >= 200) continue;
 
-        if (title.length < 200) {
-          seenIds.add(uniqueId);
-          nodes.push({
+        nodesMap.set(uniqueId, {
+          priority: PRIORITY_URL,
+          node: {
             id: uniqueId,
             title,
             type: 'genre',
@@ -468,18 +465,15 @@ const parseTopicBody = (items: { text?: string }[], excludeTopicId?: string): Vk
             vkTopicId: topicId,
             children: [],
             isLoaded: false,
-          });
-        }
+          }
+        });
       }
-    }
 
-    // Update previousLine for next item
-    if (lines.length > 0) {
-      previousLine = lines[lines.length - 1];
+      previousLine = line;
     }
   }
 
-  return nodes;
+  return Array.from(nodesMap.values()).map(v => v.node);
 };
 
 // Extrait les documents attaches (PDF, CBZ, CBR, ZIP) des commentaires VK
