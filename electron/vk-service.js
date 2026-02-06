@@ -310,19 +310,20 @@ const cleanTitle = (text) => {
  * @returns {Array} Liste des nodes (sous-dossiers) trouvés
  */
 const parseTopicBody = (items, excludeTopicId) => {
-  const nodes = [];
-  const seenIds = new Set();
-
   const bbcodeRegex = /\[topic-(\d+)_(\d+)\|([^\]]+)\]/g;
   const mentionRegex = /@topic-(\d+)_(\d+)(?:\?post=(\d+))?(?:\s*\(([^)]+)\))?/g;
   const lineUrlRegex = /vk\.com\/topic-(\d+)_(\d+)(?:\?post=(\d+))?/g;
 
-  // === 1. Parser les BBCode VK: [topic-GROUP_TOPIC|Texte] ===
-  // Format le plus fiable car le titre est inclus dans le lien
+  // === 3. Parser les URLs en clair (fallback) ===
+  // Format: "Titre : https://vk.com/topic-XXX" ou titre sur ligne précédente
+  let previousLine = "";
+  const nodeMap = new Map(); // uniqueId -> { node, priority }
+
   for (const item of items) {
     const text = item.text || "";
     if (!text) continue;
 
+    // === 1. Parser les BBCode VK: [topic-GROUP_TOPIC|Texte] ===
     bbcodeRegex.lastIndex = 0;
     let bbMatch;
     while ((bbMatch = bbcodeRegex.exec(text)) !== null) {
@@ -330,32 +331,31 @@ const parseTopicBody = (items, excludeTopicId) => {
       if (excludeTopicId && topicId === excludeTopicId) continue;
 
       const uniqueId = `topic_${topicId}`;
-      if (seenIds.has(uniqueId)) continue;
-
       let title = cleanTitle(linkText);
       if (!title || title.length < 2) title = `Topic ${topicId}`;
 
       if (title.length < 200) {
-        seenIds.add(uniqueId);
-        nodes.push({
-          id: uniqueId,
-          title,
-          type: "genre",
-          url: `https://vk.com/topic-${groupId}_${topicId}`,
-          vkGroupId: groupId,
-          vkTopicId: topicId,
-          children: [],
-          isLoaded: false,
-        });
+        const existing = nodeMap.get(uniqueId);
+        // Priority 3 (BBCode)
+        if (!existing || existing.priority < 3) {
+          nodeMap.set(uniqueId, {
+            priority: 3,
+            node: {
+              id: uniqueId,
+              title,
+              type: "genre",
+              url: `https://vk.com/topic-${groupId}_${topicId}`,
+              vkGroupId: groupId,
+              vkTopicId: topicId,
+              children: [],
+              isLoaded: false,
+            },
+          });
+        }
       }
     }
-  }
 
-  // === 2. Parser les mentions: @topic-GROUP_TOPIC (Titre) ===
-  for (const item of items) {
-    const text = item.text || "";
-    if (!text) continue;
-
+    // === 2. Parser les mentions: @topic-GROUP_TOPIC (Titre) ===
     mentionRegex.lastIndex = 0;
     let mentionMatch;
     while ((mentionMatch = mentionRegex.exec(text)) !== null) {
@@ -364,35 +364,31 @@ const parseTopicBody = (items, excludeTopicId) => {
       if (excludeTopicId && topicId === excludeTopicId) continue;
 
       const uniqueId = postId ? `topic_${topicId}_post${postId}` : `topic_${topicId}`;
-      if (seenIds.has(uniqueId)) continue;
-
       let title = linkText ? cleanTitle(linkText) : `Topic ${topicId}`;
       if (!title || title.length < 2) title = `Topic ${topicId}`;
 
       if (title.length < 200) {
-        seenIds.add(uniqueId);
-        nodes.push({
-          id: uniqueId,
-          title,
-          type: "genre",
-          url: `https://vk.com/topic-${groupId}_${topicId}`,
-          vkGroupId: groupId,
-          vkTopicId: topicId,
-          children: [],
-          isLoaded: false,
-        });
+        const existing = nodeMap.get(uniqueId);
+        // Priority 2 (Mention)
+        if (!existing || existing.priority < 2) {
+          nodeMap.set(uniqueId, {
+            priority: 2,
+            node: {
+              id: uniqueId,
+              title,
+              type: "genre",
+              url: `https://vk.com/topic-${groupId}_${topicId}`,
+              vkGroupId: groupId,
+              vkTopicId: topicId,
+              children: [],
+              isLoaded: false,
+            },
+          });
+        }
       }
     }
-  }
 
-  // === 3. Parser les URLs en clair (fallback) ===
-  // Format: "Titre : https://vk.com/topic-XXX" ou titre sur ligne précédente
-  let previousLine = "";
-
-  for (const item of items) {
-    const text = item.text || "";
-    if (!text) continue;
-
+    // === 3. URLs en clair (fallback) ===
     const lines = text.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
 
     for (let i = 0; i < lines.length; i++) {
@@ -408,7 +404,6 @@ const parseTopicBody = (items, excludeTopicId) => {
         if (excludeTopicId && topicId === excludeTopicId) continue;
 
         const uniqueId = postId ? `topic_${topicId}_post${postId}` : `topic_${topicId}`;
-        if (seenIds.has(uniqueId)) continue;
 
         // Extraction du titre
         let title = "";
@@ -455,17 +450,23 @@ const parseTopicBody = (items, excludeTopicId) => {
         if (!title || title.length < 2) title = `Topic ${topicId}`;
 
         if (title.length < 200) {
-          seenIds.add(uniqueId);
-          nodes.push({
-            id: uniqueId,
-            title,
-            type: "genre",
-            url: `https://vk.com/topic-${groupId}_${topicId}`,
-            vkGroupId: groupId,
-            vkTopicId: topicId,
-            children: [],
-            isLoaded: false,
-          });
+          const existing = nodeMap.get(uniqueId);
+          // Priority 1 (URL)
+          if (!existing || existing.priority < 1) {
+            nodeMap.set(uniqueId, {
+              priority: 1,
+              node: {
+                id: uniqueId,
+                title,
+                type: "genre",
+                url: `https://vk.com/topic-${groupId}_${topicId}`,
+                vkGroupId: groupId,
+                vkTopicId: topicId,
+                children: [],
+                isLoaded: false,
+              },
+            });
+          }
         }
       }
     }
@@ -476,7 +477,10 @@ const parseTopicBody = (items, excludeTopicId) => {
     }
   }
 
-  return nodes;
+  // Tri par priorité décroissante (3 -> 2 -> 1) pour respecter l'ordre d'origine
+  return Array.from(nodeMap.values())
+    .sort((a, b) => b.priority - a.priority)
+    .map((entry) => entry.node);
 };
 
 /**
