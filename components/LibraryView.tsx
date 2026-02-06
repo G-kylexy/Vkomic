@@ -83,6 +83,83 @@ const computeParentWithinBase = (current: string, base: string) => {
   return target;
 };
 
+// Memoized Library Item
+interface LibraryItemProps {
+  entry: FsEntry;
+  onNavigate: (entry: FsEntry) => void;
+  onOpen: (entry: FsEntry) => void;
+  folderLabel: string;
+  fileLabel: string;
+  sizeLabel: string;
+  modifiedLabel: string;
+  openFolderLabel: string;
+  openFileLabel: string;
+}
+
+const LibraryItem = React.memo<LibraryItemProps>(({
+  entry,
+  onNavigate,
+  onOpen,
+  folderLabel,
+  fileLabel,
+  sizeLabel,
+  modifiedLabel,
+  openFolderLabel,
+  openFileLabel
+}) => {
+  const isFolder = entry.isDirectory;
+  const handleDoubleClick = useCallback(() => onNavigate(entry), [onNavigate, entry]);
+  const handleIconClick = useCallback(() => onNavigate(entry), [onNavigate, entry]);
+  const handleActionClick = useCallback(() => isFolder ? onNavigate(entry) : onOpen(entry), [isFolder, onNavigate, onOpen, entry]);
+
+  return (
+    <div
+      onDoubleClick={handleDoubleClick}
+      className="bg-[#111827] rounded-xl border border-slate-800 p-5 flex flex-col justify-between hover:border-blue-500/40 transition-all duration-200 cursor-pointer"
+    >
+      <div className="flex items-center gap-3 mb-4">
+        <button
+          type="button"
+          onClick={handleIconClick}
+          className="p-3 rounded-xl bg-slate-800 text-blue-400 hover:bg-slate-700 transition-colors"
+        >
+          {isFolder ? <Folder size={24} /> : <FileText size={24} />}
+        </button>
+        <div className="flex-1 min-w-0">
+          <h3
+            className="text-white font-semibold truncate"
+            title={entry.name}
+          >
+            {entry.name}
+          </h3>
+          <p className="text-xs text-slate-500">
+            {isFolder ? folderLabel : fileLabel}
+          </p>
+        </div>
+      </div>
+
+      <div className="text-xs text-slate-500 space-y-1 mb-4">
+        <p>
+          {sizeLabel}:{" "}
+          {isFolder ? "--" : formatBytesWithFallback(entry.size)}
+        </p>
+        <p>
+          {modifiedLabel}: {formatDateTimestamp(entry.modifiedAt)}
+        </p>
+      </div>
+
+      <button
+        type="button"
+        onClick={handleActionClick}
+        className="w-full border border-slate-700/50 rounded-md py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800 hover:border-slate-600 transition-all flex items-center justify-center gap-2"
+      >
+        {!isFolder && <DownloadCloud size={14} />}
+        {isFolder ? openFolderLabel : openFileLabel}
+      </button>
+    </div>
+  );
+});
+
 import { tauriFs } from "../lib/tauri";
 
 // Parcourt le dossier de téléchargement local via Rust
@@ -260,58 +337,20 @@ const LibraryView: React.FC<LibraryViewProps> = ({
 
         {!isLoading && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5 pb-4">
-            {entries.map((entry) => {
-              const isFolder = entry.isDirectory;
-              return (
-                <div
-                  key={entry.path}
-                  onDoubleClick={() => handleEntryClick(entry)}
-                  className="bg-[#111827] rounded-xl border border-slate-800 p-5 flex flex-col justify-between hover:border-blue-500/40 transition-all duration-200 cursor-pointer"
-                >
-                  <div className="flex items-center gap-3 mb-4">
-                    <button
-                      type="button"
-                      onClick={() => handleEntryClick(entry)}
-                      className="p-3 rounded-xl bg-slate-800 text-blue-400 hover:bg-slate-700 transition-colors"
-                    >
-                      {isFolder ? <Folder size={24} /> : <FileText size={24} />}
-                    </button>
-                    <div className="flex-1 min-w-0">
-                      <h3
-                        className="text-white font-semibold truncate"
-                        title={entry.name}
-                      >
-                        {entry.name}
-                      </h3>
-                      <p className="text-xs text-slate-500">
-                        {isFolder ? t.library.folderLabel : t.library.fileLabel}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="text-xs text-slate-500 space-y-1 mb-4">
-                    <p>
-                      {t.library.size}:{" "}
-                      {isFolder ? "--" : formatBytesWithFallback(entry.size)}
-                    </p>
-                    <p>
-                      {t.library.modified}: {formatDateTimestamp(entry.modifiedAt)}
-                    </p>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      isFolder ? loadPath(entry.path) : handleOpenFile(entry)
-                    }
-                    className="w-full border border-slate-700/50 rounded-md py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800 hover:border-slate-600 transition-all flex items-center justify-center gap-2"
-                  >
-                    {!isFolder && <DownloadCloud size={14} />}
-                    {isFolder ? t.library.openFolder : t.library.openFile}
-                  </button>
-                </div>
-              );
-            })}
+            {entries.map((entry) => (
+              <LibraryItem
+                key={entry.path}
+                entry={entry}
+                onNavigate={handleEntryClick}
+                onOpen={handleOpenFile}
+                folderLabel={t.library.folderLabel}
+                fileLabel={t.library.fileLabel}
+                sizeLabel={t.library.size}
+                modifiedLabel={t.library.modified}
+                openFolderLabel={t.library.openFolder}
+                openFileLabel={t.library.openFile}
+              />
+            ))}
 
             {entries.length === 0 && (
               <div className="col-span-full flex flex-col items-center justify-center py-16 text-slate-500">

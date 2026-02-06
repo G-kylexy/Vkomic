@@ -99,7 +99,11 @@ const App: React.FC = () => {
     while (stack.length > 0) {
       const n = stack.pop();
       if (n && (n.type === "genre" || n.type === "series")) count++;
-      if (n?.children) stack.push(...n.children);
+      if (n?.children) {
+        for (const child of n.children) {
+          stack.push(child);
+        }
+      }
     }
     return count;
   }, [syncedData]);
@@ -179,11 +183,10 @@ const App: React.FC = () => {
               <UpdateModal
                 version={update.updateInfo.version}
                 notes={update.updateInfo.notes}
-                status={update.updateInfo.status}
-                progress={update.updateInfo.progress}
-                onDownload={update.handleDownloadUpdate}
-                onInstall={update.handleInstallUpdate}
-                onClose={() => update.setUpdateInfo(null)}
+                status="available"
+                onDownload={update.openReleasePage}
+                onInstall={() => { }}
+                onClose={update.dismissUpdate}
               />
             </Suspense>
           )}
