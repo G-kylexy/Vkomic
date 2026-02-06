@@ -88,6 +88,27 @@ export const idbDel = async (key: string): Promise<void> => {
   });
 };
 
+export const idbGetByPrefix = async <T = IDBValue>(
+  prefix: string,
+): Promise<T[]> => {
+  if (!isIndexedDBAvailable()) return [];
+  const db = await openDatabase();
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, "readonly");
+    const store = tx.objectStore(STORE_NAME);
+    const range = IDBKeyRange.bound(prefix, prefix + "\uffff");
+    const request = store.getAll(range);
+
+    request.onsuccess = () => {
+      resolve((request.result as T[]) ?? []);
+    };
+    request.onerror = () => {
+      reject(request.error ?? new Error("IndexedDB getByPrefix failed"));
+    };
+  });
+};
+
 export const migrateLocalStorageJsonToIdb = async <T = unknown>(
   key: string,
 ): Promise<T | null> => {
