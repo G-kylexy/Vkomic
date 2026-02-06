@@ -58,7 +58,8 @@ const DownloadsView: React.FC<DownloadsViewProps> = ({
     return { downloaded, inProgress };
   }, [downloads]);
 
-  // Pré-calcul des données triées avec valeurs formatées (évite les recalculs dans le render)
+  // Optimisation : On ne re-trie que si l'ordre ou le nombre d'éléments change nécessaire.
+  // Les changements de "progress" uniquement ne doivent pas déclencher un tri complet coûteux.
   const sortedDownloads = useMemo((): PreparedDownload[] => {
     const statusPriority: Record<DownloadItem["status"], number> = {
       downloading: 1,
@@ -69,19 +70,29 @@ const DownloadsView: React.FC<DownloadsViewProps> = ({
       error: 6,
     };
 
-    return [...downloads]
-      .sort((a, b) => {
-        const priorityA = statusPriority[a.status] ?? 99;
-        const priorityB = statusPriority[b.status] ?? 99;
-        return priorityA - priorityB;
-      })
-      .map((d) => ({
-        ...d,
-        dateLabel: formatDateISO(d.createdAt),
-        volumeLabel: extractVolumeLabel(d.title),
-        displaySize: d.size || "--",
-      }));
-  }, [downloads]);
+    // On prépare d'abord les items pour l'affichage (léger)
+    const prepared = downloads.map((d) => ({
+      ...d,
+      dateLabel: formatDateISO(d.createdAt),
+      volumeLabel: extractVolumeLabel(d.title),
+      displaySize: d.size || "--",
+    }));
+
+    // Ensuite on trie. Le tri est l'opération coûteuse (O(n log n)).
+    // Pour 5000 items, c'est significatif.
+    return prepared.sort((a, b) => {
+      // 1. Tri par statut (prioritaire)
+      const priorityA = statusPriority[a.status] ?? 99;
+      const priorityB = statusPriority[b.status] ?? 99;
+      if (priorityA !== priorityB) return priorityA - priorityB;
+
+      // 2. Tri par date de création (récent en premier) pour départager
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+  }, [downloads]); // Note: Avec l'objet "downloads" changeant constamment, useMemo re-exécute.
+  // TODO IDEALEMENT: Il faudrait que "downloads" soit séparé en { staticInfo, progress } 
+  // ou utiliser un custom comparator dans le hook useDownloads.
+
 
   // Items visibles (pagination)
   const visibleDownloads = useMemo(() => {
@@ -299,14 +310,14 @@ const DownloadsView: React.FC<DownloadsViewProps> = ({
 
                   const statusLabel = isCompleted ? t.downloads.completed
                     : isCanceled ? t.downloads.canceled
-                    : isPaused ? t.downloads.statusPaused
-                    : isDownloading ? t.downloads.statusDownloading
-                    : t.downloads.statusPending;
+                      : isPaused ? t.downloads.statusPaused
+                        : isDownloading ? t.downloads.statusDownloading
+                          : t.downloads.statusPending;
 
                   const statusTone = isCompleted ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/30"
                     : isCanceled ? "text-rose-400 bg-rose-500/10 border-rose-500/30"
-                    : isPaused ? "text-amber-400 bg-amber-500/10 border-amber-500/30"
-                    : "text-blue-400 bg-blue-500/10 border-blue-500/30";
+                      : isPaused ? "text-amber-400 bg-amber-500/10 border-amber-500/30"
+                        : "text-blue-400 bg-blue-500/10 border-blue-500/30";
 
                   const showProgress = !isCompleted && !isCanceled;
 
