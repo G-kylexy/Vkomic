@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { DownloadItem, VkNode } from "../types";
 import { DEFAULT_DOWNLOAD_PATH, UI } from "../utils/constants";
 import { formatBytes, formatSpeed } from "../utils/formatters";
-import { idbDel, idbGet, idbSet, migrateLocalStorageJsonToIdb } from "../utils/storage";
+import { idbDel, idbGet, idbGetByPrefix, idbSet, migrateLocalStorageJsonToIdb } from "../utils/storage";
 import { tauriFs, tauriEvents } from "../lib/tauri";
 
 export const useDownloads = (downloadPath: string, vkToken?: string) => {
@@ -36,12 +36,27 @@ export const useDownloads = (downloadPath: string, vkToken?: string) => {
 
         const hydrate = async () => {
             try {
-                const stored =
-                    (await idbGet<DownloadItem[]>("vk_downloads")) ??
-                    (await migrateLocalStorageJsonToIdb<DownloadItem[]>("vk_downloads"));
+                const prefix = "vk_download_";
+                const granularItems = await idbGetByPrefix<DownloadItem>(prefix);
+
+                let items: DownloadItem[] = [];
+                if (granularItems.length > 0) {
+                    items = granularItems;
+                } else {
+                    const stored =
+                        (await idbGet<DownloadItem[]>("vk_downloads")) ??
+                        (await migrateLocalStorageJsonToIdb<DownloadItem[]>("vk_downloads"));
+
+                    if (Array.isArray(stored)) {
+                        items = stored;
+                        // Migration: save granularly and delete legacy
+                        await Promise.all(items.map(item => idbSet(prefix + item.id, item)));
+                        await idbDel("vk_downloads");
+                    }
+                }
 
                 if (cancelled) return;
-                setDownloads(Array.isArray(stored) ? normalize(stored) : []);
+                setDownloads(normalize(items));
             } catch {
                 if (cancelled) return;
                 setDownloads([]);
@@ -232,22 +247,49 @@ export const useDownloads = (downloadPath: string, vkToken?: string) => {
     // 5. Persistence
     const lastPersistRef = useRef<number>(0);
     const lastPersistStatusKeyRef = useRef<string>("");
+    const lastPersistedDownloadsRef = useRef<Map<string, DownloadItem>>(new Map());
+
     useEffect(() => {
         if (!downloadsHydrated) return;
         const now = Date.now();
-        const statusChanged = downloadStatusKey !== lastPersistStatusKeyRef.current;
-        if (!statusChanged && now - lastPersistRef.current <= 1000) return;
+        const downloadStatusKey = downloads.map((d) => `${d.id}:${d.status}:${d.progress}`).join("|");
+
+        // Throttle persistence: save max once per second OR if status changed significantly
+        if (now - lastPersistRef.current < 1000 && downloadStatusKey === lastPersistStatusKeyRef.current) {
+            return;
+        }
 
         lastPersistRef.current = now;
         lastPersistStatusKeyRef.current = downloadStatusKey;
         const persist = async () => {
             try {
-                if (downloads.length === 0) await idbDel("vk_downloads");
-                else await idbSet("vk_downloads", downloads);
+                const currentMap = new Map(downloads.map((d) => [d.id, d]));
+                const lastMap = lastPersistedDownloadsRef.current;
+                const prefix = "vk_download_";
+                const promises: Promise<void>[] = [];
+
+                // 1. Handle Deletions
+                for (const id of lastMap.keys()) {
+                    if (!currentMap.has(id)) {
+                        promises.push(idbDel(prefix + id));
+                    }
+                }
+
+                // 2. Handle Updates/Additions
+                for (const [id, item] of currentMap.entries()) {
+                    if (lastMap.get(id) !== item) {
+                        promises.push(idbSet(prefix + id, item));
+                    }
+                }
+
+                if (promises.length > 0) {
+                    await Promise.all(promises);
+                    lastPersistedDownloadsRef.current = currentMap;
+                }
             } catch { }
         };
         void persist();
-    }, [downloads, downloadStatusKey, downloadsHydrated]);
+    }, [downloads, downloadsHydrated]);
 
     // 6. Actions
     const pauseDownload = useCallback((id: string) => {

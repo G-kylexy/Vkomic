@@ -88,6 +88,38 @@ export const idbDel = async (key: string): Promise<void> => {
   });
 };
 
+export const idbGetByPrefix = async <T = IDBValue>(prefix: string): Promise<T[]> => {
+  if (!isIndexedDBAvailable()) return [];
+  const db = await openDatabase();
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, "readonly");
+    const store = tx.objectStore(STORE_NAME);
+    const results: T[] = [];
+
+    // Utiliser un curseur pour parcourir toutes les clés
+    // C'est moins efficace qu'un index mais suffisant pour KV store simple
+    const request = store.openCursor();
+
+    request.onsuccess = (event) => {
+      const cursor = (event.target as IDBRequest).result as IDBCursorWithValue;
+      if (cursor) {
+        const key = cursor.key.toString();
+        if (key.startsWith(prefix)) {
+          results.push(cursor.value as T);
+        }
+        cursor.continue();
+      } else {
+        resolve(results);
+      }
+    };
+
+    request.onerror = () => {
+      reject(request.error ?? new Error("IndexedDB cursor failed"));
+    };
+  });
+};
+
 export const migrateLocalStorageJsonToIdb = async <T = unknown>(
   key: string,
 ): Promise<T | null> => {
