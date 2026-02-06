@@ -106,4 +106,4 @@ jobs:
 
       - name: Skip message
         if: steps.check.outputs.should_run == 'false'
-        run: echo "Skipping ${{ matrix.name }} build (requested platform: ${{ inputs.platform }})"
+        run: 'echo "Skipping ${{ matrix.name }} build (requested platform: ${{ inputs.platform }})"'
