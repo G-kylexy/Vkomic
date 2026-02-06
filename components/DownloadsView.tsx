@@ -58,8 +58,7 @@ const DownloadsView: React.FC<DownloadsViewProps> = ({
     return { downloaded, inProgress };
   }, [downloads]);
 
-  // Optimisation : On ne re-trie que si l'ordre ou le nombre d'éléments change nécessaire.
-  // Les changements de "progress" uniquement ne doivent pas déclencher un tri complet coûteux.
+  // Pré-calcul des données triées avec valeurs formatées (évite les recalculs dans le render)
   const sortedDownloads = useMemo((): PreparedDownload[] => {
     const statusPriority: Record<DownloadItem["status"], number> = {
       downloading: 1,
@@ -70,29 +69,19 @@ const DownloadsView: React.FC<DownloadsViewProps> = ({
       error: 6,
     };
 
-    // On prépare d'abord les items pour l'affichage (léger)
-    const prepared = downloads.map((d) => ({
-      ...d,
-      dateLabel: formatDateISO(d.createdAt),
-      volumeLabel: extractVolumeLabel(d.title),
-      displaySize: d.size || "--",
-    }));
-
-    // Ensuite on trie. Le tri est l'opération coûteuse (O(n log n)).
-    // Pour 5000 items, c'est significatif.
-    return prepared.sort((a, b) => {
-      // 1. Tri par statut (prioritaire)
-      const priorityA = statusPriority[a.status] ?? 99;
-      const priorityB = statusPriority[b.status] ?? 99;
-      if (priorityA !== priorityB) return priorityA - priorityB;
-
-      // 2. Tri par date de création (récent en premier) pour départager
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-    });
-  }, [downloads]); // Note: Avec l'objet "downloads" changeant constamment, useMemo re-exécute.
-  // TODO IDEALEMENT: Il faudrait que "downloads" soit séparé en { staticInfo, progress } 
-  // ou utiliser un custom comparator dans le hook useDownloads.
-
+    return [...downloads]
+      .sort((a, b) => {
+        const priorityA = statusPriority[a.status] ?? 99;
+        const priorityB = statusPriority[b.status] ?? 99;
+        return priorityA - priorityB;
+      })
+      .map((d) => ({
+        ...d,
+        dateLabel: formatDateISO(d.createdAt),
+        volumeLabel: extractVolumeLabel(d.title),
+        displaySize: d.size || "--",
+      }));
+  }, [downloads]);
 
   // Items visibles (pagination)
   const visibleDownloads = useMemo(() => {
