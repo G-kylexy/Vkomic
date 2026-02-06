@@ -1,22 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Folder,
-  FileText,
   RefreshCw,
   ChevronLeft,
-  DownloadCloud,
   Settings,
 } from "./Icons";
 import { useTranslation } from "../i18n";
-import { formatBytesWithFallback, formatDateTimestamp } from "../utils/formatters";
-
-interface FsEntry {
-  name: string;
-  path: string;
-  isDirectory: boolean;
-  size: number | null;
-  modifiedAt: number;
-}
+import { FsEntry } from "../types";
+import LibraryItem from "./LibraryItem";
 
 interface LibraryViewProps {
   downloadPath: string;
@@ -145,19 +135,11 @@ const LibraryView: React.FC<LibraryViewProps> = ({
     loadPath(parent);
   };
 
-  const handleEntryClick = (entry: FsEntry) => {
-    if (entry.isDirectory) {
-      loadPath(entry.path);
-    } else if (typeof window !== "undefined" && window.fs?.openPath) {
-      window.fs.openPath(entry.path);
-    }
-  };
-
-  const handleOpenFile = (entry: FsEntry) => {
+  const handleOpen = useCallback((path: string) => {
     if (typeof window !== "undefined" && window.fs?.openPath) {
-      window.fs.openPath(entry.path);
+      window.fs.openPath(path);
     }
-  };
+  }, []);
 
   if (!effectivePath) {
     return (
@@ -266,58 +248,14 @@ const LibraryView: React.FC<LibraryViewProps> = ({
 
         {!isLoading && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5 pb-4">
-            {entries.map((entry) => {
-              const isFolder = entry.isDirectory;
-              return (
-                <div
-                  key={entry.path}
-                  onDoubleClick={() => handleEntryClick(entry)}
-                  className="bg-[#111827] rounded-xl border border-slate-800 p-5 flex flex-col justify-between hover:border-blue-500/40 transition-all duration-200 cursor-pointer"
-                >
-                  <div className="flex items-center gap-3 mb-4">
-                    <button
-                      type="button"
-                      onClick={() => handleEntryClick(entry)}
-                      className="p-3 rounded-xl bg-slate-800 text-blue-400 hover:bg-slate-700 transition-colors"
-                    >
-                      {isFolder ? <Folder size={24} /> : <FileText size={24} />}
-                    </button>
-                    <div className="flex-1 min-w-0">
-                      <h3
-                        className="text-white font-semibold truncate"
-                        title={entry.name}
-                      >
-                        {entry.name}
-                      </h3>
-                      <p className="text-xs text-slate-500">
-                        {isFolder ? t.library.folderLabel : t.library.fileLabel}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="text-xs text-slate-500 space-y-1 mb-4">
-                    <p>
-                      {t.library.size}:{" "}
-                      {isFolder ? "--" : formatBytesWithFallback(entry.size)}
-                    </p>
-                    <p>
-                      {t.library.modified}: {formatDateTimestamp(entry.modifiedAt)}
-                    </p>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      isFolder ? loadPath(entry.path) : handleOpenFile(entry)
-                    }
-                    className="w-full border border-slate-700/50 rounded-md py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800 hover:border-slate-600 transition-all flex items-center justify-center gap-2"
-                  >
-                    {!isFolder && <DownloadCloud size={14} />}
-                    {isFolder ? t.library.openFolder : t.library.openFile}
-                  </button>
-                </div>
-              );
-            })}
+            {entries.map((entry) => (
+              <LibraryItem
+                key={entry.path}
+                entry={entry}
+                onNavigate={loadPath}
+                onOpen={handleOpen}
+              />
+            ))}
 
             {entries.length === 0 && (
               <div className="col-span-full flex flex-col items-center justify-center py-16 text-slate-500">

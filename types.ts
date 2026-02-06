@@ -7,6 +7,14 @@ export interface NavItem {
   id: string;
 }
 
+export interface FsEntry {
+  name: string;
+  path: string;
+  isDirectory: boolean;
+  size: number | null;
+  modifiedAt: number;
+}
+
 // Types possibles pour un élément dans l'explorateur
 // category/genre/series = Dossiers | file = Fichiers (PDF/CBZ)
 export type NodeType = "category" | "genre" | "series" | "topic" | "file";
