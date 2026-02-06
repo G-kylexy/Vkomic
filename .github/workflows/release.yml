@@ -75,14 +75,17 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: 'VKomic ${{ github.ref_name }}'
           releaseBody: |
-            ## Téléchargements
+            ## 🚀 Architecture 100% Rust + Tauri
             
-            | Plateforme | Fichier | Compatible |
-            |------------|---------|------------|
-            | 🪟 Windows | `vkomic-*-windows.exe` | Windows 10+ |
-            | 🍎 macOS Apple Silicon | `vkomic-*-macos-apple-silicon.dmg` | macOS 11+ (M1/M2/M3) |
-            | 🍎 macOS Intel | `vkomic-*-macos-intel.dmg` | macOS 10.13+ (High Sierra) |
-            | 🐧 Linux | `vkomic-*-linux.AppImage` | Ubuntu 22.04+ |
+            **Taille divisée par 10. Démarrage instantané.**
+            
+            Cette version abandonne Electron pour des performances extrêmes et ramène la compatibilité avec les anciens Mac.
+            
+            ### 📥 Nouveaux Binaires
+            * 🍎 **macOS Intel** : `vkomic-macos-intel.dmg` (Compatible High Sierra 10.13+)
+            * 🍎 **macOS Silicon** : `vkomic-macos-apple-silicon.dmg` (M1/M2/M3)
+            * 🪟 **Windows** : `vkomic-windows.exe`
+            * 🐧 **Linux** : `vkomic-linux.AppImage`
           releaseDraft: false
           prerelease: false
           args: --target ${{ matrix.target }}
