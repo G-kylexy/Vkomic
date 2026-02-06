@@ -99,7 +99,11 @@ const App: React.FC = () => {
     while (stack.length > 0) {
       const n = stack.pop();
       if (n && (n.type === "genre" || n.type === "series")) count++;
-      if (n?.children) stack.push(...n.children);
+      if (n?.children) {
+        for (const child of n.children) {
+          stack.push(child);
+        }
+      }
     }
     return count;
   }, [syncedData]);
