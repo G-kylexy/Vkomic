@@ -32,8 +32,7 @@ mobile
 tmpclaude-*
 .expo
 
-src-tauri/
-
+src-tauri
 android/
 ios/
 eas.json
