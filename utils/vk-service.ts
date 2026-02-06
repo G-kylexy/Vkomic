@@ -298,6 +298,8 @@ const cleanTitle = (text: string) => {
     .trim();
 };
 
+const LINE_URL_REGEX = /vk\.com\/topic-(\d+)_(\d+)(?:\?post=(\d+))?/g;
+
 // Analyse le texte brut des messages pour trouver "Titre de la BD -> Lien VK"
 // Optimisé en 3 passes pour éviter la concaténation de chaînes géantes
 const parseTopicBody = (items: { text?: string }[], excludeTopicId?: string): VkNode[] => {
