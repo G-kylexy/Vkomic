@@ -64,6 +64,8 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Support macOS 10.13 (High Sierra) pour les builds Intel
+          MACOSX_DEPLOYMENT_TARGET: ${{ matrix.target == 'x86_64-apple-darwin' && '10.13' || '' }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'VKomic ${{ github.ref_name }}'
