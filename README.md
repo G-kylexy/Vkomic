@@ -1,4 +1,4 @@
-# <p align="center"><img src="public/icon.png" width="180" alt="Vkomic" /></p>
+# <p align="center"><img src="src-tauri/icons/icon.png" width="180" alt="Vkomic" /></p>
 
 # Vkomic
 
