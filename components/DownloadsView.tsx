@@ -74,7 +74,19 @@ const DownloadsView: React.FC<DownloadsViewProps> = ({
       .sort((a, b) => {
         const priorityA = statusPriority[a.status] ?? 99;
         const priorityB = statusPriority[b.status] ?? 99;
-        return priorityA - priorityB;
+
+        if (priorityA !== priorityB) {
+          return priorityA - priorityB;
+        }
+
+        // Tri par date UNIQUEMENT pour 'completed' et 'canceled'
+        if (["completed", "canceled"].includes(a.status)) {
+          const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return dateB - dateA; // Plus récent en premier
+        }
+
+        return 0; // Garde l'ordre original pour les autres statuts
       })
       .map((d) => ({
         ...d,
