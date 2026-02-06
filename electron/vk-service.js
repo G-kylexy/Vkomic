@@ -297,6 +297,10 @@ const cleanTitle = (text) => {
     .trim();
 };
 
+const bbcodeRegex = /\[topic-(\d+)_(\d+)\|([^\]]+)\]/g;
+const mentionRegex = /@topic-(\d+)_(\d+)(?:\?post=(\d+))?(?:\s*\(([^)]+)\))?/g;
+const lineUrlRegex = /vk\.com\/topic-(\d+)_(\d+)(?:\?post=(\d+))?/g;
+
 /**
  * Parse le texte d'un topic pour extraire les liens vers d'autres topics
  *
@@ -312,10 +316,6 @@ const cleanTitle = (text) => {
 const parseTopicBody = (items, excludeTopicId) => {
   const nodes = [];
   const seenIds = new Set();
-
-  const bbcodeRegex = /\[topic-(\d+)_(\d+)\|([^\]]+)\]/g;
-  const mentionRegex = /@topic-(\d+)_(\d+)(?:\?post=(\d+))?(?:\s*\(([^)]+)\))?/g;
-  const lineUrlRegex = /vk\.com\/topic-(\d+)_(\d+)(?:\?post=(\d+))?/g;
 
   // === 1. Parser les BBCode VK: [topic-GROUP_TOPIC|Texte] ===
   // Format le plus fiable car le titre est inclus dans le lien
