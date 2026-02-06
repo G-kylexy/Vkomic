@@ -27,7 +27,7 @@ jobs:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             name: windows
-          - os: macos-13
+          - os: macos-15
             target: x86_64-apple-darwin
             name: macos-intel
           - os: macos-14

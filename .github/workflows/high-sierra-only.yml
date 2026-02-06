@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   build-legacy-mac:
-    runs-on: macos-13 # Runner Intel (obligatoire pour High Sierra)
+    runs-on: macos-15 # Runner Intel updated (macos-13 retired)
     name: Build macOS High Sierra (10.13)
     
     steps:
