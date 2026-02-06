@@ -63,11 +63,11 @@ const DownloadsView: React.FC<DownloadsViewProps> = ({
   const sortedDownloads = useMemo((): PreparedDownload[] => {
     const statusPriority: Record<DownloadItem["status"], number> = {
       downloading: 1,
-      paused: 2,
-      pending: 3,
-      completed: 4,
-      canceled: 5,
-      error: 6,
+      error: 2,      // Erreurs visibles immédiatement (requiert action)
+      paused: 3,
+      pending: 4,
+      completed: 5,
+      canceled: 6,
     };
 
     return [...downloads]

@@ -25,9 +25,9 @@ import {
   fetchRootIndex,
   fetchNodeContent,
   fetchFolderTreeUpToDepth,
-} from "../utils/vk-client";
+  tauriShell,
+} from "../lib/tauri";
 import { normalizeText } from "../utils/text";
-import { tauriShell } from "../lib/tauri";
 
 interface BrowserViewProps {
   vkToken: string;
