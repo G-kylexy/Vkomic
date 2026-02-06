@@ -298,15 +298,15 @@ const cleanTitle = (text: string) => {
     .trim();
 };
 
+const bbcodeRegex = /\[topic-(\d+)_(\d+)\|([^\]]+)\]/g;
+const mentionRegex = /@topic-(\d+)_(\d+)(?:\?post=(\d+))?(?:\s*\(([^)]+)\))?/g;
+const lineUrlRegex = /vk\.com\/topic-(\d+)_(\d+)(?:\?post=(\d+))?/g;
+
 // Analyse le texte brut des messages pour trouver "Titre de la BD -> Lien VK"
 // Optimisé en 3 passes pour éviter la concaténation de chaînes géantes
 const parseTopicBody = (items: { text?: string }[], excludeTopicId?: string): VkNode[] => {
   const nodes: VkNode[] = [];
   const seenIds = new Set<string>();
-
-  const bbcodeRegex = /\[topic-(\d+)_(\d+)\|([^\]]+)\]/g;
-  const mentionRegex = /@topic-(\d+)_(\d+)(?:\?post=(\d+))?(?:\s*\(([^)]+)\))?/g;
-  const lineUrlRegex = /vk\.com\/topic-(\d+)_(\d+)(?:\?post=(\d+))?/g;
 
   // === Pass 1. Parser les BBCode VK: [topic-GROUP_TOPIC|Texte] ===
   // Format le plus fiable car le titre est inclus dans le lien
