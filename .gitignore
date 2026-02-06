@@ -13,6 +13,7 @@ node_modules
 # Build outputs
 dist
 dist-ssr
+public
 *.local
 release
 out
