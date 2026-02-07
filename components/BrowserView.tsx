@@ -82,7 +82,7 @@ const BrowserView: React.FC<BrowserViewProps> = ({
   const isSearching = debouncedQuery.trim().length > 0;
 
   const searchIndex = React.useMemo(() => {
-    if (!syncedData) return [];
+    if (!syncedData || !isSearching) return [];
     const index: Array<{ node: VkNode; normalizedTitle: string }> = [];
     const stack: VkNode[] = [...syncedData];
 
@@ -91,12 +91,15 @@ const BrowserView: React.FC<BrowserViewProps> = ({
       if (!node) continue;
       index.push({ node, normalizedTitle: normalizeText(node.title) });
       if (node.children && node.children.length > 0) {
-        stack.push(...node.children);
+        // Optimisation : boucle explicite pour éviter le stack overflow avec le spread operator (...)
+        for (const child of node.children) {
+          stack.push(child);
+        }
       }
     }
 
     return index;
-  }, [syncedData]);
+  }, [syncedData, isSearching]);
 
   // Fonction de recherche optimisée avec useMemo
   const displayedNodes = React.useMemo(() => {
