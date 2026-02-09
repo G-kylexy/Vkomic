@@ -92,22 +92,6 @@ const App: React.FC = () => {
     return () => { cancelled = true; };
   }, []);
 
-  const indexedCount = useMemo(() => {
-    if (!syncedData) return 0;
-    let count = 0;
-    const stack = [...syncedData];
-    while (stack.length > 0) {
-      const n = stack.pop();
-      if (n && (n.type === "genre" || n.type === "series")) count++;
-      if (n?.children) {
-        for (const child of n.children) {
-          stack.push(child);
-        }
-      }
-    }
-    return count;
-  }, [syncedData]);
-
   // Persist Synced Data
   useEffect(() => {
     if (!syncedDataHydrated) return;
@@ -161,7 +145,6 @@ const App: React.FC = () => {
               vkTopicId={vkTopicId}
               setVkTopicId={handleSetVkTopicId}
               syncedData={syncedData}
-              indexedCount={indexedCount}
               setSyncedData={setSyncedData}
               hasFullSynced={hasFullSynced}
               setHasFullSynced={setHasFullSynced}

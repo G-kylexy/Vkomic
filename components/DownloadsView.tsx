@@ -12,7 +12,7 @@ import {
 } from "./Icons";
 import { tauriFs } from "../lib/tauri";
 import { useTranslation } from "../i18n";
-import { DownloadItem } from "../types";
+import { DownloadItem, VkNode } from "../types";
 import { formatDateISO } from "../utils/formatters";
 import { extractVolumeLabel } from "../utils/text";
 
@@ -22,7 +22,7 @@ interface DownloadsViewProps {
   resumeDownload: (id: string) => void;
   cancelDownload: (id: string) => void;
   retryDownload: (id: string) => void;
-  indexedCount?: number;
+  syncedData?: VkNode[] | null;
   downloadPath?: string;
   clearDownloads: () => void;
 }
@@ -43,13 +43,30 @@ const DownloadsView: React.FC<DownloadsViewProps> = ({
   resumeDownload,
   cancelDownload,
   retryDownload,
-  indexedCount = 0,
+  syncedData,
   downloadPath,
   clearDownloads,
 }) => {
   const { t } = useTranslation();
   const [visibleCount, setVisibleCount] = useState(ITEMS_PER_BATCH);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  const indexedCount = useMemo(() => {
+    if (!syncedData) return 0;
+    let count = 0;
+    const stack = [...syncedData];
+    while (stack.length > 0) {
+      const n = stack.pop();
+      if (!n) continue;
+      if (n.type === "genre" || n.type === "series") count++;
+      if (n.children && n.children.length > 0) {
+        for (const child of n.children) {
+          stack.push(child);
+        }
+      }
+    }
+    return count;
+  }, [syncedData]);
 
   const downloadCounts = useMemo(() => {
     const downloaded = downloads.filter((d) => d.status === "completed").length;
