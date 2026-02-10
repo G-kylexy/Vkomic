@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use regex::Regex;
+use lazy_static::lazy_static;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -22,20 +23,35 @@ pub struct VkNode {
     pub size_bytes: Option<u64>,
 }
 
+lazy_static! {
+    static ref RE_BBCODE_TITLE: Regex = Regex::new(r"\[topic-\d+(?:_\d+)?\|([^\]]+)\]").unwrap();
+    static ref RE_CLEAN_1: Regex = Regex::new(r"\s*[-–—=]+[>→»]\s*.*$").unwrap();
+    static ref RE_CLEAN_2: Regex = Regex::new(r"https?://.*$").unwrap();
+    static ref RE_CLEAN_3: Regex = Regex::new(r"[:\-–—]+$").unwrap();
+    static ref RE_CLEAN_4: Regex = Regex::new(r"^\s*[-–—'»«•*·]+\s*").unwrap();
+    static ref RE_CLEAN_5: Regex = Regex::new(r"\s*[-–—'»«•*·]+\s*$").unwrap();
+
+    static ref RE_BBCODE: Regex = Regex::new(r"\[topic-(\d+)_(\d+)\|([^\]]+)\]").unwrap();
+    static ref RE_MENTION: Regex = Regex::new(r"@topic-(\d+)_(\d+)(?:\?post=(\d+))?(?:\s*\(([^)]+)\))?").unwrap();
+    // Support m.vk.com, w.vk.com, new.vk.com, etc.
+    static ref RE_URL: Regex = Regex::new(r"(.*?)(https?://(?:[a-z0-9]+\.)?vk\.com/topic-(\d+)_(\d+))").unwrap();
+    // Support documents in text: https://vk.com/doc-123_456
+    static ref RE_DOC_URL: Regex = Regex::new(r"(.*?)(https?://(?:[a-z0-9]+\.)?vk\.com/doc(-?\d+)_(\d+))").unwrap();
+}
+
 pub fn clean_title(text: &str) -> String {
     let mut cleaned = text.to_string();
 
     // BBCode [topic-xxx|Titre]
-    let re_bbcode = Regex::new(r"\[topic-\d+(?:_\d+)?\|([^\]]+)\]").unwrap();
-    if let Some(caps) = re_bbcode.captures(text) {
+    if let Some(caps) = RE_BBCODE_TITLE.captures(text) {
         cleaned = caps[1].to_string();
     }
 
-    cleaned = Regex::new(r"\s*[-–—=]+[>→»]\s*.*$").unwrap().replace_all(&cleaned, "").to_string();
-    cleaned = Regex::new(r"https?://.*$").unwrap().replace_all(&cleaned, "").to_string();
-    cleaned = Regex::new(r"[:\-–—]+$").unwrap().replace_all(&cleaned, "").to_string();
-    cleaned = Regex::new(r"^\s*[-–—'»«•*·]+\s*").unwrap().replace_all(&cleaned, "").to_string();
-    cleaned = Regex::new(r"\s*[-–—'»«•*·]+\s*$").unwrap().replace_all(&cleaned, "").to_string();
+    cleaned = RE_CLEAN_1.replace_all(&cleaned, "").to_string();
+    cleaned = RE_CLEAN_2.replace_all(&cleaned, "").to_string();
+    cleaned = RE_CLEAN_3.replace_all(&cleaned, "").to_string();
+    cleaned = RE_CLEAN_4.replace_all(&cleaned, "").to_string();
+    cleaned = RE_CLEAN_5.replace_all(&cleaned, "").to_string();
     cleaned = cleaned.replace("(lien)", "").replace("(Lien)", "");
 
     cleaned.trim().to_string()
@@ -46,8 +62,7 @@ pub fn parse_topic_body(text: &str, exclude_topic_id: Option<&str>) -> Vec<VkNod
     let mut seen_ids = std::collections::HashSet::new();
 
     // 1. BBCode
-    let re_bbcode = Regex::new(r"\[topic-(\d+)_(\d+)\|([^\]]+)\]").unwrap();
-    for caps in re_bbcode.captures_iter(text) {
+    for caps in RE_BBCODE.captures_iter(text) {
         let group_id = &caps[1];
         let topic_id = &caps[2];
         let link_text = &caps[3];
@@ -85,8 +100,7 @@ pub fn parse_topic_body(text: &str, exclude_topic_id: Option<&str>) -> Vec<VkNod
     }
 
     // 2. Mentions @topic-XXX_YYY
-    let re_mention = Regex::new(r"@topic-(\d+)_(\d+)(?:\?post=(\d+))?(?:\s*\(([^)]+)\))?").unwrap();
-    for caps in re_mention.captures_iter(text) {
+    for caps in RE_MENTION.captures_iter(text) {
         let group_id = &caps[1];
         let topic_id = &caps[2];
         let post_id = caps.get(3).map(|m| m.as_str());
@@ -131,12 +145,12 @@ pub fn parse_topic_body(text: &str, exclude_topic_id: Option<&str>) -> Vec<VkNod
         }
     }
 
-    // 3. Plain URLs https://vk.com/topic-203785966_47386771
-    let re_url = Regex::new(r"(.*?)(https?://vk\.com/topic-(\d+)_(\d+))").unwrap();
+    // 3. Plain URLs (Topics & Docs)
     let lines: Vec<&str> = text.lines().collect();
     
     for (i, line) in lines.iter().enumerate() {
-        for caps in re_url.captures_iter(line) {
+        // Topics
+        for caps in RE_URL.captures_iter(line) {
             let before_text = caps[1].trim();
             let group_id = &caps[3];
             let topic_id = &caps[4];
@@ -181,6 +195,49 @@ pub fn parse_topic_body(text: &str, exclude_topic_id: Option<&str>) -> Vec<VkNod
                     size_bytes: None,
                 });
             }
+        }
+
+        // Documents in text
+        for caps in RE_DOC_URL.captures_iter(line) {
+            let before_text = caps[1].trim();
+            let url = &caps[2];
+            let owner_id = &caps[3];
+            let doc_id = &caps[4];
+            
+            let unique_id = format!("doc_{}_{}", owner_id, doc_id);
+            if seen_ids.contains(&unique_id) { continue; }
+
+            // Title detection
+            let mut title = if !before_text.is_empty() && before_text.len() > 1 {
+                clean_title(before_text)
+            } else if i > 0 {
+                clean_title(lines[i-1])
+            } else {
+                format!("Document {}", doc_id)
+            };
+            
+            if title.is_empty() || title.len() < 2 {
+                title = format!("Document {}", doc_id);
+            }
+            
+            // Heuristic cleanup
+            if title.to_lowercase().contains("telecharger") || title.to_lowercase().contains("download") {
+                 if i > 0 { title = clean_title(lines[i-1]); }
+            }
+
+            seen_ids.insert(unique_id.clone());
+            nodes.push(VkNode {
+                id: unique_id,
+                title,
+                node_type: "file".to_string(),
+                url: Some(url.to_string()),
+                extension: Some("FILE".to_string()),
+                vk_owner_id: Some(owner_id.to_string()),
+                vk_doc_id: Some(doc_id.to_string()),
+                vk_group_id: None, vk_topic_id: None, children: None, 
+                is_loaded: Some(true), count: None, structure_only: None, 
+                vk_access_key: None, size_bytes: None,
+            });
         }
     }
 
