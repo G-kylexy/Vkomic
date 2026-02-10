@@ -33,6 +33,8 @@ jobs:
         env:
           # C'est la ligne magique pour High Sierra
           MACOSX_DEPLOYMENT_TARGET: "10.13"
+          # Active le mode legacy (ES2017) dans vite.config.ts pour Safari 11/13
+          VITE_LEGACY_BUILD: "true"
         run: npm run tauri:build -- --target x86_64-apple-darwin
 
       - name: Renommer et uploader
