@@ -217,10 +217,43 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
   const RETRY_DELAY_MS = 2000; // 2 seconds between retries
   const MAX_CONCURRENT_DOWNLOADS = 3;
 
+  // Track foreground service state for background downloads
+  const foregroundServiceActiveRef = useRef(false);
+  const foregroundServiceProgressRef = useRef({ count: 0, title: '', progress: 0 });
+
   // Process queue effect: Watch downloads state and start pending items if slots available
   useEffect(() => {
     // Count active downloads (downloading)
     const activeCount = downloads.filter(d => d.status === "downloading").length;
+    const pendingCount = downloads.filter(d => d.status === "pending").length;
+    const totalActive = activeCount + pendingCount;
+
+    // Manage foreground service for background downloads
+    if (totalActive > 0 && !foregroundServiceActiveRef.current) {
+      // Start foreground service when downloads begin
+      foregroundServiceActiveRef.current = true;
+      NativeNotification.startForegroundService();
+      console.log('[ForegroundService] Started for background downloads');
+    } else if (totalActive === 0 && foregroundServiceActiveRef.current) {
+      // Stop foreground service when all downloads complete
+      foregroundServiceActiveRef.current = false;
+      NativeNotification.stopForegroundService();
+      console.log('[ForegroundService] Stopped - all downloads complete');
+    }
+
+    // Update foreground service notification with current progress
+    if (foregroundServiceActiveRef.current && totalActive > 0) {
+      const firstDownloading = downloads.find(d => d.status === "downloading");
+      const progress = firstDownloading?.progress || 0;
+      const title = firstDownloading?.title || `${totalActive} fichier(s)`;
+
+      // Only update if changed significantly (avoid spam)
+      const lastUpdate = foregroundServiceProgressRef.current;
+      if (lastUpdate.count !== totalActive || lastUpdate.title !== title || Math.abs(lastUpdate.progress - progress) >= 5) {
+        foregroundServiceProgressRef.current = { count: totalActive, title, progress };
+        NativeNotification.updateForegroundService(totalActive, title, progress);
+      }
+    }
 
     if (activeCount < MAX_CONCURRENT_DOWNLOADS) {
       // Find pending downloads
@@ -349,12 +382,19 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
 
     return new Promise((resolve, reject) => {
       nativeDownload.startDownload(item.id, item.url, tempPath, {
-        onProgress: (event) => {
+        onProgress: (event: any) => {
           const pct = Math.max(0, Math.min(99, event.progress));
           const speed = event.speed > 0 ? `${formatBytes(event.speed)}/s` : "";
           const size = event.totalBytes > 0 ? formatBytes(event.totalBytes) : item.size;
 
           queueProgressUpdate(item.id, { progress: pct, speed, size });
+
+          // Update foreground service with current progress (ensures download continues in background)
+          if (foregroundServiceActiveRef.current) {
+            const activeCount = downloads.filter(d => d.status === "downloading" || d.status === "pending").length;
+            NativeNotification.updateForegroundService(activeCount, item.title, pct);
+            foregroundServiceProgressRef.current = { count: activeCount, title: item.title, progress: pct };
+          }
 
           // Notification throttling
           const now = Date.now();
@@ -498,7 +538,7 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
       item.url,
       tempPath,
       {},
-      (progress) => {
+      (progress: any) => {
         const total = progress.totalBytesExpectedToWrite || 0;
         const written = progress.totalBytesWritten || 0;
         const pct = total > 0 ? Math.round((written / total) * 100) : 0;
@@ -918,7 +958,7 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
         current.url,
         current.path,
         {},
-        (progress) => {
+        (progress: any) => {
           const total = progress.totalBytesExpectedToWrite || 0;
           const written = progress.totalBytesWritten || 0;
           const pct = total > 0 ? Math.round((written / total) * 100) : 0;
@@ -1112,6 +1152,17 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
       console.warn("deleteLocalFile error:", e);
     }
   };
+
+  // Cleanup foreground service on unmount
+  useEffect(() => {
+    return () => {
+      if (foregroundServiceActiveRef.current) {
+        foregroundServiceActiveRef.current = false;
+        NativeNotification.stopForegroundService();
+        console.log('[ForegroundService] Cleanup on unmount');
+      }
+    };
+  }, []);
 
   const value = useMemo<AppDataContextType>(() => ({
     syncedData, navPath, isSyncing, isLoadingNode, error, searchQuery, setSearchQuery,
