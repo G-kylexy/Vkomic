@@ -37,7 +37,6 @@ Thumbs.db
 
 # Mobile (unused)
 mobile
-android/
 ios/
 .expo
 eas.json
