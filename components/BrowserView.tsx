@@ -19,7 +19,7 @@ import {
   AlertCircle,
   AlertTriangle,
 } from "./Icons";
-import { useTranslation } from "../i18n";
+import { useTranslation, Translations } from "../i18n";
 import { VkNode, VkConnectionStatus, DownloadItem } from "../types";
 import {
   fetchRootIndex,
@@ -28,6 +28,304 @@ import {
   tauriShell,
 } from "../lib/tauri";
 import { normalizeText } from "../utils/text";
+
+const getDisplayTitle = (node: VkNode, language: string) => {
+  let title = node.title;
+
+  // Gestion des titres multilingues (ex: "Français / English")
+  if (title.includes("/")) {
+    const parts = title.split("/");
+    if (parts.length >= 2) {
+      if (language === "fr") {
+        title = parts[0].trim();
+      } else {
+        title = parts.slice(1).join("/").trim();
+      }
+    }
+  }
+
+  // Nettoyage léger
+  title = title.replace(/^[-_]\s*/, "");
+  return title;
+};
+
+const getFileIconConfig = (extension?: string) => {
+  const ext = extension?.toUpperCase() || "";
+  switch (ext) {
+    case "PDF":
+      return {
+        icon: FileText,
+        color: "text-rose-400",
+        bg: "group-hover:bg-rose-500/20 bg-rose-500/10",
+        border: "border-rose-500/20",
+      };
+    case "CBZ":
+    case "CBR":
+      return {
+        icon: BookOpen,
+        color: "text-purple-400",
+        bg: "group-hover:bg-purple-500/20 bg-purple-500/10",
+        border: "border-purple-500/20",
+      };
+    case "ZIP":
+    case "RAR":
+    case "7Z":
+      return {
+        icon: FileArchive,
+        color: "text-amber-400",
+        bg: "group-hover:bg-amber-500/20 bg-amber-500/10",
+        border: "border-amber-500/20",
+      };
+    case "JPG":
+    case "PNG":
+    case "JPEG":
+      return {
+        icon: Image,
+        color: "text-cyan-400",
+        bg: "group-hover:bg-cyan-500/20 bg-cyan-500/10",
+        border: "border-cyan-500/20",
+      };
+    default:
+      return {
+        icon: FileText,
+        color: "text-slate-400",
+        bg: "group-hover:bg-slate-700/50 bg-slate-800/50",
+        border: "border-slate-700",
+      };
+  }
+};
+
+interface BrowserFolderItemProps {
+  node: VkNode;
+  language: string;
+  t: Translations;
+  navigateTo: (node: VkNode) => void;
+}
+
+const BrowserFolderItem = React.memo(({ node, language, t, navigateTo }: BrowserFolderItemProps) => {
+  const displayTitle = getDisplayTitle(node, language);
+  return (
+    <div
+      onClick={() => navigateTo(node)}
+      className="bg-[#131926] rounded-lg border border-[#1e293b] flex flex-col transition-all hover:border-blue-500/50 hover:shadow-lg hover:shadow-blue-500/10 group cursor-pointer relative overflow-hidden"
+    >
+      <div className="p-5 flex-1 flex flex-col h-full">
+        <div className="flex justify-between items-start mb-6">
+          <span className="bg-[#1e293b] text-slate-400 text-[10px] font-bold px-1.5 py-0.5 rounded tracking-wide border border-slate-700/50">
+            DIR
+          </span>
+          <span className="bg-blue-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded tracking-wide shadow-lg shadow-blue-900/50">
+            VK
+          </span>
+        </div>
+
+        <div className="flex justify-center mb-6">
+          <Folder className="text-blue-500 w-14 h-14 stroke-[1.5]" />
+        </div>
+
+        <div className="mt-auto">
+          <h3
+            className="text-white font-bold text-lg mb-3 leading-snug line-clamp-2"
+            title={node.title}
+          >
+            {displayTitle}
+          </h3>
+
+          <div className="flex flex-col gap-1.5 mb-6">
+            <div className="flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />
+              <span className="text-xs text-slate-400 font-medium capitalize truncate">
+                {node.type || "Category"}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Folder
+                size={12}
+                className="text-slate-500 flex-shrink-0"
+              />
+              <span className="text-xs text-slate-500 font-medium">
+                Folder
+              </span>
+            </div>
+          </div>
+
+          <button className="w-full py-2.5 rounded border border-[#2d3748] text-[11px] font-bold text-slate-400 uppercase tracking-widest hover:bg-[#1f2937] hover:text-white hover:border-slate-500 transition-all">
+            {t.library.openFolder}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+interface BrowserFileItemProps {
+  node: VkNode;
+  activeDownload?: DownloadItem;
+  language: string;
+  t: Translations;
+  navigateTo: (node: VkNode) => void;
+  pauseDownload: (id: string) => void;
+  resumeDownload: (id: string) => void;
+  cancelDownload: (id: string) => void;
+  retryDownload: (id: string) => void;
+}
+
+const BrowserFileItem = React.memo(({
+  node, activeDownload, language, t,
+  navigateTo, pauseDownload, resumeDownload, cancelDownload, retryDownload
+}: BrowserFileItemProps) => {
+  const displayTitle = getDisplayTitle(node, language);
+  const fileConfig = getFileIconConfig(node.extension);
+  const FileIcon = fileConfig.icon;
+
+  const isDownloading =
+    activeDownload &&
+    ["pending", "downloading", "paused"].includes(
+      activeDownload.status,
+    );
+  const isCompleted =
+    activeDownload && activeDownload.status === "completed";
+
+  const showProgress = Boolean(isDownloading);
+  const progress = activeDownload?.progress || 0;
+  const statusText =
+    activeDownload?.status === "paused"
+      ? "Pause"
+      : activeDownload?.speed || "0 MB/s";
+
+  return (
+    <div
+      onClick={() => {
+        if (!isDownloading && !isCompleted) navigateTo(node);
+      }}
+      className="group px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3 hover:bg-[#131926] transition-colors cursor-pointer"
+    >
+      <div className="flex items-start gap-3 flex-1 min-w-0">
+        <div
+          className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors flex-shrink-0 ${fileConfig.bg}`}
+        >
+          {isCompleted ? (
+            <Check className="text-emerald-400 w-5 h-5" />
+          ) : (
+            <FileIcon
+              className={`${fileConfig.color} w-5 h-5 group-hover:scale-110 transition-transform duration-300`}
+            />
+          )}
+        </div>
+
+        <div className="flex-1 min-w-0 flex flex-col justify-center">
+          <div className="flex items-start justify-between gap-2">
+            <h3
+              className="text-slate-200 font-semibold text-sm leading-snug line-clamp-2 break-words pr-2 group-hover:text-white transition-colors flex-1 min-w-0"
+              title={node.title}
+            >
+              {displayTitle}
+            </h3>
+            {!showProgress && !isCompleted && (
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded border border-slate-700 text-slate-400 bg-slate-800/50 uppercase flex-shrink-0">
+                {node.extension || "FILE"}
+              </span>
+            )}
+            {isCompleted && (
+              <span className="text-[10px] font-bold text-emerald-500 uppercase flex-shrink-0">
+                {t.downloads.completed}
+              </span>
+            )}
+          </div>
+
+          {showProgress && (
+            <div className="mt-2 flex items-center gap-3">
+              <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                <div
+                  className={`h-full ${activeDownload?.status === "paused"
+                    ? "bg-amber-500"
+                    : "bg-blue-500"
+                    }`}
+                  style={{ width: `${Math.max(0, progress)}%` }}
+                />
+              </div>
+              <span className="text-[10px] font-mono text-slate-400 whitespace-nowrap min-w-[48px] text-right">
+                {progress}%
+              </span>
+              <span className="hidden md:inline-block text-[10px] text-slate-500 w-[70px] text-right truncate">
+                {statusText}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2 self-end sm:self-auto flex-shrink-0">
+        {showProgress ? (
+          <>
+            {activeDownload?.status === "paused" ? (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  resumeDownload(node.id);
+                }}
+                className="p-1.5 rounded-full hover:bg-slate-700 text-slate-300"
+              >
+                <Play size={14} fill="currentColor" />
+              </button>
+            ) : (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  pauseDownload(node.id);
+                }}
+                className="p-1.5 rounded-full hover:bg-slate-700 text-slate-300"
+              >
+                <Pause size={14} fill="currentColor" />
+              </button>
+            )}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                cancelDownload(node.id);
+              }}
+              className="p-1.5 rounded-full hover:bg-rose-900/30 text-rose-400"
+            >
+              <X size={14} />
+            </button>
+          </>
+        ) : (
+          <>
+            {!isCompleted && (
+              <button
+                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-blue-900/20"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigateTo(node);
+                }}
+              >
+                <DownloadCloud size={14} />
+                <span className="hidden lg:inline">
+                  {t.library.downloadFile}
+                </span>
+              </button>
+            )}
+            {isCompleted && (
+              <button
+                className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-100 text-xs font-bold flex items-center gap-2 border border-slate-600 shadow-lg shadow-slate-900/20"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  retryDownload(node.id);
+                }}
+                title={t.downloads.redownload}
+              >
+                <RefreshCw size={14} />
+                <span className="hidden lg:inline">
+                  {t.downloads.redownload}
+                </span>
+              </button>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+});
 
 interface BrowserViewProps {
   vkToken: string;
@@ -321,79 +619,13 @@ const BrowserView: React.FC<BrowserViewProps> = ({
     } else {
       // Si on est dans un dossier, on utilise son titre comme nom de sous-dossier
       const subFolder = currentFolder
-        ? getDisplayTitle(currentFolder)
+        ? getDisplayTitle(currentFolder, language)
         : undefined;
 
       fileNodes.forEach((node) => {
         const d = downloadsById.get(node.id);
         if (!d || d.status !== "completed") addDownload(node, subFolder);
       });
-    }
-  };
-
-  const getDisplayTitle = (node: VkNode) => {
-    let title = node.title;
-
-    // Gestion des titres multilingues (ex: "Français / English")
-    if (title.includes("/")) {
-      const parts = title.split("/");
-      if (parts.length >= 2) {
-        if (language === "fr") {
-          title = parts[0].trim();
-        } else {
-          title = parts.slice(1).join("/").trim();
-        }
-      }
-    }
-
-    // Nettoyage léger
-    title = title.replace(/^[-_]\s*/, "");
-    return title;
-  };
-
-  const getFileIconConfig = (extension?: string) => {
-    const ext = extension?.toUpperCase() || "";
-    switch (ext) {
-      case "PDF":
-        return {
-          icon: FileText,
-          color: "text-rose-400",
-          bg: "group-hover:bg-rose-500/20 bg-rose-500/10",
-          border: "border-rose-500/20",
-        };
-      case "CBZ":
-      case "CBR":
-        return {
-          icon: BookOpen,
-          color: "text-purple-400",
-          bg: "group-hover:bg-purple-500/20 bg-purple-500/10",
-          border: "border-purple-500/20",
-        };
-      case "ZIP":
-      case "RAR":
-      case "7Z":
-        return {
-          icon: FileArchive,
-          color: "text-amber-400",
-          bg: "group-hover:bg-amber-500/20 bg-amber-500/10",
-          border: "border-amber-500/20",
-        };
-      case "JPG":
-      case "PNG":
-      case "JPEG":
-        return {
-          icon: Image,
-          color: "text-cyan-400",
-          bg: "group-hover:bg-cyan-500/20 bg-cyan-500/10",
-          border: "border-cyan-500/20",
-        };
-      default:
-        return {
-          icon: FileText,
-          color: "text-slate-400",
-          bg: "group-hover:bg-slate-700/50 bg-slate-800/50",
-          border: "border-slate-700",
-        };
     }
   };
 
@@ -495,7 +727,7 @@ const BrowserView: React.FC<BrowserViewProps> = ({
                             : "text-slate-500 hover:text-slate-300"
                             }`}
                         >
-                          {getDisplayTitle(node)}
+                          {getDisplayTitle(node, language)}
                         </button>
                       </div>
                     );
@@ -567,62 +799,15 @@ const BrowserView: React.FC<BrowserViewProps> = ({
           {/* Folders Grid */}
           {folderNodes.length > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
-              {folderNodes.map((node) => {
-                const displayTitle = getDisplayTitle(node);
-                return (
-                  <div
-                    key={node.id}
-                    onClick={() => navigateTo(node)}
-                    className="bg-[#131926] rounded-lg border border-[#1e293b] flex flex-col transition-all hover:border-blue-500/50 hover:shadow-lg hover:shadow-blue-500/10 group cursor-pointer relative overflow-hidden"
-                  >
-                    <div className="p-5 flex-1 flex flex-col h-full">
-                      <div className="flex justify-between items-start mb-6">
-                        <span className="bg-[#1e293b] text-slate-400 text-[10px] font-bold px-1.5 py-0.5 rounded tracking-wide border border-slate-700/50">
-                          DIR
-                        </span>
-                        <span className="bg-blue-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded tracking-wide shadow-lg shadow-blue-900/50">
-                          VK
-                        </span>
-                      </div>
-
-                      <div className="flex justify-center mb-6">
-                        <Folder className="text-blue-500 w-14 h-14 stroke-[1.5]" />
-                      </div>
-
-                      <div className="mt-auto">
-                        <h3
-                          className="text-white font-bold text-lg mb-3 leading-snug line-clamp-2"
-                          title={node.title}
-                        >
-                          {displayTitle}
-                        </h3>
-
-                        <div className="flex flex-col gap-1.5 mb-6">
-                          <div className="flex items-center gap-2">
-                            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />
-                            <span className="text-xs text-slate-400 font-medium capitalize truncate">
-                              {node.type || "Category"}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Folder
-                              size={12}
-                              className="text-slate-500 flex-shrink-0"
-                            />
-                            <span className="text-xs text-slate-500 font-medium">
-                              Folder
-                            </span>
-                          </div>
-                        </div>
-
-                        <button className="w-full py-2.5 rounded border border-[#2d3748] text-[11px] font-bold text-slate-400 uppercase tracking-widest hover:bg-[#1f2937] hover:text-white hover:border-slate-500 transition-all">
-                          {t.library.openFolder}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+              {folderNodes.map((node) => (
+                <BrowserFolderItem
+                  key={node.id}
+                  node={node}
+                  language={language}
+                  t={t}
+                  navigateTo={navigateTo}
+                />
+              ))}
             </div>
           )}
 
@@ -640,161 +825,20 @@ const BrowserView: React.FC<BrowserViewProps> = ({
                 )}
               </div>
               <div className="divide-y divide-slate-800">
-                {fileNodes.map((node) => {
-                  const displayTitle = getDisplayTitle(node);
-                  const fileConfig = getFileIconConfig(node.extension);
-                  const FileIcon = fileConfig.icon;
-
-                  const activeDownload = downloadsById.get(node.id);
-                  const isDownloading =
-                    activeDownload &&
-                    ["pending", "downloading", "paused"].includes(
-                      activeDownload.status,
-                    );
-                  const isCompleted =
-                    activeDownload && activeDownload.status === "completed";
-
-                  const showProgress = Boolean(isDownloading);
-                  const progress = activeDownload?.progress || 0;
-                  const statusText =
-                    activeDownload?.status === "paused"
-                      ? "Pause"
-                      : activeDownload?.speed || "0 MB/s";
-
-                  return (
-                    <div
-                      key={node.id}
-                      onClick={() => {
-                        if (!isDownloading && !isCompleted) navigateTo(node);
-                      }}
-                      className="group px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3 hover:bg-[#131926] transition-colors cursor-pointer"
-                    >
-                      <div className="flex items-start gap-3 flex-1 min-w-0">
-                        <div
-                          className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors flex-shrink-0 ${fileConfig.bg}`}
-                        >
-                          {isCompleted ? (
-                            <Check className="text-emerald-400 w-5 h-5" />
-                          ) : (
-                            <FileIcon
-                              className={`${fileConfig.color} w-5 h-5 group-hover:scale-110 transition-transform duration-300`}
-                            />
-                          )}
-                        </div>
-
-                        <div className="flex-1 min-w-0 flex flex-col justify-center">
-                          <div className="flex items-start justify-between gap-2">
-                            <h3
-                              className="text-slate-200 font-semibold text-sm leading-snug line-clamp-2 break-words pr-2 group-hover:text-white transition-colors flex-1 min-w-0"
-                              title={node.title}
-                            >
-                              {displayTitle}
-                            </h3>
-                            {!showProgress && !isCompleted && (
-                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded border border-slate-700 text-slate-400 bg-slate-800/50 uppercase flex-shrink-0">
-                                {node.extension || "FILE"}
-                              </span>
-                            )}
-                            {isCompleted && (
-                              <span className="text-[10px] font-bold text-emerald-500 uppercase flex-shrink-0">
-                                {t.downloads.completed}
-                              </span>
-                            )}
-                          </div>
-
-                          {showProgress && (
-                            <div className="mt-2 flex items-center gap-3">
-                              <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                                <div
-                                  className={`h-full ${activeDownload?.status === "paused"
-                                    ? "bg-amber-500"
-                                    : "bg-blue-500"
-                                    }`}
-                                  style={{ width: `${Math.max(0, progress)}%` }}
-                                />
-                              </div>
-                              <span className="text-[10px] font-mono text-slate-400 whitespace-nowrap min-w-[48px] text-right">
-                                {progress}%
-                              </span>
-                              <span className="hidden md:inline-block text-[10px] text-slate-500 w-[70px] text-right truncate">
-                                {statusText}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 self-end sm:self-auto flex-shrink-0">
-                        {showProgress ? (
-                          <>
-                            {activeDownload?.status === "paused" ? (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  resumeDownload(node.id);
-                                }}
-                                className="p-1.5 rounded-full hover:bg-slate-700 text-slate-300"
-                              >
-                                <Play size={14} fill="currentColor" />
-                              </button>
-                            ) : (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  pauseDownload(node.id);
-                                }}
-                                className="p-1.5 rounded-full hover:bg-slate-700 text-slate-300"
-                              >
-                                <Pause size={14} fill="currentColor" />
-                              </button>
-                            )}
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                cancelDownload(node.id);
-                              }}
-                              className="p-1.5 rounded-full hover:bg-rose-900/30 text-rose-400"
-                            >
-                              <X size={14} />
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            {!isCompleted && (
-                              <button
-                                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-blue-900/20"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  navigateTo(node);
-                                }}
-                              >
-                                <DownloadCloud size={14} />
-                                <span className="hidden lg:inline">
-                                  {t.library.downloadFile}
-                                </span>
-                              </button>
-                            )}
-                            {isCompleted && (
-                              <button
-                                className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-100 text-xs font-bold flex items-center gap-2 border border-slate-600 shadow-lg shadow-slate-900/20"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  retryDownload(node.id);
-                                }}
-                                title={t.downloads.redownload}
-                              >
-                                <RefreshCw size={14} />
-                                <span className="hidden lg:inline">
-                                  {t.downloads.redownload}
-                                </span>
-                              </button>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
+                {fileNodes.map((node) => (
+                  <BrowserFileItem
+                    key={node.id}
+                    node={node}
+                    activeDownload={downloadsById.get(node.id)}
+                    language={language}
+                    t={t}
+                    navigateTo={navigateTo}
+                    pauseDownload={pauseDownload}
+                    resumeDownload={resumeDownload}
+                    cancelDownload={cancelDownload}
+                    retryDownload={retryDownload}
+                  />
+                ))}
               </div>
             </div>
           )}
