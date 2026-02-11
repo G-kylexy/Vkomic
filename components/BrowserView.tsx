@@ -28,6 +28,7 @@ import {
   tauriShell,
 } from "../lib/tauri";
 import { normalizeText } from "../utils/text";
+import { LIMITS } from "../utils/constants";
 
 const getDisplayTitle = (node: VkNode, language: string) => {
   let title = node.title;
@@ -371,13 +372,10 @@ const BrowserView: React.FC<BrowserViewProps> = ({
   const { t, language } = useTranslation();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // La recherche est maintenant debounced depuis App.tsx
-  // searchQuery ici est déjà "calme" (ne change pas à chaque frappe)
-  const debouncedQuery = searchQuery;
 
   const currentFolder = navPath.length > 0 ? navPath[navPath.length - 1] : null;
   const currentNodes = currentFolder ? currentFolder.children : syncedData;
-  const isSearching = debouncedQuery.trim().length > 0;
+  const isSearching = searchQuery.trim().length > 0;
 
   const searchIndex = React.useMemo(() => {
     if (!syncedData || !isSearching) return [];
@@ -407,10 +405,10 @@ const BrowserView: React.FC<BrowserViewProps> = ({
 
     if (!syncedData) return [];
 
-    const normalizedQuery = normalizeText(debouncedQuery);
+    const normalizedQuery = normalizeText(searchQuery);
     const queryWords = normalizedQuery.split(" ").filter((w) => w.length > 0);
     const results: VkNode[] = [];
-    const MAX_RESULTS = 100; // Limite pour éviter le freeze du DOM
+    const MAX_RESULTS = LIMITS.MAX_SEARCH_RESULTS; // Limite pour éviter le freeze du DOM
 
     for (const entry of searchIndex) {
       if (results.length >= MAX_RESULTS) break;
@@ -421,7 +419,7 @@ const BrowserView: React.FC<BrowserViewProps> = ({
       if (matches) results.push(entry.node);
     }
     return results;
-  }, [isSearching, debouncedQuery, currentNodes, searchIndex]);
+  }, [isSearching, searchQuery, currentNodes, searchIndex]);
 
   const downloadsById = React.useMemo(() => {
     const map = new Map<string, DownloadItem>();

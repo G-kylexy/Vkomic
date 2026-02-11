@@ -1,6 +1,14 @@
 import React from "react";
 import { Download, X, Gift, ShieldCheck, Zap } from "lucide-react";
 
+// Simple HTML sanitization to prevent XSS attacks
+const sanitizeHtml = (html: string): string => {
+  return html
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/javascript:/gi, '')
+    .replace(/on\w+\s*=/gi, '');
+};
+
 interface UpdateModalProps {
   version: string;
   notes: string;
@@ -90,10 +98,10 @@ const UpdateModal: React.FC<UpdateModalProps> = ({
 
           {/* Scrollable Notes */}
           <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar -mr-2 mb-4">
-            <div
+          <div
               className="prose prose-sm prose-invert max-w-none text-slate-400 text-sm leading-relaxed font-light [&>ul]:list-disc [&>ul]:pl-4 [&>li]:mb-1"
               dangerouslySetInnerHTML={{
-                __html: notes || "<p>Améliorations de la stabilité et corrections de bugs.</p>"
+                __html: sanitizeHtml(notes || "<p>Améliorations de la stabilité et corrections de bugs.</p>")
               }}
             />
           </div>

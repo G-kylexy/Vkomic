@@ -57,7 +57,6 @@ const TopBar: React.FC<TopBarProps> = ({
               type="button"
               title="Kylexy"
               onClick={() => {
-                console.log("Profile clicked");
                 tauriShell.openExternal("https://github.com/G-kylexy");
               }}
               className="relative p-[2px] rounded-full animate-rainbow cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/70"
@@ -72,28 +71,19 @@ const TopBar: React.FC<TopBarProps> = ({
           {!isMobile && (
             <div className="flex items-center h-full">
               <button
-                onClick={() => {
-                  console.log("Minimize button clicked");
-                  tauriWin.minimize();
-                }}
+                onClick={() => tauriWin.minimize()}
                 className="w-12 h-12 flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
               >
                 <Minus size={14} />
               </button>
               <button
-                onClick={() => {
-                  console.log("Maximize button clicked");
-                  tauriWin.maximize();
-                }}
+                onClick={() => tauriWin.maximize()}
                 className="w-12 h-12 flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
               >
                 <Square size={12} />
               </button>
               <button
-                onClick={() => {
-                  console.log("Close button clicked");
-                  tauriWin.close();
-                }}
+                onClick={() => tauriWin.close()}
                 className="w-12 h-12 flex items-center justify-center text-slate-400 hover:text-white hover:bg-red-600 transition-colors"
               >
                 <X size={14} />
