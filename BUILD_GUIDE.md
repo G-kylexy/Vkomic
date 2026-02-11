@@ -67,31 +67,24 @@ zipalign -v 4 app-release-unsigned.apk vkomic-release.apk
 
 ## 🚀 Build Automatique (GitHub Actions)
 
-### Workflow optimisé
-Le fichier `.github/workflows/build.yml` permet de builder automatiquement :
+### Workflow Rust/Windows
+Le fichier `.github/workflows/build.yml` permet de builder automatiquement la version Windows :
 
 **Déclencheurs :**
 - Push d'un tag `v*` (ex: v1.3.0)
 - Manuellement via `workflow_dispatch`
 
-**Options de build :**
-- `all` - Build Windows + Mobile
-- `windows` - Build Windows uniquement
-- `mobile` - Build Mobile uniquement
-
-### Secrets GitHub requis (pour signer l'APK)
-```
-SIGNING_KEY       = Clé de signature encodée en base64
-ALIAS             = Alias de la clé
-KEY_STORE_PASSWORD= Mot de passe du keystore
-KEY_PASSWORD      = Mot de passe de la clé
-```
+**Ce qui est buildé :**
+- Uniquement la version Windows (Rust/Tauri)
+- Exécutable portable + Installateurs MSI/NSIS
 
 ### Utilisation manuelle
-1. Aller sur GitHub → Actions → Build VKomic Releases
+1. Aller sur GitHub → Actions → Build VKomic Windows
 2. Cliquer sur "Run workflow"
-3. Choisir le type de build
-4. Les fichiers seront uploadés en artifacts
+3. Les fichiers seront uploadés en artifacts
+
+### Note sur la version Mobile
+La version mobile (React Native) doit être buildée localement pour l'instant. Voir la section "Version Mobile" ci-dessus.
 
 ---
 
