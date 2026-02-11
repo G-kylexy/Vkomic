@@ -49,3 +49,14 @@ tmpclaude-*
 
 # Tauri build cache (optional, can be large)
 src-tauri/target
+
+# Backup files
+*.bak
+*.backup
+*.orig
+*~
+
+# Temporary files
+*.tmp
+.temp/
+tmp/
