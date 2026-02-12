@@ -26,19 +26,19 @@ jobs:
         include:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            name: windows-setup
+            name: win-x64-setup
             ext: .exe
           - os: macos-15
             target: x86_64-apple-darwin
-            name: macos-intel
+            name: mac-x64
             ext: .dmg
           - os: macos-14
             target: aarch64-apple-darwin
-            name: macos-apple-silicon
+            name: mac-arm64
             ext: .dmg
           - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
-            name: linux
+            name: linux-x64
             ext: .AppImage
 
     runs-on: ${{ matrix.os }}

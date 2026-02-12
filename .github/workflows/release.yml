@@ -17,19 +17,19 @@ jobs:
         include:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            name: windows-setup
+            name: win-x64-setup
             ext: .exe
           - os: macos-14
             target: aarch64-apple-darwin
-            name: macos-apple-silicon
+            name: mac-arm64
             ext: .dmg
           - os: macos-15
             target: x86_64-apple-darwin
-            name: macos-intel
+            name: mac-x64
             ext: .dmg
           - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
-            name: linux
+            name: linux-x64
             ext: .AppImage
 
     runs-on: ${{ matrix.os }}
@@ -115,10 +115,10 @@ jobs:
             Cette version abandonne Electron pour des performances extrêmes.
             
             ### 📥 Binaires Disponibles
-            * 🍎 **macOS Intel** : `vkomic-VERSION-macos-intel.dmg` (High Sierra 10.13+)
-            * 🍎 **macOS Silicon** : `vkomic-VERSION-macos-apple-silicon.dmg` (M1/M2/M3)
-            * 🪟 **Windows** : `vkomic-VERSION-windows-setup.exe`
-            * 🐧 **Linux** : `vkomic-VERSION-linux.AppImage`
+            * 🍎 **macOS Intel** : `vkomic-VERSION-mac-x64.dmg` (High Sierra 10.13+)
+            * 🍎 **macOS Silicon** : `vkomic-VERSION-mac-arm64.dmg` (M1/M2/M3)
+            * 🪟 **Windows** : `vkomic-VERSION-win-x64-setup.exe`
+            * 🐧 **Linux** : `vkomic-VERSION-linux-x64.AppImage`
           files: final_assets/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
