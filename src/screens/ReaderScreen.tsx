@@ -92,48 +92,23 @@ export const ReaderScreen: React.FC<ReaderScreenProps> = ({ uri, title, onClose 
                 let pdfPath = uri;
 
                 if (uri.startsWith("content://")) {
-                    const tempDir = `${FileSystem.cacheDirectory}reader-cache/`;
+                    // Fallback: Copie temporaire dans le cache
+                    // react-native-pdf a du mal avec certains content:// URIs directs (permissions)
+                    // On utilise un fichier temporaire UNIQUE pour éviter de remplir le stockage (pas de doublons multiples)
+                    const tempDir = `${FileSystem.cacheDirectory}reader_temp/`;
                     await FileSystem.makeDirectoryAsync(tempDir, { intermediates: true });
 
-                    // --- NETTOYAGE DU CACHE (LRU) ---
+                    // Nom fixe pour écraser le précédent automatiquement (Max 1 fichier cache sur tout le tel)
+                    const destination = `${tempDir}temp_comic.pdf`;
+
+                    // Si existe déjà, on supprime pour être propre
                     try {
-                        const files = await FileSystem.readDirectoryAsync(tempDir);
-                        if (files.length > 3) {
-                            // On récupère les infos de tous les fichiers pour trier par date
-                            const fileInfos = await Promise.all(
-                                files.map(async (filename) => {
-                                    const path = `${tempDir}${filename}`;
-                                    const info = await FileSystem.getInfoAsync(path);
-                                    return { name: filename, path, time: (info as any).modificationTime || 0 };
-                                })
-                            );
+                        await FileSystem.deleteAsync(destination, { idempotent: true });
+                    } catch { }
 
-                            // On trie par date (plus vieux d'abord)
-                            fileInfos.sort((a, b) => a.time - b.time);
-
-                            // On supprime les plus vieux pour n'en garder que 2 (le nouveau sera le 3ème)
-                            const toDelete = fileInfos.slice(0, fileInfos.length - 2);
-                            for (const f of toDelete) {
-                                await FileSystem.deleteAsync(f.path, { idempotent: true });
-                            }
-                        }
-                    } catch (e) {
-                        console.warn("ReaderScreen: Cache cleanup failed:", e);
-                    }
-                    // --------------------------------
-
-                    const uriHash = uri.split('/').pop() || `file_${Date.now()}`;
-                    const safeHash = uriHash.replace(/[^a-zA-Z0-9._-]/g, '_').substring(0, 100);
-                    const destination = `${tempDir}${safeHash}.pdf`;
-
-                    const cacheInfo = await FileSystem.getInfoAsync(destination);
-                    if (cacheInfo.exists && (cacheInfo as any).size > 0) {
-                        pdfPath = destination;
-                    } else {
-                        const success = await FolderService.copySafToLocal(uri, destination);
-                        if (!success) throw new Error("Failed to copy SAF file");
-                        pdfPath = destination;
-                    }
+                    const success = await FolderService.copySafToLocal(uri, destination);
+                    if (!success) throw new Error("Impossible de copier le fichier temporaire");
+                    pdfPath = destination;
                 }
 
                 if (isMounted) {
@@ -151,7 +126,13 @@ export const ReaderScreen: React.FC<ReaderScreenProps> = ({ uri, title, onClose 
         };
 
         prepareFile();
-        return () => { isMounted = false; };
+        return () => {
+            isMounted = false;
+            // Nettoyage agressif au démontage
+            if (localUri && localUri.includes("reader_temp")) {
+                FileSystem.deleteAsync(localUri, { idempotent: true }).catch(() => { });
+            }
+        };
     }, [uri]);
 
     // Handle back button
@@ -163,7 +144,10 @@ export const ReaderScreen: React.FC<ReaderScreenProps> = ({ uri, title, onClose 
         return () => backHandler.remove();
     }, [onClose]);
 
-    const isPdf = uri.toLowerCase().endsWith(".pdf") || (localUri && localUri.toLowerCase().endsWith(".pdf"));
+    const isPdf = uri.toLowerCase().endsWith(".pdf") ||
+        (localUri && localUri.toLowerCase().endsWith(".pdf")) ||
+        uri.startsWith("content://") ||
+        title.toLowerCase().endsWith(".pdf");
 
     const toggleControls = useCallback(() => setShowControls(prev => !prev), []);
     const toggleViewMode = () => {

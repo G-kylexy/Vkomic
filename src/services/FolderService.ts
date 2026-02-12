@@ -91,7 +91,8 @@ export const ensureDocumentUri = (uri: string): string => {
 
         // docId = treeId/relativePath (e.g., primary:bd/DearS.pdf)
         const docId = `${treeIdDecoded}/${relativePath}`;
-        const docIdEncoded = encodeURIComponent(docId);
+        // Standard encodeURIComponent doesn't encode parentheses, but SAF strict mode often needs them encoded
+        const docIdEncoded = encodeURIComponent(docId).replace(/\(/g, "%28").replace(/\)/g, "%29");
 
         const finalUri = `${provider}/tree/${treeIdEncoded}/document/${docIdEncoded}`;
         return finalUri;
@@ -110,26 +111,33 @@ export const ensureDocumentUri = (uri: string): string => {
 const encodeSafUriIfNeeded = (uri: string): string => {
     if (!uri || !uri.startsWith("content://")) return uri;
 
-    // Si l'URI contient des caractères bruts qui devraient être encodés dans le segment ID
-    // On split après /tree/ ou /document/ pour encoder proprement les segments
-    if (uri.includes("/tree/")) {
-        const parts = uri.split("/tree/");
-        const provider = parts[0];
-        const rest = parts[1];
+    try {
+        if (uri.includes("/tree/")) {
+            const parts = uri.split("/tree/");
+            const provider = parts[0];
+            const rest = parts[1];
 
-        if (rest.includes("/document/")) {
-            const subParts = rest.split("/document/");
-            const treeId = subParts[0];
-            const docId = subParts[1];
+            const splitDoc = rest.split("/document/");
+            // Handle Tree Part
+            const treePart = splitDoc[0];
+            // Decode first to ensure we work with raw chars, then encode
+            // We specifically encode ( and ) because some SAF implementations choke on them in IDs
+            const treeId = decodeURIComponent(treePart);
+            const encodedTreeId = encodeURIComponent(treeId).replace(/\(/g, "%28").replace(/\)/g, "%29");
 
-            const encodedTreeId = treeId.replace(/:/g, "%3A").replace(/\//g, "%2F");
-            const encodedDocId = docId.replace(/:/g, "%3A").replace(/\//g, "%2F");
+            if (splitDoc.length > 1) {
+                // Handle Document Part
+                const docPart = splitDoc[1];
+                const docId = decodeURIComponent(docPart);
+                const encodedDocId = encodeURIComponent(docId).replace(/\(/g, "%28").replace(/\)/g, "%29");
 
-            return `${provider}/tree/${encodedTreeId}/document/${encodedDocId}`;
-        } else {
-            const encodedTreeId = rest.replace(/:/g, "%3A").replace(/\//g, "%2F");
-            return `${provider}/tree/${encodedTreeId}`;
+                return `${provider}/tree/${encodedTreeId}/document/${encodedDocId}`;
+            } else {
+                return `${provider}/tree/${encodedTreeId}`;
+            }
         }
+    } catch (e) {
+        console.warn("URI encoding failed", e);
     }
     return uri;
 };

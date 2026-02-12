@@ -783,6 +783,9 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
             let status = d.status === "downloading" ? "pending" : d.status;
 
             // Safety check: if completed and has path, verify it exists (especially for SAF)
+            // FIXED: Don't auto-revert to pending if check fails. SAF permissions might need time to warm up.
+            // If file is truly missing, user will see error when trying to open it.
+            /*
             if (status === "completed" && d.path) {
               const exists = await FolderService.fileExists(d.path);
               if (!exists) {
@@ -790,6 +793,7 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
                 status = "pending";
               }
             }
+            */
 
             return {
               ...d,
