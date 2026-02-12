@@ -20,9 +20,8 @@ desktop.ini
 
 # Android/iOS Build artifacts
 .expo/
-android/.gradle/
-android/app/build/
-ios/build/
+android/
+ios/
 
 # Local env
 .env*.local
