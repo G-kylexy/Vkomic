@@ -101,6 +101,7 @@ class NativeDownloadModule(private val reactContext: ReactApplicationContext) : 
         val task = activeDownloads[id]
         if (task != null) {
             task.cancel()
+            task.deleteFileOnCancel = deleteFile
             if (deleteFile) {
                 try {
                     File(task.filePath).delete()
@@ -296,11 +297,11 @@ class NativeDownloadModule(private val reactContext: ReactApplicationContext) : 
      * @param mimeType Type MIME du fichier
      */
     @ReactMethod
-    fun startDownloadToSaf(id: String, url: String, safFolderUri: String, fileName: String, mimeType: String, promise: Promise) {
+    fun startDownloadToSaf(id: String, url: String, safFolderUri: String, fileName: String, mimeType: String, existingUri: String?, promise: Promise) {
         // Annuler si déjà en cours
         activeDownloads[id]?.cancel()
 
-        val task = SafDownloadTask(id, url, safFolderUri, fileName, mimeType)
+        val task = SafDownloadTask(id, url, safFolderUri, fileName, mimeType, existingUri)
         activeDownloads[id] = task
 
         val future = executor.submit {
@@ -327,6 +328,8 @@ class NativeDownloadModule(private val reactContext: ReactApplicationContext) : 
     ) {
         @Volatile
         var isCancelled = false
+        @Volatile
+        var deleteFileOnCancel = false
         var future: Future<*>? = null
 
         fun cancel() {
@@ -500,25 +503,46 @@ class NativeDownloadModule(private val reactContext: ReactApplicationContext) : 
         private val url: String,
         private val safFolderUri: String,
         private val fileName: String,
-        private val mimeType: String
+        private val mimeType: String,
+        private val existingUri: String?
     ) : DownloadTask(id, url, "") {
 
         override fun run() {
             var connection: HttpURLConnection? = null
             var outputStream: OutputStream? = null
-            var createdUri: Uri? = null
+            var createdUri: Uri? = if (existingUri != null) Uri.parse(existingUri) else null
 
             try {
                 val context = reactApplicationContext.applicationContext
                 val resolver = context.contentResolver
-                val treeUri = Uri.parse(safFolderUri)
-
-                // Créer le document SAF
-                val docId = DocumentsContract.getTreeDocumentId(treeUri)
-                val dirUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, docId)
-
-                createdUri = DocumentsContract.createDocument(resolver, dirUri, mimeType, fileName)
-                    ?: throw IOException("Failed to create SAF document: $fileName")
+                
+                var startByte: Long = 0
+                
+                if (createdUri == null) {
+                    val treeUri = Uri.parse(safFolderUri)
+                    val docId = DocumentsContract.getTreeDocumentId(treeUri)
+                    val dirUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, docId)
+                    
+                    createdUri = DocumentsContract.createDocument(resolver, dirUri, mimeType, fileName)
+                        ?: throw IOException("Failed to create SAF document: $fileName")
+                } else {
+                    // Vérifier la taille existante pour la reprise
+                    try {
+                        resolver.query(createdUri, arrayOf(DocumentsContract.Document.COLUMN_SIZE), null, null, null)?.use { cursor ->
+                            if (cursor.moveToFirst()) {
+                                startByte = cursor.getLong(0)
+                            }
+                        }
+                    } catch (e: Exception) {
+                        // Si l'URI n'existe plus ou erreur, repartir de zéro
+                        val treeUri = Uri.parse(safFolderUri)
+                        val docId = DocumentsContract.getTreeDocumentId(treeUri)
+                        val dirUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, docId)
+                        createdUri = DocumentsContract.createDocument(resolver, dirUri, mimeType, fileName)
+                            ?: throw IOException("Failed to recreate SAF document: $fileName")
+                        startByte = 0
+                    }
+                }
 
                 // Ouvrir la connexion HTTP
                 val urlObj = URL(url)
@@ -526,27 +550,60 @@ class NativeDownloadModule(private val reactContext: ReactApplicationContext) : 
                 connection.connectTimeout = 15000
                 connection.readTimeout = 30000
                 connection.requestMethod = "GET"
+                
+                if (startByte > 0) {
+                    connection.setRequestProperty("Range", "bytes=$startByte-")
+                }
+                
                 connection.connect()
 
                 val responseCode = connection.responseCode
-                if (responseCode >= 400) {
+                
+                // Gérer reprise (206) ou restart (200)
+                val effectiveStartByte = if (responseCode == 206) startByte else 0L
+                
+                if (responseCode >= 400 && responseCode != 416) {
                     throw IOException("HTTP Error: $responseCode")
+                }
+                
+                if (responseCode == 416) {
+                    // Déjà fini
+                    val params = Arguments.createMap().apply {
+                        putString("id", id)
+                        putDouble("receivedBytes", startByte.toDouble())
+                        putDouble("totalBytes", startByte.toDouble())
+                        putInt("progress", 100)
+                        putString("path", createdUri!!.toString())
+                    }
+                    sendEvent(EVENT_COMPLETE, params)
+                    return
                 }
 
                 val contentLength = connection.contentLengthLong
-                val totalBytes = if (contentLength > 0) contentLength else -1L
+                val totalBytes = if (contentLength > 0) effectiveStartByte + contentLength else -1L
 
-                // Ouvrir directement le stream SAF
-                val rawStream = resolver.openOutputStream(createdUri)
+                // Ouvrir directement le stream SAF (mode "wa" pour write-append si reprise)
+                val openMode = if (effectiveStartByte > 0) "wa" else "w"
+                val rawStream = resolver.openOutputStream(createdUri!!, openMode)
                     ?: throw IOException("Failed to open SAF output stream")
                 outputStream = BufferedOutputStream(rawStream, 256 * 1024)
 
                 val inputStream = connection.inputStream
                 val buffer = ByteArray(16384) // 16KB buffer
-                var receivedBytes: Long = 0
-                var bytesRead: Int = 0
+                var receivedBytes = effectiveStartByte
+                var bytesRead = 0
                 var lastProgressTime = System.currentTimeMillis()
-                var lastReceivedBytes: Long = 0
+                var lastReceivedBytes = effectiveStartByte
+
+                // Envoyer URI initialement dans le premier événement
+                val initialParams = Arguments.createMap().apply {
+                    putString("id", id)
+                    putDouble("receivedBytes", receivedBytes.toDouble())
+                    putDouble("totalBytes", totalBytes.toDouble())
+                    putInt("progress", if (totalBytes > 0) ((receivedBytes.toDouble() / totalBytes) * 100).toInt() else 0)
+                    putString("path", createdUri.toString())
+                }
+                sendEvent(EVENT_PROGRESS, initialParams)
 
                 while (!isCancelled && inputStream.read(buffer).also { bytesRead = it } != -1) {
                     outputStream.write(buffer, 0, bytesRead)
@@ -588,8 +645,8 @@ class NativeDownloadModule(private val reactContext: ReactApplicationContext) : 
                         putString("path", createdUri.toString())
                     }
                     sendEvent(EVENT_COMPLETE, params)
-                } else {
-                    // Si annulé, supprimer le fichier SAF partiel
+                } else if (deleteFileOnCancel) {
+                    // Si annulé ET qu'on doit supprimer
                     try {
                         DocumentsContract.deleteDocument(resolver, createdUri)
                     } catch (_: Exception) {}

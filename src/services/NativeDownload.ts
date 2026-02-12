@@ -8,6 +8,7 @@ interface DownloadProgressEvent {
     totalBytes: number;
     progress: number;
     speed: number;
+    path?: string;
 }
 
 interface DownloadCompleteEvent {
@@ -134,7 +135,8 @@ class NativeDownloadService {
             onProgress?: ProgressCallback;
             onComplete?: CompleteCallback;
             onError?: ErrorCallback;
-        }
+        },
+        existingUri?: string
     ): Promise<boolean> {
         if (Platform.OS !== 'android' || !NativeDownloadModule || !NativeDownloadModule.startDownloadToSaf) {
             console.warn('NativeDownload: startDownloadToSaf not available');
@@ -153,7 +155,10 @@ class NativeDownloadService {
         }
 
         try {
-            return await NativeDownloadModule.startDownloadToSaf(id, url, safFolderUri, fileName, mimeType);
+            if (existingUri) {
+                console.log(`[NativeDownload] Resuming SAF download with existing URI: ${existingUri}`);
+            }
+            return await NativeDownloadModule.startDownloadToSaf(id, url, safFolderUri, fileName, mimeType, existingUri || null);
         } catch (e) {
             console.error('NativeDownload: startDownloadToSaf error', e);
             this.progressListeners.delete(id);

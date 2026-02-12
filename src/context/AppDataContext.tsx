@@ -401,7 +401,9 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
         const speed = event.speed > 0 ? `${formatBytes(event.speed)}/s` : "";
         const size = event.totalBytes > 0 ? formatBytes(event.totalBytes) : item.size;
 
-        queueProgressUpdate(item.id, { progress: pct, speed, size });
+        const patch: Partial<DownloadItem> = { progress: pct, speed, size };
+        if (event.path) patch.path = event.path;
+        queueProgressUpdate(item.id, patch);
 
         // Update foreground service notification with progress + speed (single notification)
         if (foregroundServiceActiveRef.current) {
@@ -456,7 +458,8 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
       try {
         if (isSaf && nativeDownload.isAvailable()) {
           console.log(`[NativeDownload] Starting direct SAF download for ${item.title} -> ${dir}`);
-          await nativeDownload.startDownloadToSaf(item.id, item.url, dir, fileName, mimeType, callbacks);
+          const existingSafUri = (item.path && item.path.startsWith("content://")) ? item.path : undefined;
+          await nativeDownload.startDownloadToSaf(item.id, item.url, dir, fileName, mimeType, callbacks, existingSafUri);
         } else {
           const tempPath = getTempFilePath(item.id, item.extension);
           console.log(`[NativeDownload] Starting local download for ${item.title} -> ${tempPath}`);
@@ -984,6 +987,9 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
   const resumeDownload = async (id: string) => {
     const current = downloads.find(d => d.id === id);
     if (!current || current.status === 'downloading') return;
+
+    // Clear paused notification
+    NativeNotification.cancelNotification(id);
 
     // iOS: Try to use existing resumable first
     const resumable = resumablesRef.current.get(id);
