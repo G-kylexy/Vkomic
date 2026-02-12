@@ -97,7 +97,7 @@ jobs:
           MACOSX_DEPLOYMENT_TARGET: ${{ matrix.target == 'x86_64-apple-darwin' && '10.13' || '' }}
         run: npm run tauri:build -- --target ${{ matrix.target }}
 
-      - name: Rename artifacts
+      - name: Rename and Stage artifacts
         if: steps.check.outputs.should_run == 'true' && steps.tauri.conclusion == 'success'
         shell: bash
         run: |
@@ -105,21 +105,17 @@ jobs:
           SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
           ARTIFACT_DIR="src-tauri/target/${{ matrix.target }}/release/bundle"
           
-          echo "Processing artifacts in $ARTIFACT_DIR..."
+          mkdir -p final_assets
           
           find "$ARTIFACT_DIR" -type f \( -name "*.dmg" -o -name "*.exe" -o -name "*.AppImage" -o -name "*.deb" -o -name "*.msi" \) | while read -r filepath; do
             filename=$(basename "$filepath")
-            ext="${{ matrix.ext }}"
             
-            # Use specific extensions if found
-            [[ "$filename" == *.msi ]] && ext=".msi"
-            [[ "$filename" == *.deb ]] && ext=".deb"
+            # Extract actual extension
+            ext=".${filename##*.}"
             
             newname="vkomic-v${VERSION}-${SHORT_SHA}-${{ matrix.name }}${ext}"
-            newpath="$(dirname "$filepath")/${newname}"
-            
-            echo "Renaming: $filename -> $newname"
-            mv "$filepath" "$newpath"
+            echo "Staging: $filename as $newname"
+            cp "$filepath" "final_assets/$newname"
           done
 
       - name: Upload artifacts
@@ -127,6 +123,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: vkomic-v${{ github.run_number }}-${{ matrix.name }}
-          path: |
-            src-tauri/target/${{ matrix.target }}/release/bundle/**/vkomic-v*
+          path: final_assets/*
           retention-days: 3

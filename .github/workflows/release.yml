@@ -74,7 +74,7 @@ jobs:
         with:
           args: --target ${{ matrix.target }}
 
-      - name: Rename artifacts
+      - name: Rename and Stage artifacts
         if: steps.tauri.outputs.artifactPaths != ''
         shell: bash
         run: |
@@ -83,18 +83,23 @@ jobs:
             VERSION=$(node -p "require('./package.json').version")
           fi
           
-          ARTIFACT_PATHS='${{ steps.tauri.outputs.artifactPaths }}'
-          echo "Artifact paths: $ARTIFACT_PATHS"
+          mkdir -p final_assets
           
+          ARTIFACT_PATHS='${{ steps.tauri.outputs.artifactPaths }}'
           echo "$ARTIFACT_PATHS" | jq -r '.[]' | while read -r filepath; do
             if [ -f "$filepath" ]; then
               filename=$(basename "$filepath")
-              ext="${{ matrix.ext }}"
-              newname="vkomic-${VERSION}-${{ matrix.name }}${ext}"
-              newpath="$(dirname "$filepath")/${newname}"
               
-              echo "Renaming: $filename -> $newname"
-              mv "$filepath" "$newpath"
+              # Exclude noise and duplicate formats
+              [[ "$filename" == *.tar.gz ]] && continue
+              [[ "$filename" == *.rpm ]] && continue
+              
+              # Extract actual extension
+              ext=".${filename##*.}"
+              
+              newname="vkomic-${VERSION}-${{ matrix.name }}${ext}"
+              echo "Staging: $filename as $newname"
+              cp "$filepath" "final_assets/$newname"
             fi
           done
 
@@ -102,24 +107,18 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
-          name: 'VKomic ${{ github.ref_name }}'
           body: |
             ## 🚀 Architecture 100% Rust + Tauri
             
             **Taille divisée par 10. Démarrage instantané.**
             
-            Cette version abandonne Electron pour des performances extrêmes et ramène la compatibilité avec les anciens Mac.
+            Cette version abandonne Electron pour des performances extrêmes.
             
-            ### 📥 Nouveaux Binaires
-            * 🍎 **macOS Intel** : `vkomic-VERSION-macos-intel.dmg` (Compatible High Sierra 10.13+)
+            ### 📥 Binaires Disponibles
+            * 🍎 **macOS Intel** : `vkomic-VERSION-macos-intel.dmg` (High Sierra 10.13+)
             * 🍎 **macOS Silicon** : `vkomic-VERSION-macos-apple-silicon.dmg` (M1/M2/M3)
             * 🪟 **Windows** : `vkomic-VERSION-windows-setup.exe`
             * 🐧 **Linux** : `vkomic-VERSION-linux.AppImage`
-          files: |
-            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.dmg
-            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.exe
-            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.msi
-            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.AppImage
-            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.deb
+          files: final_assets/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
