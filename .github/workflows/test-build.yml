@@ -26,19 +26,19 @@ jobs:
         include:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            name: windows
+            name: win-x64
             ext: .exe
           - os: macos-15
             target: x86_64-apple-darwin
-            name: macos-intel
+            name: mac-x64
             ext: .dmg
           - os: macos-14
             target: aarch64-apple-darwin
-            name: macos-apple-silicon
+            name: mac-arm64
             ext: .dmg
           - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
-            name: linux
+            name: linux-x64
             ext: .AppImage
 
     runs-on: ${{ matrix.os }}
@@ -102,17 +102,22 @@ jobs:
         shell: bash
         run: |
           VERSION=$(node -p "require('./package.json').version")
+          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
           ARTIFACT_DIR="src-tauri/target/${{ matrix.target }}/release/bundle"
+          
+          echo "Processing artifacts in $ARTIFACT_DIR..."
           
           find "$ARTIFACT_DIR" -type f \( -name "*.dmg" -o -name "*.exe" -o -name "*.AppImage" -o -name "*.deb" -o -name "*.msi" \) | while read -r filepath; do
             filename=$(basename "$filepath")
             ext="${{ matrix.ext }}"
-            # Fallback extension if matrix.ext doesn't match found file
+            
+            # Use specific extensions if found
             [[ "$filename" == *.msi ]] && ext=".msi"
             [[ "$filename" == *.deb ]] && ext=".deb"
             
-            newname="vkomic-TEST-${VERSION}-${{ matrix.name }}${ext}"
+            newname="vkomic-v${VERSION}-${SHORT_SHA}-${{ matrix.name }}${ext}"
             newpath="$(dirname "$filepath")/${newname}"
+            
             echo "Renaming: $filename -> $newname"
             mv "$filepath" "$newpath"
           done
@@ -121,7 +126,7 @@ jobs:
         if: steps.check.outputs.should_run == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: vkomic-TEST-${{ matrix.name }}
+          name: vkomic-v${{ github.run_number }}-${{ matrix.name }}
           path: |
-            src-tauri/target/${{ matrix.target }}/release/bundle/**/vkomic-TEST-*
+            src-tauri/target/${{ matrix.target }}/release/bundle/**/vkomic-v*
           retention-days: 3
