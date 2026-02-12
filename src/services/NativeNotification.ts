@@ -24,9 +24,9 @@ export const startForegroundService = () => {
 /**
  * Met à jour la notification du Foreground Service
  */
-export const updateForegroundService = (count: number, title: string, progress: number) => {
+export const updateForegroundService = (count: number, title: string, progress: number, speed?: string) => {
     if (Platform.OS !== 'android' || !DownloadNotificationModule) return;
-    DownloadNotificationModule.updateForegroundService(count, title, Math.round(progress));
+    DownloadNotificationModule.updateForegroundService(count, title, Math.round(progress), speed || '');
 };
 
 /**

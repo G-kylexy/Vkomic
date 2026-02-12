@@ -12,15 +12,16 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 
 /**
- * Foreground Service simple qui garde l'application en vie pendant les téléchargements.
- * Le téléchargement lui-même est géré par React Native (ReactNativeBlobUtil).
- * Ce service affiche juste une notification persistante pour éviter que Android tue l'app.
+ * Foreground Service qui garde l'application en vie pendant les téléchargements.
+ * Utilise le MÊME canal et la MÊME notification que la progression individuelle
+ * pour éviter d'afficher deux notifications séparées.
  */
 class DownloadForegroundService : Service() {
 
     companion object {
-        const val CHANNEL_ID = "download_foreground_channel"
-        const val CHANNEL_NAME = "Téléchargements en cours"
+        // Utilise le MÊME canal que DownloadNotificationModule pour fusionner les notifs
+        const val CHANNEL_ID = "download_progress_channel"
+        const val CHANNEL_NAME = "Téléchargements"
         const val NOTIFICATION_ID = 9999
         
         const val ACTION_START = "START_SERVICE"
@@ -30,6 +31,7 @@ class DownloadForegroundService : Service() {
         const val EXTRA_COUNT = "download_count"
         const val EXTRA_TITLE = "current_title"
         const val EXTRA_PROGRESS = "current_progress"
+        const val EXTRA_SPEED = "current_speed"
         
         private var isRunning = false
         
@@ -46,14 +48,15 @@ class DownloadForegroundService : Service() {
             ACTION_START -> {
                 if (!isRunning) {
                     isRunning = true
-                    startForeground(NOTIFICATION_ID, createNotification(1, "Téléchargement en cours...", 0))
+                    startForeground(NOTIFICATION_ID, createNotification(1, "Démarrage...", 0, ""))
                 }
             }
             ACTION_UPDATE -> {
                 val count = intent.getIntExtra(EXTRA_COUNT, 1)
-                val title = intent.getStringExtra(EXTRA_TITLE) ?: "Téléchargement en cours..."
+                val title = intent.getStringExtra(EXTRA_TITLE) ?: "Téléchargement..."
                 val progress = intent.getIntExtra(EXTRA_PROGRESS, 0)
-                updateNotification(count, title, progress)
+                val speed = intent.getStringExtra(EXTRA_SPEED) ?: ""
+                updateNotification(count, title, progress, speed)
             }
             ACTION_STOP -> {
                 isRunning = false
@@ -71,7 +74,7 @@ class DownloadForegroundService : Service() {
                 CHANNEL_NAME,
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Maintient les téléchargements actifs en arrière-plan"
+                description = "Notifications de progression des téléchargements"
                 setSound(null, null)
                 enableVibration(false)
             }
@@ -93,24 +96,25 @@ class DownloadForegroundService : Service() {
         )
     }
     
-    private fun createNotification(count: Int, title: String, progress: Int): Notification {
-        val text = if (count > 1) "$count téléchargements en cours" else title
+    private fun createNotification(count: Int, title: String, progress: Int, speed: String): Notification {
         val pendingIntent = createOpenAppIntent()
+        val contentText = if (speed.isNotEmpty()) "$progress% • $speed" else "$progress%"
         
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setContentTitle("VKomic - Téléchargement")
-            .setContentText(text)
+            .setContentTitle(title)
+            .setContentText(contentText)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
-            .setProgress(100, progress, progress == 0)
+            .setSilent(true)
+            .setProgress(100, progress, false)
             .setContentIntent(pendingIntent)
             .build()
     }
     
-    private fun updateNotification(count: Int, title: String, progress: Int) {
-        val notification = createNotification(count, title, progress)
+    private fun updateNotification(count: Int, title: String, progress: Int, speed: String) {
+        val notification = createNotification(count, title, progress, speed)
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         manager.notify(NOTIFICATION_ID, notification)
     }

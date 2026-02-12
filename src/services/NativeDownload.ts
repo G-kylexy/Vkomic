@@ -122,6 +122,49 @@ class NativeDownloadService {
     }
 
     /**
+     * Démarre un téléchargement directement vers un dossier SAF (Android)
+     */
+    async startDownloadToSaf(
+        id: string,
+        url: string,
+        safFolderUri: string,
+        fileName: string,
+        mimeType: string,
+        callbacks: {
+            onProgress?: ProgressCallback;
+            onComplete?: CompleteCallback;
+            onError?: ErrorCallback;
+        }
+    ): Promise<boolean> {
+        if (Platform.OS !== 'android' || !NativeDownloadModule || !NativeDownloadModule.startDownloadToSaf) {
+            console.warn('NativeDownload: startDownloadToSaf not available');
+            return false;
+        }
+
+        // Register callbacks
+        if (callbacks.onProgress) {
+            this.progressListeners.set(id, callbacks.onProgress);
+        }
+        if (callbacks.onComplete) {
+            this.completeListeners.set(id, callbacks.onComplete);
+        }
+        if (callbacks.onError) {
+            this.errorListeners.set(id, callbacks.onError);
+        }
+
+        try {
+            return await NativeDownloadModule.startDownloadToSaf(id, url, safFolderUri, fileName, mimeType);
+        } catch (e) {
+            console.error('NativeDownload: startDownloadToSaf error', e);
+            this.progressListeners.delete(id);
+            this.completeListeners.delete(id);
+            this.errorListeners.delete(id);
+            throw e;
+        }
+    }
+
+
+    /**
      * Met en pause un téléchargement (le fichier partiel est conservé)
      */
     async pauseDownload(id: string): Promise<boolean> {

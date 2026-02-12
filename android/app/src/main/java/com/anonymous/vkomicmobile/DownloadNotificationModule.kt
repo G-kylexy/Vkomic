@@ -94,12 +94,13 @@ class DownloadNotificationModule(private val reactContext: ReactApplicationConte
      * Met à jour la notification du Foreground Service
      */
     @ReactMethod
-    fun updateForegroundService(count: Int, title: String, progress: Int) {
+    fun updateForegroundService(count: Int, title: String, progress: Int, speed: String) {
         val intent = Intent(reactContext, DownloadForegroundService::class.java).apply {
             action = DownloadForegroundService.ACTION_UPDATE
             putExtra(DownloadForegroundService.EXTRA_COUNT, count)
             putExtra(DownloadForegroundService.EXTRA_TITLE, title)
             putExtra(DownloadForegroundService.EXTRA_PROGRESS, progress)
+            putExtra(DownloadForegroundService.EXTRA_SPEED, speed)
         }
         reactContext.startService(intent)
     }

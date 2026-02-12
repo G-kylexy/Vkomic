@@ -11,6 +11,7 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
+import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.ConcurrentHashMap
@@ -285,7 +286,41 @@ class NativeDownloadModule(private val reactContext: ReactApplicationContext) : 
         }
     }
 
-    private inner class DownloadTask(
+
+    /**
+     * Démarre un téléchargement directement vers un dossier SAF (sans fichier temp intermédiaire)
+     * @param id Identifiant unique du téléchargement
+     * @param url URL du fichier à télécharger
+     * @param safFolderUri URI du dossier SAF destination (content://...)
+     * @param fileName Nom du fichier destination
+     * @param mimeType Type MIME du fichier
+     */
+    @ReactMethod
+    fun startDownloadToSaf(id: String, url: String, safFolderUri: String, fileName: String, mimeType: String, promise: Promise) {
+        // Annuler si déjà en cours
+        activeDownloads[id]?.cancel()
+
+        val task = SafDownloadTask(id, url, safFolderUri, fileName, mimeType)
+        activeDownloads[id] = task
+
+        val future = executor.submit {
+            try {
+                task.run()
+                promise.resolve(true)
+            } catch (e: Exception) {
+                if (!task.isCancelled) {
+                    promise.reject("DOWNLOAD_ERROR", e.message)
+                } else {
+                    promise.resolve(false)
+                }
+            } finally {
+                activeDownloads.remove(id)
+            }
+        }
+        task.future = future
+    }
+
+    private open inner class DownloadTask(
         val id: String,
         private val url: String,
         val filePath: String
@@ -299,7 +334,7 @@ class NativeDownloadModule(private val reactContext: ReactApplicationContext) : 
             future?.cancel(true)
         }
 
-        fun run() {
+        open fun run() {
             var connection: HttpURLConnection? = null
             var outputStream: FileOutputStream? = null
 
@@ -453,6 +488,135 @@ class NativeDownloadModule(private val reactContext: ReactApplicationContext) : 
                 } catch (e: Exception) {
                     // Ignore cleanup errors
                 }
+            }
+        }
+    }
+
+    /**
+     * Téléchargement direct vers SAF (pas de fichier temp, pas de copie)
+     */
+    private inner class SafDownloadTask(
+        id: String,
+        private val url: String,
+        private val safFolderUri: String,
+        private val fileName: String,
+        private val mimeType: String
+    ) : DownloadTask(id, url, "") {
+
+        override fun run() {
+            var connection: HttpURLConnection? = null
+            var outputStream: OutputStream? = null
+            var createdUri: Uri? = null
+
+            try {
+                val context = reactApplicationContext.applicationContext
+                val resolver = context.contentResolver
+                val treeUri = Uri.parse(safFolderUri)
+
+                // Créer le document SAF
+                val docId = DocumentsContract.getTreeDocumentId(treeUri)
+                val dirUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, docId)
+
+                createdUri = DocumentsContract.createDocument(resolver, dirUri, mimeType, fileName)
+                    ?: throw IOException("Failed to create SAF document: $fileName")
+
+                // Ouvrir la connexion HTTP
+                val urlObj = URL(url)
+                connection = urlObj.openConnection() as HttpURLConnection
+                connection.connectTimeout = 15000
+                connection.readTimeout = 30000
+                connection.requestMethod = "GET"
+                connection.connect()
+
+                val responseCode = connection.responseCode
+                if (responseCode >= 400) {
+                    throw IOException("HTTP Error: $responseCode")
+                }
+
+                val contentLength = connection.contentLengthLong
+                val totalBytes = if (contentLength > 0) contentLength else -1L
+
+                // Ouvrir directement le stream SAF
+                val rawStream = resolver.openOutputStream(createdUri)
+                    ?: throw IOException("Failed to open SAF output stream")
+                outputStream = BufferedOutputStream(rawStream, 256 * 1024)
+
+                val inputStream = connection.inputStream
+                val buffer = ByteArray(16384) // 16KB buffer
+                var receivedBytes: Long = 0
+                var bytesRead: Int = 0
+                var lastProgressTime = System.currentTimeMillis()
+                var lastReceivedBytes: Long = 0
+
+                while (!isCancelled && inputStream.read(buffer).also { bytesRead = it } != -1) {
+                    outputStream.write(buffer, 0, bytesRead)
+                    receivedBytes += bytesRead
+
+                    val now = System.currentTimeMillis()
+                    if (now - lastProgressTime >= 250) {
+                        val progress = if (totalBytes > 0) {
+                            ((receivedBytes.toDouble() / totalBytes) * 100).toInt().coerceIn(0, 99)
+                        } else -1
+
+                        val elapsed = (now - lastProgressTime) / 1000.0
+                        val speed = if (elapsed > 0) {
+                            ((receivedBytes - lastReceivedBytes) / elapsed).coerceAtMost(1_000_000_000.0)
+                        } else 0.0
+
+                        val params = Arguments.createMap().apply {
+                            putString("id", id)
+                            putDouble("receivedBytes", receivedBytes.toDouble())
+                            putDouble("totalBytes", totalBytes.toDouble())
+                            putInt("progress", progress)
+                            putDouble("speed", speed)
+                        }
+                        sendEvent(EVENT_PROGRESS, params)
+
+                        lastProgressTime = now
+                        lastReceivedBytes = receivedBytes
+                    }
+                }
+
+                outputStream.flush()
+
+                if (!isCancelled) {
+                    val params = Arguments.createMap().apply {
+                        putString("id", id)
+                        putDouble("receivedBytes", receivedBytes.toDouble())
+                        putDouble("totalBytes", if (totalBytes > 0) totalBytes.toDouble() else receivedBytes.toDouble())
+                        putInt("progress", 100)
+                        putString("path", createdUri.toString())
+                    }
+                    sendEvent(EVENT_COMPLETE, params)
+                } else {
+                    // Si annulé, supprimer le fichier SAF partiel
+                    try {
+                        DocumentsContract.deleteDocument(resolver, createdUri)
+                    } catch (_: Exception) {}
+                }
+
+            } catch (e: Exception) {
+                // En cas d'erreur, supprimer le fichier SAF partiel
+                if (createdUri != null) {
+                    try {
+                        val resolver = reactApplicationContext.applicationContext.contentResolver
+                        DocumentsContract.deleteDocument(resolver, createdUri)
+                    } catch (_: Exception) {}
+                }
+
+                if (!isCancelled) {
+                    val params = Arguments.createMap().apply {
+                        putString("id", id)
+                        putString("error", e.message ?: "Unknown error")
+                    }
+                    sendEvent(EVENT_ERROR, params)
+                    throw e
+                }
+            } finally {
+                try {
+                    outputStream?.close()
+                    connection?.disconnect()
+                } catch (_: Exception) {}
             }
         }
     }

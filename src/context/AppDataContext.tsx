@@ -299,13 +299,22 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
   const isSafUri = (uri: string | null) => uri?.startsWith("content://") ?? false;
 
   const upsertDownload = (id: string, patch: Partial<DownloadItem>) => {
+    let updatedList: DownloadItem[] = [];
     setDownloads((prev: DownloadItem[]) => {
       const idx = prev.findIndex((d) => d.id === id);
       if (idx === -1) return prev;
       const next = [...prev];
       next[idx] = { ...next[idx], ...patch };
+      updatedList = next;
       return next;
     });
+    return updatedList;
+  };
+
+  const saveDownloadsToStorage = (list: DownloadItem[]) => {
+    if (list.length > 0) {
+      AsyncStorage.setItem(STORAGE_KEYS.downloads, JSON.stringify(list)).catch(() => { });
+    }
   };
 
   // Queue progress update to be applied in batch (avoids race conditions)
@@ -375,87 +384,61 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
     return dir;
   };
 
-  const runAndroidDownload = async (item: DownloadItem): Promise<void> => {
-    // Use native module for efficient download with proper append mode
-    const tempPath = getTempFilePath(item.id, item.extension);
-    console.log(`[NativeDownload] Starting download for ${item.title} -> ${tempPath}`);
+  const runAndroidDownload = async (item: DownloadItem) => {
+    const dir = getDownloadDirUri();
+    const isSaf = dir && isSafUri(dir);
 
-    return new Promise((resolve, reject) => {
-      nativeDownload.startDownload(item.id, item.url, tempPath, {
-        onProgress: (event: any) => {
-          const pct = Math.max(0, Math.min(99, event.progress));
-          const speed = event.speed > 0 ? `${formatBytes(event.speed)}/s` : "";
-          const size = event.totalBytes > 0 ? formatBytes(event.totalBytes) : item.size;
+    const ext = item.extension ? `.${item.extension}` : '';
+    let fileName = safeFilename(item.title);
+    if (!fileName.toLowerCase().endsWith(ext.toLowerCase())) {
+      fileName = `${fileName}${ext}`;
+    }
+    const mimeType = item.extension === "pdf" ? "application/pdf" : "*/*";
 
-          queueProgressUpdate(item.id, { progress: pct, speed, size });
+    const commonCallbacks = {
+      onProgress: (event: any) => {
+        const pct = Math.max(0, Math.min(99, event.progress));
+        const speed = event.speed > 0 ? `${formatBytes(event.speed)}/s` : "";
+        const size = event.totalBytes > 0 ? formatBytes(event.totalBytes) : item.size;
 
-          // Update foreground service with current progress (ensures download continues in background)
-          if (foregroundServiceActiveRef.current) {
-            const activeCount = downloads.filter(d => d.status === "downloading" || d.status === "pending").length;
-            NativeNotification.updateForegroundService(activeCount, item.title, pct);
-            foregroundServiceProgressRef.current = { count: activeCount, title: item.title, progress: pct };
-          }
+        queueProgressUpdate(item.id, { progress: pct, speed, size });
 
-          // Notification throttling
+        // Update foreground service notification with progress + speed (single notification)
+        if (foregroundServiceActiveRef.current) {
           const now = Date.now();
           const lastNotif = lastNotifRef.current.get(item.id) || 0;
-          if (now - lastNotif > 1000) {
-            NativeNotification.showProgressNotification(item.id, item.title, pct, speed);
+          if (now - lastNotif > 500) {
+            const activeCount = downloads.filter(d => d.status === "downloading" || d.status === "pending").length;
+            NativeNotification.updateForegroundService(activeCount, item.title, pct, speed);
+            foregroundServiceProgressRef.current = { count: activeCount, title: item.title, progress: pct };
             lastNotifRef.current.set(item.id, now);
           }
-        },
-        onComplete: async (_event) => {
+        }
+      },
+      onError: (event: any) => {
+        console.log(`[NativeDownload] Error: ${event.error}`);
+        // reject is handled by the Promise wrapper
+      }
+    };
+
+    return new Promise<void>(async (resolve, reject) => {
+      const callbacks = {
+        ...commonCallbacks,
+        onComplete: async (event: any) => {
           console.log(`[NativeDownload] Completed: ${item.title}`);
-
-          // Finalize: copy to SAF if needed
-          const dir = getDownloadDirUri();
-          let finalPath = tempPath;
-
-          if (dir && isSafUri(dir)) {
-            // Show finalizing status (UI feedback for copy delay)
-            queueProgressUpdate(item.id, { progress: 99, speed: "Finalisation..." });
-
-            try {
-              const mimeType = item.extension === "pdf" ? "application/pdf" : "*/*";
-              const ext = item.extension ? `.${item.extension}` : '';
-              let fileName = safeFilename(item.title);
-              if (!fileName.toLowerCase().endsWith(ext.toLowerCase())) {
-                fileName = `${fileName}${ext}`;
-              }
-
-              // Try native optimized path first if available
-              if (nativeDownload.isAvailable()) {
-                console.log("[NativeDownload] Using native finalizer...");
-                const finalUri = await nativeDownload.finalizeDownload(tempPath, dir, fileName, mimeType);
-                if (finalUri) {
-                  finalPath = finalUri;
-                  // Temp file is already deleted by native module
-                } else {
-                  throw new Error("Native finalization returned null");
-                }
-              } else {
-                // Fallback: Legacy JS Bridge Method (Slow)
-                const safFileUri = await FolderService.createFileRobust(dir, fileName, mimeType);
-                const success = await FolderService.copyLocalToSaf(tempPath, safFileUri);
-                if (success) {
-                  finalPath = safFileUri;
-                  try { await ReactNativeBlobUtil.fs.unlink(tempPath); } catch { }
-                }
-              }
-            } catch (e) {
-              console.warn("[NativeDownload] SAF copy failed:", e);
-            }
-          }
+          const finalPath = event.path || "";
 
           // Success update
           pendingProgressRef.current.delete(item.id);
-          upsertDownload(item.id, {
+          const updated = upsertDownload(item.id, {
             status: "completed",
             progress: 100,
             speed: "",
             resumeData: null,
             path: finalPath
           });
+          saveDownloadsToStorage(updated);
+
           startingRef.current.delete(item.id);
           clearRetryCount(item.id);
           clearSpeed(speedRef, item.id);
@@ -464,13 +447,69 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
           NativeNotification.showCompletedNotification(item.id, item.title);
           resolve();
         },
-        onError: (event) => {
-          console.log(`[NativeDownload] Error: ${event.error}`);
+        onError: (event: any) => {
+          commonCallbacks.onError(event);
           reject(new Error(event.error));
         }
-      }).catch(reject);
+      };
+
+      try {
+        if (isSaf && nativeDownload.isAvailable()) {
+          console.log(`[NativeDownload] Starting direct SAF download for ${item.title} -> ${dir}`);
+          await nativeDownload.startDownloadToSaf(item.id, item.url, dir, fileName, mimeType, callbacks);
+        } else {
+          const tempPath = getTempFilePath(item.id, item.extension);
+          console.log(`[NativeDownload] Starting local download for ${item.title} -> ${tempPath}`);
+
+          // Local download needs manual finalization (copy to SAF) if needed
+          const localCallbacks = {
+            ...commonCallbacks,
+            onComplete: async (_event: any) => {
+              console.log(`[NativeDownload] Local download complete: ${item.title}, finalyzing...`);
+              let finalPath = tempPath;
+
+              if (dir && isSaf) {
+                queueProgressUpdate(item.id, { progress: 99, speed: "Finalisation..." });
+                try {
+                  const finalUri = await nativeDownload.finalizeDownload(tempPath, dir, fileName, mimeType);
+                  if (finalUri) finalPath = finalUri;
+                } catch (e) {
+                  console.warn("[NativeDownload] SAF finalization failed:", e);
+                }
+              }
+
+              // Success update
+              pendingProgressRef.current.delete(item.id);
+              const updated = upsertDownload(item.id, {
+                status: "completed",
+                progress: 100,
+                speed: "",
+                resumeData: null,
+                path: finalPath
+              });
+              saveDownloadsToStorage(updated);
+
+              startingRef.current.delete(item.id);
+              clearRetryCount(item.id);
+              clearSpeed(speedRef, item.id);
+              NativeNotification.cancelNotification(item.id);
+              NativeNotification.showCompletedNotification(item.id, item.title);
+              resolve();
+            },
+            onError: (event: any) => {
+              commonCallbacks.onError(event);
+              reject(new Error(event.error));
+            }
+          };
+
+          await nativeDownload.startDownload(item.id, item.url, tempPath, localCallbacks);
+        }
+      } catch (err) {
+        reject(err);
+      }
     });
   };
+
 
   const processDownload = async (item: DownloadItem) => {
     // Prevent duplicate starts using ref (avoids stale closure issues)
@@ -737,13 +776,26 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
         if (treeRaw) setSyncedData(JSON.parse(treeRaw));
         if (downloadsRaw) {
           const parsed: DownloadItem[] = JSON.parse(downloadsRaw);
-          const normalized = parsed.map((d) => ({
-            ...d,
-            status: d.status === "downloading" ? "pending" : d.status,
-            progress: Number.isFinite(d.progress) ? d.progress : 0,
-            speed: "",
+          const normalized = await Promise.all(parsed.map(async (d) => {
+            let status = d.status === "downloading" ? "pending" : d.status;
+
+            // Safety check: if completed and has path, verify it exists (especially for SAF)
+            if (status === "completed" && d.path) {
+              const exists = await FolderService.fileExists(d.path);
+              if (!exists) {
+                console.log(`[Hydrate] File not found for ${d.title}, reverting to pending`);
+                status = "pending";
+              }
+            }
+
+            return {
+              ...d,
+              status,
+              progress: status === "completed" ? 100 : (Number.isFinite(d.progress) ? d.progress : 0),
+              speed: "",
+            };
           }));
-          setDownloads(normalized);
+          setDownloads(normalized as DownloadItem[]);
         }
         if (fullSyncRaw === "true") setHasFullSynced(true);
       } catch { }
@@ -796,10 +848,7 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
   }, [searchQuery]);
 
   useEffect(() => {
-    const t = setTimeout(() => {
-      AsyncStorage.setItem(STORAGE_KEYS.downloads, JSON.stringify(downloads));
-    }, 500);
-    return () => clearTimeout(t);
+    saveDownloadsToStorage(downloads);
   }, [downloads]);
 
   // Sequential downloads: only MAX_CONCURRENT_DOWNLOADS active at a time, in order of creation
