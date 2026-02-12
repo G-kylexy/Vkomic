@@ -107,7 +107,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
-          name: 'v${{ github.ref_name }}'
+          name: '${{ github.ref_name }}'
           body: |
             ## Update Notes
 
