@@ -79,13 +79,12 @@ jobs:
           mkdir -p final_assets
           VERSION=$(node -p "require('./package.json').version")
           
-          # On cherche les bundles générés par Tauri
           if [ "${{ matrix.os }}" == "windows-latest" ]; then
-            find src-tauri/target/${{ matrix.target }}/release/bundle/nsis -name "*.exe" -exec cp {} final_assets/vkomic-${VERSION}-${{ matrix.name }}.exe \;
+            cp src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*.exe final_assets/vkomic-${VERSION}-${{ matrix.name }}.exe || true
           elif [ "${{ matrix.os }}" == "macos-14" ] || [ "${{ matrix.os }}" == "macos-15" ]; then
-            find src-tauri/target/${{ matrix.target }}/release/bundle/dmg -name "*.dmg" -exec cp {} final_assets/vkomic-${VERSION}-${{ matrix.name }}.dmg \;
+            cp src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg final_assets/vkomic-${VERSION}-${{ matrix.name }}.dmg || true
           elif [ "${{ matrix.os }}" == "ubuntu-22.04" ]; then
-            find src-tauri/target/${{ matrix.target }}/release/bundle/appimage -name "*.AppImage" -exec cp {} final_assets/vkomic-${VERSION}-${{ matrix.name }}.AppImage \;
+            cp src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*.AppImage final_assets/vkomic-${VERSION}-${{ matrix.name }}.AppImage || true
           fi
 
       - name: Create and Upload Release
@@ -95,17 +94,16 @@ jobs:
           name: '${{ github.ref_name }}'
           body: |
             ## Notes de mise à jour
+            Correctifs du lecteur PDF : Résolution des erreurs "Format non supporté" et amélioration de la gestion des URIs SAF pour les fichiers avec des caractères spéciaux (parenthèses, accents).
+            Optimisation du stockage : Utilisation d'un fichier temporaire unique et auto-nettoyant pour la lecture afin d'éviter les doublons.
+            Persistance des téléchargements : Correction d'un bug où les téléchargements terminés pouvaient se réinitialiser au démarrage de l'application.
+            Performance : Les builds mobiles ciblent désormais spécifiquement l'architecture arm64-v8a pour plus de rapidité et un APK plus léger.
 
-            - **Correctifs du lecteur PDF** : Résolution des erreurs "Format non supporté" et amélioration de la gestion des URIs SAF pour les fichiers avec des caractères spéciaux (parenthèses, accents).
-            - **Optimisation du stockage** : Utilisation d'un fichier temporaire unique et auto-nettoyant pour la lecture afin d'éviter les doublons.
-            - **Persistance des téléchargements** : Correction d'un bug où les téléchargements terminés pouvaient se réinitialiser au démarrage de l'application.
-            - **Performance** : Les builds mobiles ciblent désormais spécifiquement l'architecture arm64-v8a pour plus de rapidité et un APK plus léger.
-
-            ### Binaires
-            - **Windows** : `vkomic-1.3.5-win-x64-setup.exe`
-            - **macOS Intel** : `vkomic-1.3.5-mac-x64.dmg` (High Sierra 10.13+)
-            - **macOS Silicon** : `vkomic-1.3.5-mac-arm64.dmg` (M1/M2/M3)
-            - **Linux** : `vkomic-1.3.5-linux-x64.AppImage`
+            ## Binaires
+            Windows : vkomic-1.3.5-win-x64-setup.exe
+            macOS Intel : vkomic-1.3.5-mac-x64.dmg
+            macOS Silicon : vkomic-1.3.5-mac-arm64.dmg (M1/M2/M3)
+            Linux : vkomic-1.3.5-linux-x64.AppImage
           files: final_assets/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
