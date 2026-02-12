@@ -116,7 +116,14 @@ android {
             signingConfig signingConfigs.debug
         }
         release {
-            signingConfig signingConfigs.release
+            // Fallback to debug signing if release keystore is missing
+            if (signingConfigs.release.storeFile.exists()) {
+                signingConfig signingConfigs.release
+            } else {
+                println "Release keystore not found at ${signingConfigs.release.storeFile}. Falling back to debug signing."
+                signingConfig signingConfigs.debug
+            }
+            
             def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'
             shrinkResources enableShrinkResources.toBoolean()
             minifyEnabled enableMinifyInReleaseBuilds
