@@ -109,18 +109,18 @@ jobs:
         with:
           name: '${{ github.ref_name }}'
           body: |
-            ## Update Notes
+            ## Notes de mise à jour
 
-            - **PDF Reader Fixes**: Resolved "Unsupported format" errors and improved SAF URI handling for files with special characters.
-            - **Storage Optimization**: Implemented a single, auto-cleaned temporary file strategy for reading to prevent local storage duplication.
-            - **Download Persistence**: Fixed an issue where completed downloads would occasionally reset to pending on app restart.
-            - **Performance**: Mobile builds now target arm64-v8a specifically for better performance and smaller APK size.
+            - **Correctifs du lecteur PDF** : Résolution des erreurs "Format non supporté" et amélioration de la gestion des URIs SAF pour les fichiers avec des caractères spéciaux (parenthèses, accents).
+            - **Optimisation du stockage** : Utilisation d'un fichier temporaire unique et auto-nettoyant pour la lecture afin d'éviter les doublons.
+            - **Persistance des téléchargements** : Correction d'un bug où les téléchargements terminés pouvaient se réinitialiser au démarrage de l'application.
+            - **Performance** : Les builds mobiles ciblent désormais spécifiquement l'architecture arm64-v8a pour plus de rapidité et un APK plus léger.
 
-            ### Binaries
-            - **macOS Intel**: `vkomic-1.3.5-mac-x64.dmg` (High Sierra 10.13+)
-            - **macOS Silicon**: `vkomic-1.3.5-mac-arm64.dmg` (M1/M2/M3)
-            - **Windows**: `vkomic-1.3.5-win-x64-setup.exe`
-            - **Linux**: `vkomic-1.3.5-linux-x64.AppImage`
+            ### Binaires
+            - **macOS Intel** : `vkomic-1.3.5-mac-x64.dmg` (High Sierra 10.13+)
+            - **macOS Silicon** : `vkomic-1.3.5-mac-arm64.dmg` (M1/M2/M3)
+            - **Windows** : `vkomic-1.3.5-win-x64-setup.exe`
+            - **Linux** : `vkomic-1.3.5-linux-x64.AppImage`
           files: final_assets/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
