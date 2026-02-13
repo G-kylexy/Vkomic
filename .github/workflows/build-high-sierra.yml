@@ -12,8 +12,8 @@ permissions:
 
 jobs:
   build-high-sierra:
-    # 2. Utilisation de macos-13 (Intel) - Moins de queue que macos-12
-    runs-on: macos-13
+    # 2. Utilisation de macos-latest (M1/M2) - Démarrage instantané
+    runs-on: macos-latest
     name: Build macOS x64 (High Sierra compatible)
 
     steps:
@@ -31,24 +31,31 @@ jobs:
         with:
           targets: x86_64-apple-darwin
 
+      - name: Download MacOS 10.13 SDK
+        run: |
+          mkdir -p sdk
+          curl -L https://github.com/phracker/MacOSX-SDKs/releases/download/11.3/MacOSX10.13.sdk.tar.xz | tar -xJ -C sdk
+          echo "SDKROOT=$GITHUB_WORKSPACE/sdk/MacOSX10.13.sdk" >> $GITHUB_ENV
+
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
-          shared-key: x86_64-apple-darwin-highsierra
+          shared-key: x86_64-apple-darwin-highsierra-v2
 
       - name: Install dependencies
         run: npm ci
 
       - name: Build Tauri App
-        # RUSTFLAGS: forçage du weak-linking
+        # On force l'utilisation du SDK 10.13 téléchargé et le target Intel
         env:
           MACOSX_DEPLOYMENT_TARGET: '10.13'
+          SDKROOT: ${{ env.SDKROOT }}
           RUSTFLAGS: >-
             -C link-arg=-Wl,-weak_framework,Foundation
             -C link-arg=-Wl,-weak_framework,CFNetwork
             -C link-arg=-Wl,-weak_framework,Security
-            -C link-arg=-Wl,-weak_framework,CoreFoundation
+            -C link-arg=-target -C link-arg=x86_64-apple-macos10.13
         run: npm run tauri:build -- --target x86_64-apple-darwin
 
       - name: Verify Symbols (Pre-release check)
