@@ -26,17 +26,6 @@ export default defineConfig(({ mode }) => {
       // Also transpile CSS for Safari 11 (oklch -> rgb, nesting -> flat, etc.)
       cssTarget: isLegacyBuild ? "safari11" : undefined,
     },
-    css: isLegacyBuild
-      ? {
-        // Lightning CSS (Vite 7 default) transpiles modern CSS to older syntax
-        // This converts oklch() to rgb(), un-nests CSS, removes @layer, etc.
-        lightningcss: {
-          targets: {
-            safari: (11 << 16), // Safari 11.0.0
-          },
-        },
-      }
-      : {},
     plugins: [react()],
     resolve: {
       alias: {
