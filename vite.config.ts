@@ -21,8 +21,8 @@ export default defineConfig(({ mode }) => {
       strictPort: true,
     },
     build: {
-      // Use es2017 for High Sierra compatibility, otherwise es2022
-      target: isLegacyBuild ? "es2017" : "es2022",
+      // Use safari11 for High Sierra compatibility, otherwise es2022
+      target: isLegacyBuild ? "safari11" : "es2022",
     },
     plugins: [react()],
     resolve: {

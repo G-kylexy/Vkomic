@@ -43,6 +43,7 @@ jobs:
         # On force la compilation croisée Intel (x86_64) car le runner est ARM
         # On garde les weak-links au cas où Tauri-core tirerait Foundation
         env:
+          VITE_LEGACY_BUILD: 'true'
           RUSTFLAGS: >-
             -C link-arg=-Wl,-weak_framework,Foundation
             -C link-arg=-Wl,-weak_framework,CFNetwork
