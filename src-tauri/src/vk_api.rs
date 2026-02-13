@@ -317,42 +317,148 @@ impl VkApi {
     }
 
     async fn fetch_all_comments(&self, group_id: &str, topic_id: &str) -> Result<Vec<Value>> {
+        let start = std::time::Instant::now();
+        info!("Fetching all comments for group {} topic {}", group_id, topic_id);
+
         let mut all_items = Vec::new();
-        let mut offset = 0;
-        let count = 100;
+        let limit = 100;
 
-        loop {
-            let url = format!(
-                "https://api.vk.com/method/board.getComments?group_id={}&topic_id={}&count={}&offset={}&access_token={}&v=5.131",
-                group_id.replace('-', ""), topic_id, count, offset, self.token
-            );
-            
-            let res = self.client.get(url).send().await?.json::<Value>().await?;
-            
-            if let Some(err) = res.get("error") {
-                return Err(anyhow::anyhow!("VK error: {}", err));
-            }
+        // 1. Initial request to get total count and first batch
+        let url = format!(
+            "https://api.vk.com/method/board.getComments?group_id={}&topic_id={}&count={}&offset=0&access_token={}&v=5.131",
+            group_id.replace('-', ""), topic_id, limit, self.token
+        );
 
-            let response = res.get("response").ok_or_else(|| anyhow::anyhow!("No response body"))?;
-            let items = response.get("items")
-                .and_then(|i| i.as_array())
-                .ok_or_else(|| anyhow::anyhow!("No items array in response"))?;
-            
-            if items.is_empty() {
-                break;
-            }
+        let res = self.client.get(&url).send().await?.json::<Value>().await?;
 
-            all_items.extend(items.iter().cloned());
-            
-            if items.len() < count {
-                break;
-            }
-            offset += count;
-            
-            // On réduit le sleep au minimum pour la version Desktop
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        if let Some(err) = res.get("error") {
+            return Err(anyhow::anyhow!("VK error: {}", err));
         }
 
+        let response = res.get("response").ok_or_else(|| anyhow::anyhow!("No response body"))?;
+        let count = response.get("count").and_then(|c| c.as_u64()).unwrap_or(0);
+        let items = response.get("items")
+            .and_then(|i| i.as_array())
+            .ok_or_else(|| anyhow::anyhow!("No items array in response"))?;
+
+        all_items.extend(items.iter().cloned());
+
+        info!("Initial fetch: {} items. Total count: {}", items.len(), count);
+
+        if count <= limit as u64 {
+            return Ok(all_items);
+        }
+
+        // 2. Calculate remaining offsets
+        let mut offsets = Vec::new();
+        let mut current_offset = limit;
+        while current_offset < count as usize {
+            offsets.push(current_offset);
+            current_offset += limit;
+        }
+
+        info!("Remaining items to fetch: {}. Batches needed: {}", count as usize - items.len(), offsets.len());
+
+        // 3. Prepare batches for execute (10 calls per execute, safe for 5-10MB limit)
+        let batch_size = 10;
+        let chunks: Vec<Vec<usize>> = offsets.chunks(batch_size).map(|c| c.to_vec()).collect();
+
+        // 4. Parallel execution
+        let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(3)); // Limit concurrency to 3
+        let client = self.client.clone();
+        let token = self.token.clone();
+        let gid = group_id.replace('-', "");
+        let tid = topic_id.to_string();
+
+        let handles: Vec<_> = chunks.into_iter().enumerate().map(|(chunk_idx, chunk_offsets)| {
+            let sem = semaphore.clone();
+            let cli = client.clone();
+            let tok = token.clone();
+            let g = gid.clone();
+            let t = tid.clone();
+            
+            tokio::spawn(async move {
+                let _permit = sem.acquire().await.unwrap();
+
+                // Build VKScript code
+                let calls: Vec<String> = chunk_offsets.iter().map(|&off| {
+                    format!("API.board.getComments({{\"group_id\":{},\"topic_id\":{},\"count\":{},\"offset\":{}}})", g, t, limit, off)
+                }).collect();
+
+                let code = format!("return [{}];", calls.join(","));
+
+                let url = "https://api.vk.com/method/execute";
+                let params = [
+                    ("access_token", tok),
+                    ("v", "5.131".to_string()),
+                    ("code", code),
+                ];
+
+                let start_batch = std::time::Instant::now();
+                let res = cli.post(url).form(&params).send().await;
+
+                match res {
+                    Ok(r) => {
+                        match r.json::<Value>().await {
+                            Ok(v) => {
+                                // Check for execute errors
+                                if let Some(err) = v.get("execute_errors") {
+                                    info!("Batch {} execute errors: {:?}", chunk_idx, err);
+                                }
+                                Ok((chunk_idx, v, start_batch.elapsed()))
+                            },
+                            Err(e) => Err(anyhow::anyhow!("JSON error in batch {}: {}", chunk_idx, e))
+                        }
+                    },
+                    Err(e) => Err(anyhow::anyhow!("Network error in batch {}: {}", chunk_idx, e))
+                }
+            })
+        }).collect();
+
+        let results = futures::future::join_all(handles).await;
+
+        // 5. Collect results
+        let mut first_error = None;
+
+        for result in results {
+            match result {
+                Ok(Ok((idx, val, dur))) => {
+                    if let Some(responses) = val.get("response").and_then(|r| r.as_array()) {
+                        let mut batch_count = 0;
+                        for resp in responses {
+                            if let Some(items) = resp.get("items").and_then(|i| i.as_array()) {
+                                all_items.extend(items.iter().cloned());
+                                batch_count += items.len();
+                            }
+                        }
+                        info!("Batch {} finished in {:?}: fetched {} items", idx, dur, batch_count);
+                    } else {
+                        info!("Batch {} returned no response array: {:?}", idx, val);
+                        if first_error.is_none() {
+                             first_error = Some(anyhow::anyhow!("Batch {} returned no response array", idx));
+                        }
+                    }
+                },
+                Ok(Err(e)) => {
+                    info!("Error in batch task: {}", e);
+                    if first_error.is_none() {
+                        first_error = Some(e);
+                    }
+                },
+                Err(e) => {
+                    info!("Join error: {}", e);
+                    if first_error.is_none() {
+                        first_error = Some(anyhow::anyhow!("Join error: {}", e));
+                    }
+                }
+            }
+        }
+
+        if let Some(err) = first_error {
+            return Err(err);
+        }
+
+        info!("Total fetch time: {:?}. Total items: {}", start.elapsed(), all_items.len());
         Ok(all_items)
     }
 }
