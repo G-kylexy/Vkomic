@@ -1,0 +1,43 @@
+name: Build High Sierra Only
+
+on:
+  workflow_dispatch: # Se lance manuellement via le bouton "Run workflow"
+
+permissions:
+  contents: read
+
+jobs:
+  build-legacy-mac:
+    runs-on: macos-15 # Runner Intel updated (macos-13 retired)
+    name: Build macOS High Sierra (10.13)
+
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v4
+
+      - name: Installer Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Installer Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin
+
+      - name: Installer les dépendances
+        run: npm ci
+
+      - name: Construire l'application (Tauri)
+        env:
+          # C'est la ligne magique pour High Sierra
+          MACOSX_DEPLOYMENT_TARGET: "10.13"
+        run: npm run tauri:build -- --target x86_64-apple-darwin
+
+      - name: Renommer et uploader
+        uses: actions/upload-artifact@v4
+        with:
+          name: vkomic-high-sierra-intel
+          path: src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
+          retention-days: 7

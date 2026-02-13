@@ -17,19 +17,19 @@ jobs:
         include:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            name: win-x64-setup
+            name: windows-setup
             ext: .exe
           - os: macos-14
             target: aarch64-apple-darwin
-            name: mac-arm64
+            name: macos-apple-silicon
             ext: .dmg
           - os: macos-15
             target: x86_64-apple-darwin
-            name: mac-x64
+            name: macos-intel
             ext: .dmg
           - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
-            name: linux-x64
+            name: linux
             ext: .AppImage
 
     runs-on: ${{ matrix.os }}
@@ -69,41 +69,55 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Support macOS 10.13 (High Sierra) pour les builds Intel
           MACOSX_DEPLOYMENT_TARGET: ${{ matrix.target == 'x86_64-apple-darwin' && '10.13' || '' }}
         with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'VKomic ${{ github.ref_name }}'
+          releaseBody: |
+            ## 🚀 Architecture 100% Rust + Tauri
+
+            **Taille divisée par 10. Démarrage instantané.**
+
+            Cette version abandonne Electron pour des performances extrêmes et ramène la compatibilité avec les anciens Mac.
+
+            ### 📥 Nouveaux Binaires
+            * 🍎 **macOS Intel** : `vkomic-macos-intel.dmg` (Compatible High Sierra 10.13+)
+            * 🍎 **macOS Silicon** : `vkomic-macos-apple-silicon.dmg` (M1/M2/M3)
+            * 🪟 **Windows** : `vkomic-windows-setup.exe`
+            * 🐧 **Linux** : `vkomic-linux.AppImage`
+          releaseDraft: false
+          prerelease: false
           args: --target ${{ matrix.target }}
 
-      - name: Stage artifacts
-        shell: bash
-        run: |
-          mkdir -p final_assets
-          VERSION=$(node -p "require('./package.json').version")
-          
-          if [ "${{ matrix.os }}" == "windows-latest" ]; then
-            cp src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*.exe final_assets/vkomic-${VERSION}-${{ matrix.name }}.exe || true
-          elif [ "${{ matrix.os }}" == "macos-14" ] || [ "${{ matrix.os }}" == "macos-15" ]; then
-            cp src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg final_assets/vkomic-${VERSION}-${{ matrix.name }}.dmg || true
-          elif [ "${{ matrix.os }}" == "ubuntu-22.04" ]; then
-            cp src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*.AppImage final_assets/vkomic-${VERSION}-${{ matrix.name }}.AppImage || true
-          fi
-
-      - name: Create and Upload Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v1
-        with:
-          name: '${{ github.ref_name }}'
-          body: |
-            ## Notes de mise à jour
-            Correctifs du lecteur PDF : Résolution des erreurs "Format non supporté" et amélioration de la gestion des URIs SAF pour les fichiers avec des caractères spéciaux (parenthèses, accents).
-            Optimisation du stockage : Utilisation d'un fichier temporaire unique et auto-nettoyant pour la lecture afin d'éviter les doublons.
-            Persistance des téléchargements : Correction d'un bug où les téléchargements terminés pouvaient se réinitialiser au démarrage de l'application.
-            Performance : Les builds mobiles ciblent désormais spécifiquement l'architecture arm64-v8a pour plus de rapidité et un APK plus léger.
-
-            ## Binaires
-            Windows : vkomic-1.3.5-win-x64-setup.exe
-            macOS Intel : vkomic-1.3.5-mac-x64.dmg
-            macOS Silicon : vkomic-1.3.5-mac-arm64.dmg (M1/M2/M3)
-            Linux : vkomic-1.3.5-linux-x64.AppImage
-          files: final_assets/*
+      - name: Rename and upload artifact with clear name
+        if: steps.tauri.outputs.artifactPaths != ''
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          # Get version from tag or package.json
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [ -z "$VERSION" ] || [ "$VERSION" = "$GITHUB_REF_NAME" ]; then
+            VERSION=$(node -p "require('./package.json').version")
+          fi
+
+          # Find the built artifact
+          ARTIFACT_PATHS='${{ steps.tauri.outputs.artifactPaths }}'
+          echo "Artifact paths: $ARTIFACT_PATHS"
+
+          # Parse JSON array and rename each file
+          echo "$ARTIFACT_PATHS" | jq -r '.[]' | while read -r filepath; do
+            if [ -f "$filepath" ]; then
+              filename=$(basename "$filepath")
+              ext="${{ matrix.ext }}"
+              newname="vkomic-${VERSION}-${{ matrix.name }}${ext}"
+              newpath="$(dirname "$filepath")/${newname}"
+
+              echo "Renaming: $filename -> $newname"
+              mv "$filepath" "$newpath"
+
+              # Upload to release
+              gh release upload "$GITHUB_REF_NAME" "$newpath" --clobber || true
+            fi
+          done

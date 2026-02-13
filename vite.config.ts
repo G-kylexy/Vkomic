@@ -9,10 +9,6 @@ const __dirname = path.dirname(__filename);
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, ".", "");
-
-  // Check for legacy build flag
-  const isLegacyBuild = process.env.VITE_LEGACY_BUILD === "true";
-
   return {
     base: "./",
     server: {
@@ -21,8 +17,7 @@ export default defineConfig(({ mode }) => {
       strictPort: true,
     },
     build: {
-      // Use es2017 for High Sierra compatibility, otherwise es2022
-      target: isLegacyBuild ? "es2017" : "es2022",
+      target: "es2022",
     },
     plugins: [react()],
     resolve: {

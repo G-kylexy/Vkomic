@@ -83,7 +83,6 @@ dependencies = [
  "async-recursion",
  "futures",
  "futures-util",
- "lazy_static",
  "log",
  "regex",
  "reqwest 0.12.28",
