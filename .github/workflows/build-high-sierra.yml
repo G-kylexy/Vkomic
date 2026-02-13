@@ -1,0 +1,64 @@
+name: Build High Sierra (macOS 10.13)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-high-sierra:
+    runs-on: macos-13
+    name: Build macOS x64 (High Sierra compatible)
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          shared-key: x86_64-apple-darwin-highsierra
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Tauri App
+        env:
+          MACOSX_DEPLOYMENT_TARGET: '10.13'
+        run: npm run tauri:build -- --target x86_64-apple-darwin
+
+      - name: Stage artifacts
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          ARTIFACT_DIR="src-tauri/target/x86_64-apple-darwin/release/bundle"
+
+          mkdir -p final_assets
+
+          find "$ARTIFACT_DIR" -type f \( -name "*.dmg" -o -name "*.app" \) | while read -r filepath; do
+            filename=$(basename "$filepath")
+            ext=".${filename##*.}"
+            newname="vkomic-${VERSION}-mac-x64-highsierra${ext}"
+            echo "Staging: $filename as $newname"
+            cp "$filepath" "final_assets/$newname"
+          done
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: vkomic-mac-x64-highsierra
+          path: final_assets/*
+          retention-days: 7

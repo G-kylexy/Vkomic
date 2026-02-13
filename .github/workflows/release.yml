@@ -23,7 +23,7 @@ jobs:
             target: aarch64-apple-darwin
             name: mac-arm64
             ext: .dmg
-          - os: macos-15
+          - os: macos-13
             target: x86_64-apple-darwin
             name: mac-x64
             ext: .dmg

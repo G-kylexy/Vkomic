@@ -419,88 +419,163 @@ impl VkApi {
     }
 
     async fn fetch_all_comments(&self, group_id: &str, topic_id: &str) -> Result<Vec<Value>> {
-        let mut all_items = Vec::new();
-        let mut offset = 0;
-        let batch_size = 10; // Réduit de 25 à 10 pour éviter les timeouts VK (1000 items par appel)
+        let batch_size = 10; // 10 API calls per execute = 1000 items per batch
+        let gid = group_id.replace('-', "");
 
-        info!("Starting fetch_all_comments for topic {} (offset start: {})", topic_id, offset);
+        info!("Starting fetch_all_comments for topic {}", topic_id);
 
-        loop {
-            // VKScript: fetch up to 1000 items (10 * 100)
-            let code = format!(r#"
-                var g = {};
-                var t = {};
-                var off = {};
-                var i = 0;
-                var items = [];
-                while (i < {}) {{
-                    var r = API.board.getComments({{"group_id":g, "topic_id":t, "count":100, "offset":off}});
-                    if (r.items) {{
-                        items = items + r.items;
-                    }}
-                    off = off + 100;
-                    if (!r.items || r.items.length < 100) {{ i = 30; }}
-                    i = i + 1;
+        // --- Step 1: First call to get total count + first 1000 items ---
+        let first_code = format!(r#"
+            var g = {};
+            var t = {};
+            var off = 0;
+            var i = 0;
+            var items = [];
+            while (i < {}) {{
+                var r = API.board.getComments({{"group_id":g, "topic_id":t, "count":100, "offset":off}});
+                if (r.items) {{
+                    items = items + r.items;
                 }}
-                return {{ "items": items, "next_offset": off, "count": items.length }};
-            "#, group_id.replace('-', ""), topic_id, offset, batch_size);
+                off = off + 100;
+                if (!r.items || r.items.length < 100) {{ i = 30; }}
+                i = i + 1;
+            }}
+            return {{ "items": items, "next_offset": off, "total": API.board.getComments({{"group_id":g, "topic_id":t, "count":1}}).count }};
+        "#, gid, topic_id, batch_size);
 
-            let url = "https://api.vk.com/method/execute";
-            let params = [
-                ("access_token", self.token.as_str()),
-                ("v", "5.131"),
-                ("code", code.as_str()),
-            ];
+        let first_res = self.execute_with_retry(&first_code).await?;
+        let response = first_res.get("response").ok_or_else(|| anyhow::anyhow!("No response body"))?;
 
-            // Ajout d'un retry simple
-            let mut attempts = 0;
-            let res = loop {
-                match self.client.post(url).form(&params).send().await {
-                    Ok(r) => match r.json::<Value>().await {
-                        Ok(json) => break Ok(json),
-                        Err(e) => {
-                            if attempts >= 3 { break Err(anyhow::anyhow!("JSON parse error: {}", e)); }
-                        }
-                    },
-                    Err(e) => {
-                        if attempts >= 3 { break Err(anyhow::anyhow!("Request error: {}", e)); }
-                    }
-                }
-                attempts += 1;
-                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-            }?;
+        let first_items = response.get("items").and_then(|i| i.as_array())
+            .ok_or_else(|| anyhow::anyhow!("No items in first response"))?;
+        
+        let mut all_items: Vec<Value> = first_items.iter().cloned().collect();
+        let total_count = response.get("total").and_then(|t| t.as_u64()).unwrap_or(all_items.len() as u64) as usize;
 
-            if let Some(err) = res.get("error") {
-                let error_msg = format!("VK API error in execute: {}", err);
-                log::error!("{}", error_msg);
-                return Err(anyhow::anyhow!(error_msg));
+        info!("First batch: {} items. Total: {}", all_items.len(), total_count);
+
+        // --- Step 2: If more items remain, fire ALL remaining batches in parallel ---
+        if all_items.len() < total_count {
+            let items_per_batch = batch_size * 100; // 1000
+            let mut remaining_offsets: Vec<usize> = Vec::new();
+            let mut off = all_items.len();
+            while off < total_count {
+                remaining_offsets.push(off);
+                off += items_per_batch;
             }
 
-            let response = res.get("response").ok_or_else(|| anyhow::anyhow!("No response body"))?;
-            
-            if let Some(items) = response.get("items").and_then(|i| i.as_array()) {
-                let count = items.len();
-                all_items.extend(items.iter().cloned());
-                
-                info!("Fetched {} items (Total: {})", count, all_items.len());
+            info!("Firing {} parallel batches for remaining {} items", remaining_offsets.len(), total_count - all_items.len());
 
-                // If we got less than expected (batch_size * 100), we reached the end
-                if count < (batch_size * 100) {
-                    break;
+            let client = self.client.clone();
+            let token = self.token.clone();
+            let gid_owned = gid.clone();
+            let tid_owned = topic_id.to_string();
+
+            let handles: Vec<_> = remaining_offsets.into_iter().enumerate().map(|(batch_idx, batch_offset)| {
+                let cli = client.clone();
+                let tok = token.clone();
+                let g = gid_owned.clone();
+                let t = tid_owned.clone();
+
+                tokio::spawn(async move {
+                    let code = format!(r#"
+                        var g = {};
+                        var t = {};
+                        var off = {};
+                        var i = 0;
+                        var items = [];
+                        while (i < {}) {{
+                            var r = API.board.getComments({{"group_id":g, "topic_id":t, "count":100, "offset":off}});
+                            if (r.items) {{
+                                items = items + r.items;
+                            }}
+                            off = off + 100;
+                            if (!r.items || r.items.length < 100) {{ i = 30; }}
+                            i = i + 1;
+                        }}
+                        return {{ "items": items, "next_offset": off, "count": items.length }};
+                    "#, g, t, batch_offset, 10usize);
+
+                    let url = "https://api.vk.com/method/execute";
+                    let params = [
+                        ("access_token", tok),
+                        ("v", "5.131".to_string()),
+                        ("code", code),
+                    ];
+
+                    let mut attempts = 0;
+                    let res = loop {
+                        match cli.post(url).form(&params).send().await {
+                            Ok(r) => match r.json::<Value>().await {
+                                Ok(json) => break Ok(json),
+                                Err(e) => { if attempts >= 3 { break Err(anyhow::anyhow!("JSON err: {}", e)); } }
+                            },
+                            Err(e) => { if attempts >= 3 { break Err(anyhow::anyhow!("Net err: {}", e)); } }
+                        }
+                        attempts += 1;
+                        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                    };
+
+                    match res {
+                        Ok(val) => {
+                            if let Some(resp) = val.get("response") {
+                                if let Some(items) = resp.get("items").and_then(|i| i.as_array()) {
+                                    return Ok((batch_idx, items.clone()));
+                                }
+                            }
+                            Ok((batch_idx, Vec::new()))
+                        },
+                        Err(e) => Err(e)
+                    }
+                })
+            }).collect();
+
+            let results = futures::future::join_all(handles).await;
+
+            // Collect in order
+            let mut ordered: Vec<(usize, Vec<Value>)> = Vec::new();
+            for result in results {
+                match result {
+                    Ok(Ok((idx, items))) => ordered.push((idx, items)),
+                    Ok(Err(e)) => log::error!("Batch error: {}", e),
+                    Err(e) => log::error!("Join error: {}", e),
                 }
-                
-                // Continue from next offset
-                if let Some(next) = response.get("next_offset").and_then(|o| o.as_u64()) {
-                    offset = next as i32;
-                } else {
-                    offset += (batch_size as i32) * 100;
-                }
-            } else {
-                break;
+            }
+            ordered.sort_by_key(|(idx, _)| *idx);
+            for (_, items) in ordered {
+                all_items.extend(items);
             }
         }
 
+        info!("fetch_all_comments done: {} items total", all_items.len());
         Ok(all_items)
+    }
+
+    /// Helper: execute VKScript with retry
+    async fn execute_with_retry(&self, code: &str) -> Result<Value> {
+        let url = "https://api.vk.com/method/execute";
+        let params = [
+            ("access_token", self.token.as_str()),
+            ("v", "5.131"),
+            ("code", code),
+        ];
+        let mut attempts = 0;
+        loop {
+            match self.client.post(url).form(&params).send().await {
+                Ok(r) => match r.json::<Value>().await {
+                    Ok(json) => {
+                        if let Some(err) = json.get("error") {
+                            return Err(anyhow::anyhow!("VK API error: {}", err));
+                        }
+                        return Ok(json);
+                    },
+                    Err(e) => { if attempts >= 3 { return Err(anyhow::anyhow!("JSON parse error: {}", e)); } }
+                },
+                Err(e) => { if attempts >= 3 { return Err(anyhow::anyhow!("Request error: {}", e)); } }
+            }
+            attempts += 1;
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
     }
 }
 
