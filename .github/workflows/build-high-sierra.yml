@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   build-high-sierra:
-    runs-on: macos-14
+    runs-on: macos-13
     name: Build macOS x64 (High Sierra compatible)
 
     steps:
