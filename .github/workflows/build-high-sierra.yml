@@ -3,12 +3,18 @@ name: Build High Sierra (macOS 10.13)
 on:
   workflow_dispatch:
 
+# 1. Variable globale pour tout le workflow pour forcer la compatibilité dès le départ
+env:
+  MACOSX_DEPLOYMENT_TARGET: '10.13'
+
 permissions:
   contents: read
 
 jobs:
   build-high-sierra:
-    runs-on: macos-13
+    # 2. Utilisation de macos-12 (Monterey) pour le support SDK legacy
+    # C'est un runner Intel natif, essentiel pour éviter les fuites de symboles ARM/Catalina+
+    runs-on: macos-12
     name: Build macOS x64 (High Sierra compatible)
 
     steps:
@@ -36,8 +42,15 @@ jobs:
         run: npm ci
 
       - name: Build Tauri App
+        # Le MACOSX_DEPLOYMENT_TARGET est déjà dans l'env global
+        # RUSTFLAGS: force le weak-linking de Foundation et CFNetwork
+        # pour que les symboles introduits après 10.13 (comme _NSHTTPCookieSameSiteLax)
+        # soient NULL au runtime au lieu de crasher au lancement (dyld Symbol missing)
         env:
-          MACOSX_DEPLOYMENT_TARGET: '10.13'
+          RUSTFLAGS: >-
+            -C link-arg=-Wl,-weak_framework,Foundation
+            -C link-arg=-Wl,-weak_framework,CFNetwork
+            -C link-arg=-Wl,-weak_framework,Security
         run: npm run tauri:build -- --target x86_64-apple-darwin
 
       - name: Stage artifacts
