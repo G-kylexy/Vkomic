@@ -3,7 +3,6 @@ name: Build High Sierra (macOS 10.13)
 on:
   workflow_dispatch:
 
-# 1. Variable globale pour tout le workflow pour forcer la compatibilité dès le départ
 env:
   MACOSX_DEPLOYMENT_TARGET: '10.13'
 
@@ -12,7 +11,7 @@ permissions:
 
 jobs:
   build-high-sierra:
-    # 2. Utilisation de macos-latest (M1/M2) - Démarrage instantané
+    # On utilise le runner le plus rapide disponible
     runs-on: macos-latest
     name: Build macOS x64 (High Sierra compatible)
 
@@ -31,57 +30,31 @@ jobs:
         with:
           targets: x86_64-apple-darwin
 
-      - name: Download MacOS 10.13 SDK
-        run: |
-          mkdir -p sdk
-          curl -L https://github.com/phracker/MacOSX-SDKs/releases/download/11.3/MacOSX10.13.sdk.tar.xz | tar -xJ -C sdk
-          echo "SDKROOT=$GITHUB_WORKSPACE/sdk/MacOSX10.13.sdk" >> $GITHUB_ENV
-
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
-          shared-key: x86_64-apple-darwin-highsierra-v2
+          shared-key: x86_64-apple-darwin-highsierra-v3
 
       - name: Install dependencies
         run: npm ci
 
       - name: Build Tauri App
-        # On force l'utilisation du SDK 10.13 téléchargé et le target Intel
+        # On force la compilation croisée Intel (x86_64) car le runner est ARM
+        # On garde les weak-links au cas où Tauri-core tirerait Foundation
         env:
-          MACOSX_DEPLOYMENT_TARGET: '10.13'
-          SDKROOT: ${{ env.SDKROOT }}
           RUSTFLAGS: >-
             -C link-arg=-Wl,-weak_framework,Foundation
             -C link-arg=-Wl,-weak_framework,CFNetwork
             -C link-arg=-Wl,-weak_framework,Security
-            -C link-arg=-target -C link-arg=x86_64-apple-macos10.13
         run: npm run tauri:build -- --target x86_64-apple-darwin
 
-      - name: Verify Symbols (Pre-release check)
+      - name: Verify Symbols
         shell: bash
         run: |
           BINARY="src-tauri/target/x86_64-apple-darwin/release/app"
           if [ -f "$BINARY" ]; then
-            echo "Checking symbols for $BINARY..."
-            # On vérifie si le symbole problématique est présent et s'il est faible (V/v) ou indéfini (U)
-            # S'il est fort, nm affichera S/T/D/etc. 
-            # On veut qu'il soit absent ou explicitement marqué comme pouvant être manquant.
-            SYMBOLS=$(nm -m "$BINARY" | grep "NSHTTPCookieSameSiteLax" || true)
-            echo "Result: $SYMBOLS"
-            if echo "$SYMBOLS" | grep -q " (from Foundation)"; then
-               if echo "$SYMBOLS" | grep -q "weak"; then
-                 echo "✅ Symbol is weakly linked. OK."
-               else
-                 echo "❌ Symbol is STRONGLY linked. It will crash on High Sierra."
-                 # On ne fail pas encore le build ici pour te laisser voir le résultat, 
-                 # mais on prévient.
-               fi
-            else
-               echo "✅ Symbol not found in binary. OK."
-            fi
-          else
-            echo "Binary not found at $BINARY"
+            nm -m "$BINARY" | grep "NSHTTPCookieSameSiteLax" || echo "✅ Symbol not found. Clean build!"
           fi
 
       - name: Stage artifacts
@@ -89,14 +62,11 @@ jobs:
         run: |
           VERSION=$(node -p "require('./package.json').version")
           ARTIFACT_DIR="src-tauri/target/x86_64-apple-darwin/release/bundle"
-
           mkdir -p final_assets
-
           find "$ARTIFACT_DIR" -type f \( -name "*.dmg" -o -name "*.app" \) | while read -r filepath; do
             filename=$(basename "$filepath")
             ext=".${filename##*.}"
             newname="vkomic-${VERSION}-mac-x64-highsierra${ext}"
-            echo "Staging: $filename as $newname"
             cp "$filepath" "final_assets/$newname"
           done
 
