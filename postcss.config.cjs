@@ -10,6 +10,7 @@ module.exports = {
         'postcss-preset-env': {
           stage: 2,
           features: {
+            'gap-properties': true,
             'oklab-function': true,
             'color-mix': true,
             'nesting-rules': true,
