@@ -12,9 +12,8 @@ permissions:
 
 jobs:
   build-high-sierra:
-    # 2. Utilisation de macos-12 (Monterey) pour le support SDK legacy
-    # C'est un runner Intel natif, essentiel pour éviter les fuites de symboles ARM/Catalina+
-    runs-on: macos-12
+    # 2. Utilisation de macos-13 (Intel) - Moins de queue que macos-12
+    runs-on: macos-13
     name: Build macOS x64 (High Sierra compatible)
 
     steps:
@@ -42,16 +41,41 @@ jobs:
         run: npm ci
 
       - name: Build Tauri App
-        # Le MACOSX_DEPLOYMENT_TARGET est déjà dans l'env global
-        # RUSTFLAGS: force le weak-linking de Foundation et CFNetwork
-        # pour que les symboles introduits après 10.13 (comme _NSHTTPCookieSameSiteLax)
-        # soient NULL au runtime au lieu de crasher au lancement (dyld Symbol missing)
+        # RUSTFLAGS: forçage du weak-linking
         env:
+          MACOSX_DEPLOYMENT_TARGET: '10.13'
           RUSTFLAGS: >-
             -C link-arg=-Wl,-weak_framework,Foundation
             -C link-arg=-Wl,-weak_framework,CFNetwork
             -C link-arg=-Wl,-weak_framework,Security
+            -C link-arg=-Wl,-weak_framework,CoreFoundation
         run: npm run tauri:build -- --target x86_64-apple-darwin
+
+      - name: Verify Symbols (Pre-release check)
+        shell: bash
+        run: |
+          BINARY="src-tauri/target/x86_64-apple-darwin/release/app"
+          if [ -f "$BINARY" ]; then
+            echo "Checking symbols for $BINARY..."
+            # On vérifie si le symbole problématique est présent et s'il est faible (V/v) ou indéfini (U)
+            # S'il est fort, nm affichera S/T/D/etc. 
+            # On veut qu'il soit absent ou explicitement marqué comme pouvant être manquant.
+            SYMBOLS=$(nm -m "$BINARY" | grep "NSHTTPCookieSameSiteLax" || true)
+            echo "Result: $SYMBOLS"
+            if echo "$SYMBOLS" | grep -q " (from Foundation)"; then
+               if echo "$SYMBOLS" | grep -q "weak"; then
+                 echo "✅ Symbol is weakly linked. OK."
+               else
+                 echo "❌ Symbol is STRONGLY linked. It will crash on High Sierra."
+                 # On ne fail pas encore le build ici pour te laisser voir le résultat, 
+                 # mais on prévient.
+               fi
+            else
+               echo "✅ Symbol not found in binary. OK."
+            fi
+          else
+            echo "Binary not found at $BINARY"
+          fi
 
       - name: Stage artifacts
         shell: bash
