@@ -514,7 +514,7 @@ const BrowserView: React.FC<BrowserViewProps> = ({
     }
   };
 
-  const navigateTo = async (node: VkNode) => {
+  const navigateTo = React.useCallback(async (node: VkNode) => {
     // Pour les fichiers, on lance le téléchargement SANS toucher à la recherche
     if (node.type === "file" && node.url) {
       addDownload(node);
@@ -576,7 +576,7 @@ const BrowserView: React.FC<BrowserViewProps> = ({
     } else {
       setNavPath((prev) => [...prev, node]);
     }
-  };
+  }, [addDownload, isSearching, setSearchQuery, vkToken, syncedData, setSyncedData, setNavPath]);
 
   const navigateUp = (index?: number) => {
     setNavPath((prev) => {
@@ -611,7 +611,7 @@ const BrowserView: React.FC<BrowserViewProps> = ({
     return [first, { isEllipsis: true }, secondLast, last];
   })();
 
-  const handleGlobalAction = () => {
+  const handleGlobalAction = React.useCallback(() => {
     if (hasActiveDownloads) {
       activeDownloadsInView.forEach((node) => cancelDownload(node.id));
     } else {
@@ -625,7 +625,7 @@ const BrowserView: React.FC<BrowserViewProps> = ({
         if (!d || d.status !== "completed") addDownload(node, subFolder);
       });
     }
-  };
+  }, [hasActiveDownloads, activeDownloadsInView, cancelDownload, currentFolder, language, fileNodes, downloadsById, addDownload]);
 
   const openVkSearch = () => {
     const url = `https://vk.com/board203785966?act=search&q=${encodeURIComponent(searchQuery)}`;
