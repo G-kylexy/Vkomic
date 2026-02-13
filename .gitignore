@@ -1,51 +1,34 @@
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
-
 # Dependencies
-node_modules
+node_modules/
 
 # Build outputs
-dist
-dist-ssr
-public
-*.local
-release
-out
-build
+/dist/
+/target/
+/build/
+/bin/
 
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-!.vscode/settings.json
-.idea
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
 .DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-
-# OS files
-desktop.ini
 Thumbs.db
+desktop.ini
 
-# Mobile (unused)
-mobile
+# Android/iOS Build artifacts
+.expo/
 android/
 ios/
-.expo
-eas.json
-app.json
 
-# Temp files
-.claude
-tmpclaude-*
+# Local env
+.env*.local
 
-# Tauri build cache (optional, can be large)
-src-tauri/target
+# Temp
+.claude/
+tmp/
+*.tmp
+build_output*.txt
+build_tail*.txt

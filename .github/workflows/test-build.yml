@@ -6,10 +6,10 @@ on:
       platform:
         description: 'Platform to build'
         required: true
-        default: 'macos-intel'
+        default: 'all'
         type: choice
         options:
-          - windows-setup
+          - windows
           - macos-intel
           - macos-apple-silicon
           - linux
@@ -26,16 +26,20 @@ jobs:
         include:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            name: windows-setup
+            name: win-x64-setup
+            ext: .exe
           - os: macos-15
             target: x86_64-apple-darwin
-            name: macos-intel
+            name: mac-x64
+            ext: .dmg
           - os: macos-14
             target: aarch64-apple-darwin
-            name: macos-apple-silicon
+            name: mac-arm64
+            ext: .dmg
           - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
-            name: linux
+            name: linux-x64
+            ext: .AppImage
 
     runs-on: ${{ matrix.os }}
     name: Build ${{ matrix.name }}
@@ -45,7 +49,7 @@ jobs:
         id: check
         shell: bash
         run: |
-          if [[ "${{ inputs.platform }}" == "all" ]] || [[ "${{ inputs.platform }}" == "${{ matrix.name }}" ]]; then
+          if [[ "${{ github.event.inputs.platform }}" == "all" ]] || [[ "${{ github.event.inputs.platform }}" == "${{ matrix.name }}" ]]; then
             echo "should_run=true" >> $GITHUB_OUTPUT
           else
             echo "should_run=false" >> $GITHUB_OUTPUT
@@ -87,23 +91,36 @@ jobs:
 
       - name: Build Tauri App
         if: steps.check.outputs.should_run == 'true'
+        id: tauri
         env:
           # Support macOS 10.13 (High Sierra) pour les builds Intel
           MACOSX_DEPLOYMENT_TARGET: ${{ matrix.target == 'x86_64-apple-darwin' && '10.13' || '' }}
         run: npm run tauri:build -- --target ${{ matrix.target }}
+
+      - name: Rename and Stage artifacts
+        if: steps.check.outputs.should_run == 'true' && steps.tauri.conclusion == 'success'
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          ARTIFACT_DIR="src-tauri/target/${{ matrix.target }}/release/bundle"
+          
+          mkdir -p final_assets
+          
+          find "$ARTIFACT_DIR" -type f \( -name "*.dmg" -o -name "*.exe" -o -name "*.AppImage" -o -name "*.deb" -o -name "*.msi" \) | while read -r filepath; do
+            filename=$(basename "$filepath")
+            
+            # Extract actual extension
+            ext=".${filename##*.}"
+            
+            newname="vkomic-${VERSION}-${{ matrix.name }}${ext}"
+            echo "Staging: $filename as $newname"
+            cp "$filepath" "final_assets/$newname"
+          done
 
       - name: Upload artifacts
         if: steps.check.outputs.should_run == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: vkomic-${{ matrix.name }}
-          path: |
-            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.dmg
-            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.exe
-            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.AppImage
-            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.deb
-          retention-days: 7
-
-      - name: Skip message
-        if: steps.check.outputs.should_run == 'false'
-        run: 'echo "Skipping ${{ matrix.name }} build (requested platform: ${{ inputs.platform }})"'
+          path: final_assets/*
+          retention-days: 3

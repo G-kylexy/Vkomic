@@ -1,7 +1,7 @@
 {
   "name": "vkomic",
   "private": true,
-  "version": "1.3.0",
+  "version": "1.3.5",
   "type": "module",
   "description": "Lecteur et téléchargeur de comics VK",
   "author": "G-kylexy",
@@ -16,6 +16,7 @@
     "preview": "vite preview",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
+    "build:legacy": "VITE_LEGACY_BUILD=true npm run tauri:build",
     "tauri:android": "tauri android dev",
     "mobile:android": "tauri android build"
   },

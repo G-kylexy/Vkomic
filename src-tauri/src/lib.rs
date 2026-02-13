@@ -28,7 +28,7 @@ async fn vk_fetch_root_index(token: String, group_id: String, topic_id: String) 
 #[tauri::command]
 async fn vk_fetch_full_index(token: String, group_id: String, topic_id: String) -> Result<Vec<VkNode>, String> {
     let api = VkApi::new(token);
-    api.fetch_folder_tree_recursive(&group_id, &topic_id, 3).await.map_err(|e| e.to_string())
+    api.fetch_folder_tree_recursive(&group_id, &topic_id, 4).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]

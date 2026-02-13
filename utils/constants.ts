@@ -45,3 +45,24 @@ export const UI = {
     DOWNLOAD_THROTTLE_MS: 200,
     PING_INTERVAL_MS: 3000,
 } as const;
+
+// Search and display limits
+export const LIMITS = {
+    MAX_SEARCH_RESULTS: 100,
+    MAX_BREADCRUMBS: 4,
+    ITEMS_PER_BATCH: 50,
+} as const;
+
+// Download and sync configuration
+export const SYNC_CONFIG = {
+    DOWNLOAD_THROTTLE_MS: 200,
+    PERSISTENCE_THROTTLE_MS: 1000,
+    MAX_CONSECUTIVE_FAILURES: 5,
+    MAX_BACKOFF_MS: 60000,
+} as const;
+
+// Update check configuration
+export const UPDATE_CONFIG = {
+    CHECK_DELAY_MS: 3000,
+    CHECK_INTERVAL_MINUTES: 30,
+} as const;

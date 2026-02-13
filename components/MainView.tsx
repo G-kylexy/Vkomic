@@ -18,7 +18,6 @@ interface MainViewProps {
   vkTopicId: string;
   setVkTopicId: (topicId: string) => void;
   syncedData: VkNode[] | null;
-  indexedCount?: number;
   setSyncedData: (data: VkNode[] | null) => void;
   hasFullSynced: boolean;
   setHasFullSynced: (hasSynced: boolean) => void;
@@ -48,7 +47,6 @@ const MainView: React.FC<MainViewProps> = ({
   vkTopicId,
   setVkTopicId,
   syncedData,
-  indexedCount,
   setSyncedData,
   hasFullSynced,
   setHasFullSynced,
@@ -108,7 +106,7 @@ const MainView: React.FC<MainViewProps> = ({
                   retryDownload={retryDownload}
                   downloadPath={downloadPath}
                   clearDownloads={clearDownloads}
-                  indexedCount={indexedCount}
+                  syncedData={syncedData}
                 />
               );
             case "library":
