@@ -12,9 +12,9 @@ permissions:
 
 jobs:
   build-high-sierra:
-    # 2. Utilisation de macos-12 (Monterey) pour le support SDK legacy
-    # C'est un runner Intel natif, essentiel pour éviter les fuites de symboles ARM/Catalina+
-    runs-on: macos-12
+    # 2. Utilisation de macos-13 (Ventura)
+    # Plus disponible que macos-12 sur GitHub Actions
+    runs-on: macos-13
     name: Build macOS x64 (High Sierra compatible)
 
     steps:
