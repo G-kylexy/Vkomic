@@ -419,87 +419,102 @@ impl VkApi {
     }
 
     async fn fetch_all_comments(&self, group_id: &str, topic_id: &str) -> Result<Vec<Value>> {
-        let mut all_items = Vec::new();
-        let mut offset = 0;
-        let batch_size = 10; // Réduit de 25 à 10 pour éviter les timeouts VK (1000 items par appel)
+        let gid = group_id.replace('-', "");
+        
+        // 1. Fetch first batch (Head) to get total count
+        info!("Fetching head for topic {}...", topic_id);
+        let head_url = format!("https://api.vk.com/method/board.getComments?access_token={}&v=5.131&group_id={}&topic_id={}&count=100&extended=1", 
+            self.token, gid, topic_id);
+        
+        let head_res = self.client.get(head_url).send().await?.json::<Value>().await?;
+        if let Some(err) = head_res.get("error") {
+            return Err(anyhow::anyhow!("VK API error (head): {}", err));
+        }
 
-        info!("Starting fetch_all_comments for topic {} (offset start: {})", topic_id, offset);
+        let response = head_res.get("response").ok_or_else(|| anyhow::anyhow!("No response body in head"))?;
+        let total_count = response.get("count").and_then(|c| c.as_u64()).unwrap_or(0);
+        let mut all_items = response.get("items").and_then(|i| i.as_array()).cloned().unwrap_or_default();
 
-        loop {
-            // VKScript: fetch up to 1000 items (10 * 100)
-            let code = format!(r#"
-                var g = {};
-                var t = {};
-                var off = {};
-                var i = 0;
-                var items = [];
-                while (i < {}) {{
-                    var r = API.board.getComments({{"group_id":g, "topic_id":t, "count":100, "offset":off}});
-                    if (r.items) {{
-                        items = items + r.items;
-                    }}
-                    off = off + 100;
-                    if (!r.items || r.items.length < 100) {{ i = 30; }}
-                    i = i + 1;
-                }}
-                return {{ "items": items, "next_offset": off, "count": items.length }};
-            "#, group_id.replace('-', ""), topic_id, offset, batch_size);
+        if total_count <= 100 || all_items.is_empty() {
+            info!("Fetched {} items (all) for topic {}", all_items.len(), topic_id);
+            return Ok(all_items);
+        }
 
-            let url = "https://api.vk.com/method/execute";
-            let params = [
-                ("access_token", self.token.as_str()),
-                ("v", "5.131"),
-                ("code", code.as_str()),
-            ];
+        info!("Topic {} has {} items total. Fetching remaining in parallel...", topic_id, total_count);
 
-            // Ajout d'un retry simple
-            let mut attempts = 0;
-            let res = loop {
-                match self.client.post(url).form(&params).send().await {
-                    Ok(r) => match r.json::<Value>().await {
-                        Ok(json) => break Ok(json),
-                        Err(e) => {
-                            if attempts >= 3 { break Err(anyhow::anyhow!("JSON parse error: {}", e)); }
-                        }
-                    },
-                    Err(e) => {
-                        if attempts >= 3 { break Err(anyhow::anyhow!("Request error: {}", e)); }
-                    }
-                }
-                attempts += 1;
-                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-            }?;
+        // 2. Prepare offsets for remaining items
+        let mut offsets = Vec::new();
+        let mut current_offset = 100;
+        while current_offset < total_count {
+            offsets.push(current_offset);
+            current_offset += 100;
+        }
 
-            if let Some(err) = res.get("error") {
-                let error_msg = format!("VK API error in execute: {}", err);
-                log::error!("{}", error_msg);
-                return Err(anyhow::anyhow!(error_msg));
-            }
+        // 3. Batch offsets into execute calls (10 offsets per execute = 1000 items)
+        let batch_size = 10;
+        let chunks: Vec<Vec<u64>> = offsets.chunks(batch_size).map(|c| c.to_vec()).collect();
+        
+        // 4. Run execute calls in parallel with a semaphore
+        let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(5)); 
+        let client = self.client.clone();
+        let token = self.token.clone();
+        let tid = topic_id.to_string();
 
-            let response = res.get("response").ok_or_else(|| anyhow::anyhow!("No response body"))?;
+        let mut handles = Vec::new();
+        for chunk in chunks {
+            let sem = semaphore.clone();
+            let cli = client.clone();
+            let tok = token.clone();
+            let g = gid.clone();
+            let t = tid.clone();
             
-            if let Some(items) = response.get("items").and_then(|i| i.as_array()) {
-                let count = items.len();
-                all_items.extend(items.iter().cloned());
+            handles.push(tokio::spawn(async move {
+                let _permit = sem.acquire().await.unwrap();
                 
-                info!("Fetched {} items (Total: {})", count, all_items.len());
+                let calls: Vec<String> = chunk.iter().map(|&off| {
+                    format!("API.board.getComments({{\"group_id\":{},\"topic_id\":{},\"count\":100,\"offset\":{}}})", g, t, off)
+                }).collect();
+                
+                let code = format!("return [{}];", calls.join(","));
+                
+                let url = "https://api.vk.com/method/execute";
+                let params = [
+                    ("access_token", tok),
+                    ("v", "5.131".to_string()),
+                    ("code", code),
+                ];
+                
+                // Retry logic for each batch
+                let mut attempts = 0;
+                while attempts < 3 {
+                    if let Ok(res) = cli.post(url).form(&params).send().await {
+                        if let Ok(json) = res.json::<Value>().await {
+                            if let Some(resp_list) = json.get("response").and_then(|r| r.as_array()) {
+                                let mut chunk_items = Vec::new();
+                                for r in resp_list {
+                                    if let Some(items) = r.get("items").and_then(|i| i.as_array()) {
+                                        chunk_items.extend(items.iter().cloned());
+                                    }
+                                }
+                                return Some(chunk_items);
+                            }
+                        }
+                    }
+                    attempts += 1;
+                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                }
+                None
+            }));
+        }
 
-                // If we got less than expected (batch_size * 100), we reached the end
-                if count < (batch_size * 100) {
-                    break;
-                }
-                
-                // Continue from next offset
-                if let Some(next) = response.get("next_offset").and_then(|o| o.as_u64()) {
-                    offset = next as i32;
-                } else {
-                    offset += (batch_size as i32) * 100;
-                }
-            } else {
-                break;
+        let results = futures::future::join_all(handles).await;
+        for res in results {
+            if let Ok(Some(items)) = res {
+                all_items.extend(items);
             }
         }
 
+        info!("Fetch complete for topic {}: {} items total", topic_id, all_items.len());
         Ok(all_items)
     }
 }
