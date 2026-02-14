@@ -19,12 +19,8 @@ Rendez-vous sur la dernière release : https://github.com/G-kylexy/vkomic/releas
 - Windows : téléchargez l'`.exe` ou décompressez le `.zip` et lancez Vkomic.
 - macOS : ouvrez le `.dmg` puis glissez `Vkomic.app` dans `Applications` (ou utilisez le `.zip`).
 - Linux (AppImage) : `chmod +x Vkomic-*.AppImage && ./Vkomic-*.AppImage`.
-- Linux (archive) : décompressez puis lancez le binaire fourni.
 - Android : téléchargez le `.apk`, ouvrez-le et autorisez l'installation depuis les sources inconnues.
 
-## Mises à jour automatiques
-
-L'application utilise le système de mise à jour intégré de Tauri pour vérifier automatiquement les nouvelles versions disponibles sur GitHub Releases.
 
 ## Construire depuis les sources (optionnel)
 
@@ -49,22 +45,3 @@ L'application utilise le système de mise à jour intégré de Tauri pour vérif
    ```bash
    npm run tauri:build
    ```
-
-5. **Build Android :**
-   ```bash
-   npm run mobile:android
-   ```
-
-## Architecture
-
-- **Frontend :** React + TypeScript + Vite + TailwindCSS
-- **Backend :** Rust + Tauri
-- **Fonctionnalités :**
-  - API VK intégrée (lecture de topics, téléchargement de documents)
-  - Gestionnaire de téléchargements avec reprise
-  - Interface réactive et performante
-  - Support multi-plateforme (Windows, macOS, Linux, Android)
-
-## Licence
-
-MIT
