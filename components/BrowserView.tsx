@@ -377,8 +377,28 @@ const BrowserView: React.FC<BrowserViewProps> = ({
   const currentNodes = currentFolder ? currentFolder.children : syncedData;
   const isSearching = searchQuery.trim().length > 0;
 
+  // Cache for search index to avoid rebuilding when toggling search
+  const indexCache = React.useRef<{
+    data: VkNode[] | null;
+    index: Array<{ node: VkNode; normalizedTitle: string }>;
+  }>({
+    data: null,
+    index: [],
+  });
+
   const searchIndex = React.useMemo(() => {
+    // If we have valid cached data for current syncedData
+    if (
+      syncedData &&
+      indexCache.current.data === syncedData &&
+      indexCache.current.index.length > 0
+    ) {
+      // Return cached index if searching, otherwise empty (lazy build kept in ref)
+      return isSearching ? indexCache.current.index : [];
+    }
+
     if (!syncedData || !isSearching) return [];
+
     const index: Array<{ node: VkNode; normalizedTitle: string }> = [];
     const stack: VkNode[] = [...syncedData];
 
@@ -393,6 +413,9 @@ const BrowserView: React.FC<BrowserViewProps> = ({
         }
       }
     }
+
+    // Update cache
+    indexCache.current = { data: syncedData, index };
 
     return index;
   }, [syncedData, isSearching]);
