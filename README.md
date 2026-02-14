@@ -22,7 +22,7 @@ Rendez-vous sur la dernière release : https://github.com/G-kylexy/vkomic/releas
 - Android : téléchargez le `.apk`, ouvrez-le et autorisez l'installation depuis les sources inconnues.
 
 
-## Construire depuis les sources (optionnel)
+## Construire depuis les sources 
 
 **Prérequis :** Node.js, npm, Rust
 
