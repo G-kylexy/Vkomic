@@ -514,7 +514,8 @@ const BrowserView: React.FC<BrowserViewProps> = ({
     }
   };
 
-  const navigateTo = async (node: VkNode) => {
+  // Optimization: Memoize navigation handler to prevent re-renders of list items during download progress updates
+  const navigateTo = React.useCallback(async (node: VkNode) => {
     // Pour les fichiers, on lance le téléchargement SANS toucher à la recherche
     if (node.type === "file" && node.url) {
       addDownload(node);
@@ -576,18 +577,18 @@ const BrowserView: React.FC<BrowserViewProps> = ({
     } else {
       setNavPath((prev) => [...prev, node]);
     }
-  };
+  }, [addDownload, isSearching, setSearchQuery, vkToken, syncedData, setSyncedData]);
 
-  const navigateUp = (index?: number) => {
+  const navigateUp = React.useCallback((index?: number) => {
     setNavPath((prev) => {
       if (index === undefined) {
         return prev.slice(0, -1);
       }
       return prev.slice(0, index + 1);
     });
-  };
+  }, []);
 
-  const clearNav = () => setNavPath([]);
+  const clearNav = React.useCallback(() => setNavPath([]), []);
 
   const MAX_BREADCRUMBS = 4;
   const breadcrumbs: {
