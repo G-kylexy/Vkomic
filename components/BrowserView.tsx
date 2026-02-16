@@ -514,80 +514,85 @@ const BrowserView: React.FC<BrowserViewProps> = ({
     }
   };
 
-  const navigateTo = async (node: VkNode) => {
-    // Pour les fichiers, on lance le téléchargement SANS toucher à la recherche
-    if (node.type === "file" && node.url) {
-      addDownload(node);
-      return;
-    }
-
-    // Si on est en mode recherche et qu'on navigue dans un DOSSIER, on quitte la recherche
-    if (isSearching) {
-      setSearchQuery("");
-    }
-
-    // Si le nœud a des enfants ET n'est pas marqué "structureOnly", on peut naviguer directement
-    if (node.children && node.children.length > 0 && !node.structureOnly) {
-      setNavPath((prev) => [...prev, node]);
-      return;
-    }
-
-    // Si le nœud n'est pas chargé OU est marqué "structureOnly" (sync structure sans docs),
-    // on doit faire un appel API pour récupérer le contenu complet (y compris les documents)
-    if (!node.isLoaded || node.structureOnly) {
-      setIsLoading(true);
-      try {
-        const updatedNode = await fetchNodeContent(vkToken, node);
-
-        // On préserve absolument le titre original car le backend Rust ne le connaît pas
-        // (il ne reçoit que l'ID et renvoie un titre technique par défaut)
-        let finalNode = { ...updatedNode, title: node.title };
-
-        if (node.structureOnly && node.children && node.children.length > 0) {
-          const existingChildIds = new Set(node.children.map((c) => c.id));
-          const newChildren = (updatedNode.children || []).filter(
-            (c) => !existingChildIds.has(c.id),
-          );
-          // On garde les enfants existants (structure) et on ajoute les nouveaux (documents principalement)
-          finalNode = {
-            ...updatedNode,
-            children: [...node.children, ...newChildren],
-            structureOnly: false, // Maintenant on a le contenu complet
-          };
-        }
-
-        const updateTree = (nodes: VkNode[]): VkNode[] =>
-          nodes.map((n) => {
-            if (n.id === node.id) return finalNode;
-            if (n.children) return { ...n, children: updateTree(n.children) };
-            return n;
-          });
-
-        if (syncedData) {
-          setSyncedData(updateTree(syncedData));
-        }
-        setNavPath((prev) => [...prev, finalNode]);
-      } catch (err) {
-        console.error(err);
-        setError("Impossible de charger le contenu.");
-      } finally {
-        setIsLoading(false);
+  // Optimisation: mémoriser la fonction pour éviter le re-rendu de tous les enfants (BrowserFileItem)
+  // lors des mises à jour fréquentes de `downloads` (barres de progression).
+  const navigateTo = React.useCallback(
+    async (node: VkNode) => {
+      // Pour les fichiers, on lance le téléchargement SANS toucher à la recherche
+      if (node.type === "file" && node.url) {
+        addDownload(node);
+        return;
       }
-    } else {
-      setNavPath((prev) => [...prev, node]);
-    }
-  };
 
-  const navigateUp = (index?: number) => {
+      // Si on est en mode recherche et qu'on navigue dans un DOSSIER, on quitte la recherche
+      if (isSearching) {
+        setSearchQuery("");
+      }
+
+      // Si le nœud a des enfants ET n'est pas marqué "structureOnly", on peut naviguer directement
+      if (node.children && node.children.length > 0 && !node.structureOnly) {
+        setNavPath((prev) => [...prev, node]);
+        return;
+      }
+
+      // Si le nœud n'est pas chargé OU est marqué "structureOnly" (sync structure sans docs),
+      // on doit faire un appel API pour récupérer le contenu complet (y compris les documents)
+      if (!node.isLoaded || node.structureOnly) {
+        setIsLoading(true);
+        try {
+          const updatedNode = await fetchNodeContent(vkToken, node);
+
+          // On préserve absolument le titre original car le backend Rust ne le connaît pas
+          // (il ne reçoit que l'ID et renvoie un titre technique par défaut)
+          let finalNode = { ...updatedNode, title: node.title };
+
+          if (node.structureOnly && node.children && node.children.length > 0) {
+            const existingChildIds = new Set(node.children.map((c) => c.id));
+            const newChildren = (updatedNode.children || []).filter(
+              (c) => !existingChildIds.has(c.id),
+            );
+            // On garde les enfants existants (structure) et on ajoute les nouveaux (documents principalement)
+            finalNode = {
+              ...updatedNode,
+              children: [...node.children, ...newChildren],
+              structureOnly: false, // Maintenant on a le contenu complet
+            };
+          }
+
+          const updateTree = (nodes: VkNode[]): VkNode[] =>
+            nodes.map((n) => {
+              if (n.id === node.id) return finalNode;
+              if (n.children) return { ...n, children: updateTree(n.children) };
+              return n;
+            });
+
+          if (syncedData) {
+            setSyncedData(updateTree(syncedData));
+          }
+          setNavPath((prev) => [...prev, finalNode]);
+        } catch (err) {
+          console.error(err);
+          setError("Impossible de charger le contenu.");
+        } finally {
+          setIsLoading(false);
+        }
+      } else {
+        setNavPath((prev) => [...prev, node]);
+      }
+    },
+    [addDownload, isSearching, setSearchQuery, syncedData, setSyncedData, vkToken],
+  );
+
+  const navigateUp = React.useCallback((index?: number) => {
     setNavPath((prev) => {
       if (index === undefined) {
         return prev.slice(0, -1);
       }
       return prev.slice(0, index + 1);
     });
-  };
+  }, []);
 
-  const clearNav = () => setNavPath([]);
+  const clearNav = React.useCallback(() => setNavPath([]), []);
 
   const MAX_BREADCRUMBS = 4;
   const breadcrumbs: {
