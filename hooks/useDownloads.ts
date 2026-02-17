@@ -199,23 +199,38 @@ export const useDownloads = (downloadPath: string, vkToken?: string) => {
             }
             lastUpdateRef.current = now;
 
-            setDownloads((prev) =>
-                prev.map((d) => {
+            setDownloads((prev) => {
+                let hasChanged = false;
+                const next = prev.map((d) => {
                     if (d.id === id) {
                         if (d.status === "paused" || d.status === "canceled") return d;
                         const isComplete = progress >= 100;
                         const newProgress = typeof progress === "number" ? parseFloat(progress.toFixed(1)) : 0;
                         const safeProgress = Math.max(d.progress || 0, newProgress);
+                        const newSpeed = formatSpeed(speedBytes);
+                        const newStatus = isComplete ? "completed" : "downloading";
+
+                        // Optimization: Avoid re-render if visual values haven't changed
+                        if (
+                            d.progress === safeProgress &&
+                            d.speed === newSpeed &&
+                            d.status === newStatus
+                        ) {
+                            return d;
+                        }
+
+                        hasChanged = true;
                         return {
                             ...d,
                             progress: safeProgress,
-                            status: isComplete ? "completed" : "downloading",
-                            speed: formatSpeed(speedBytes),
+                            status: newStatus,
+                            speed: newSpeed,
                         };
                     }
                     return d;
-                })
-            );
+                });
+                return hasChanged ? next : prev;
+            });
         });
         return () => { unlisten.then(f => f()); };
     }, []);
@@ -226,20 +241,37 @@ export const useDownloads = (downloadPath: string, vkToken?: string) => {
             if (!id) return;
             const formattedSize = typeof size === "number" ? formatBytes(size) || undefined : undefined;
 
-            setDownloads((prev) =>
-                prev.map((d) => {
+            setDownloads((prev) => {
+                let hasChanged = false;
+                const next = prev.map((d) => {
                     if (d.id !== id) return d;
-                    const next: DownloadItem = {
+                    const nextItem: DownloadItem = {
                         ...d,
                         ...(path ? { path } : {}),
                         ...(formattedSize ? { size: formattedSize } : {}),
                     };
-                    if (ok) return { ...next, status: "completed", speed: "0 MB/s" };
-                    if (next.status === "paused" || next.status === "canceled") return next;
-                    if (status === "aborted") return { ...next, status: "error", speed: "Interrompu" };
-                    return { ...next, status: "error", speed: "Erreur" };
-                })
-            );
+
+                    let finalItem: DownloadItem;
+                    if (ok) finalItem = { ...nextItem, status: "completed", speed: "0 MB/s" };
+                    else if (nextItem.status === "paused" || nextItem.status === "canceled") finalItem = nextItem;
+                    else if (status === "aborted") finalItem = { ...nextItem, status: "error", speed: "Interrompu" };
+                    else finalItem = { ...nextItem, status: "error", speed: "Erreur" };
+
+                    // Optimization: Check for equality
+                    if (
+                        d.status === finalItem.status &&
+                        d.speed === finalItem.speed &&
+                        d.path === finalItem.path &&
+                        d.size === finalItem.size
+                    ) {
+                        return d;
+                    }
+
+                    hasChanged = true;
+                    return finalItem;
+                });
+                return hasChanged ? next : prev;
+            });
         });
         return () => { unlisten.then(f => f()); };
     }, []);
