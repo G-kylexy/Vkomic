@@ -199,23 +199,38 @@ export const useDownloads = (downloadPath: string, vkToken?: string) => {
             }
             lastUpdateRef.current = now;
 
-            setDownloads((prev) =>
-                prev.map((d) => {
+            setDownloads((prev) => {
+                let changed = false;
+                const next = prev.map((d) => {
                     if (d.id === id) {
                         if (d.status === "paused" || d.status === "canceled") return d;
                         const isComplete = progress >= 100;
                         const newProgress = typeof progress === "number" ? parseFloat(progress.toFixed(1)) : 0;
                         const safeProgress = Math.max(d.progress || 0, newProgress);
+                        const newSpeed = formatSpeed(speedBytes);
+                        const newStatus: DownloadItem["status"] = isComplete ? "completed" : "downloading";
+
+                        // Optimization: Avoid state update if values haven't changed meaningfully
+                        if (
+                            d.progress === safeProgress &&
+                            d.status === newStatus &&
+                            d.speed === newSpeed
+                        ) {
+                            return d;
+                        }
+
+                        changed = true;
                         return {
                             ...d,
                             progress: safeProgress,
-                            status: isComplete ? "completed" : "downloading",
-                            speed: formatSpeed(speedBytes),
+                            status: newStatus,
+                            speed: newSpeed,
                         };
                     }
                     return d;
-                })
-            );
+                });
+                return changed ? next : prev;
+            });
         });
         return () => { unlisten.then(f => f()); };
     }, []);
@@ -226,20 +241,51 @@ export const useDownloads = (downloadPath: string, vkToken?: string) => {
             if (!id) return;
             const formattedSize = typeof size === "number" ? formatBytes(size) || undefined : undefined;
 
-            setDownloads((prev) =>
-                prev.map((d) => {
+            setDownloads((prev) => {
+                let changed = false;
+                const next = prev.map((d) => {
                     if (d.id !== id) return d;
-                    const next: DownloadItem = {
+
+                    const newPath = path || d.path;
+                    const newSize = formattedSize || d.size;
+
+                    let newStatus: DownloadItem["status"] = "error";
+                    let newSpeed = "Erreur";
+
+                    if (ok) {
+                        newStatus = "completed";
+                        newSpeed = "0 MB/s";
+                    } else if (d.status === "paused" || d.status === "canceled") {
+                        // Even if paused/canceled, path/size might have been updated
+                        if (d.path === newPath && d.size === newSize) return d;
+                        changed = true;
+                        return { ...d, path: newPath, size: newSize };
+                    } else if (status === "aborted") {
+                        newStatus = "error";
+                        newSpeed = "Interrompu";
+                    }
+
+                    // Optimization: Check if values actually changed
+                    if (
+                        d.status === newStatus &&
+                        d.speed === newSpeed &&
+                        d.path === newPath &&
+                        d.size === newSize
+                    ) {
+                        return d;
+                    }
+
+                    changed = true;
+                    return {
                         ...d,
-                        ...(path ? { path } : {}),
-                        ...(formattedSize ? { size: formattedSize } : {}),
+                        path: newPath,
+                        size: newSize,
+                        status: newStatus,
+                        speed: newSpeed,
                     };
-                    if (ok) return { ...next, status: "completed", speed: "0 MB/s" };
-                    if (next.status === "paused" || next.status === "canceled") return next;
-                    if (status === "aborted") return { ...next, status: "error", speed: "Interrompu" };
-                    return { ...next, status: "error", speed: "Erreur" };
-                })
-            );
+                });
+                return changed ? next : prev;
+            });
         });
         return () => { unlisten.then(f => f()); };
     }, []);
