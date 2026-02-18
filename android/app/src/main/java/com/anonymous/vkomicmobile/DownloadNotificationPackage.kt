@@ -9,7 +9,8 @@ class DownloadNotificationPackage : ReactPackage {
     override fun createNativeModules(reactContext: ReactApplicationContext): List<NativeModule> {
         return listOf(
             DownloadNotificationModule(reactContext),
-            NativeDownloadModule(reactContext)
+            NativeDownloadModule(reactContext),
+            PdfPageExtractorModule(reactContext)
         )
     }
 

@@ -45,8 +45,8 @@ type AppDataContextType = {
   getDownloadDirUri: () => string | null;
   deleteLocalFile: (uri: string) => Promise<void>;
   globalSearchNodes: VkNode[];
-  readingFile: { uri: string; title: string } | null;
-  setReadingFile: (file: { uri: string; title: string } | null) => void;
+  readingFile: { uri: string; title: string; isConverted?: boolean } | null;
+  setReadingFile: (file: { uri: string; title: string; isConverted?: boolean } | null) => void;
 };
 
 const AppDataContext = createContext<AppDataContextType | null>(null);
@@ -203,7 +203,7 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
   const [hasFullSynced, setHasFullSynced] = useState(false);
 
   const [downloads, setDownloads] = useState<DownloadItem[]>([]);
-  const [readingFile, setReadingFile] = useState<{ uri: string; title: string } | null>(null);
+  const [readingFile, setReadingFile] = useState<{ uri: string; title: string; isConverted?: boolean } | null>(null);
 
   const resumablesRef = useRef(new Map<string, FileSystem.DownloadResumable>());
   const speedRef = useRef(new Map<string, { bytes: number; at: number }>());

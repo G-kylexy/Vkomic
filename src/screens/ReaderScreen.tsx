@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { View, StyleSheet, Pressable, Text, ActivityIndicator, BackHandler, useWindowDimensions, Animated } from "react-native";
-import Pdf from "react-native-pdf";
+import { View, StyleSheet, Pressable, Text, FlatList, BackHandler, useWindowDimensions, ActivityIndicator } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
-import * as FileSystem from "expo-file-system/legacy";
 
 import { useVk } from "../context/VkContext";
 import { spacing, radius } from "../theme";
 import { getT } from "../i18n";
-import * as FolderService from "../services/FolderService";
+import { pdfCacheService } from "../services/PdfCacheService";
+import { ZoomablePage } from "../components/ZoomablePage";
+import Animated, { useSharedValue, useAnimatedStyle, withTiming, withSequence, withDelay } from "react-native-reanimated";
 
 interface ReaderScreenProps {
     uri: string;
@@ -16,126 +16,184 @@ interface ReaderScreenProps {
     onClose: () => void;
 }
 
+interface PageData {
+    pageNum: number;
+    uri: string | null;
+    loading: boolean;
+    error: boolean;
+}
+
 export const ReaderScreen: React.FC<ReaderScreenProps> = ({ uri, title, onClose }) => {
     const { activePalette: p, language } = useVk();
     const { width, height } = useWindowDimensions();
     const t = getT(language);
-    const [viewMode, setViewMode] = useState<"horizontal" | "vertical">("horizontal");
-    const [loading, setLoading] = useState(true);
-    const [showControls, setShowControls] = useState(true);
-    const [error, setError] = useState(false);
-    const [pageInfo, setPageInfo] = useState({ current: 1, total: 1 });
-    const [localUri, setLocalUri] = useState<string | null>(null);
-    const [preparing, setPreparing] = useState(false);
-    const [initialPage, setInitialPage] = useState(1);
-    const isMountedRef = useRef(true);
 
-    // Fade-in animation for smooth transition
-    const fadeAnim = useRef(new Animated.Value(0)).current;
+    const [viewMode, setViewMode] = useState<"horizontal" | "vertical">("horizontal");
+    const [showControls, setShowControls] = useState(true);
+    const [documentLoaded, setDocumentLoaded] = useState(false);
+    const [documentError, setDocumentError] = useState(false);
+    const [totalPages, setTotalPages] = useState(0);
+    const [currentPage, setCurrentPage] = useState(0);
+    const [initialPage, setInitialPage] = useState(0);
+    const [pageUris, setPageUris] = useState<Record<number, string>>({});
+    const [loadingPages, setLoadingPages] = useState<Set<number>>(new Set());
+    const [errorPages, setErrorPages] = useState<Set<number>>(new Set());
+
+    const flatListRef = useRef<FlatList>(null);
+    const isMountedRef = useRef(true);
+    const isLoadingPage = useRef<Set<number>>(new Set());
+    const totalPagesRef = useRef(0);
+    const toastOpacity = useSharedValue(0);
+    const [toastText, setToastText] = useState("");
+
+    const showModeToast = (mode: string) => {
+        setToastText(mode === "vertical" ? "Mode Webtoon" : "Mode Page");
+        toastOpacity.value = withSequence(
+            withTiming(1, { duration: 200 }),
+            withDelay(1000, withTiming(0, { duration: 400 }))
+        );
+    };
+
+    const toastStyle = useAnimatedStyle(() => ({
+        opacity: toastOpacity.value,
+        transform: [{ scale: 0.8 + (toastOpacity.value * 0.2) }],
+    }));
 
     useEffect(() => {
         isMountedRef.current = true;
-        return () => { isMountedRef.current = false; };
+        return () => {
+            isMountedRef.current = false;
+            pdfCacheService.scheduleCleanup(120000);
+        };
     }, []);
 
-    // Fade in when PDF loads
-    const fadeIn = useCallback(() => {
-        Animated.timing(fadeAnim, {
-            toValue: 1,
-            duration: 300,
-            useNativeDriver: true,
-        }).start();
-    }, [fadeAnim]);
-
-    // Reset fade on view mode change
     useEffect(() => {
-        fadeAnim.setValue(0);
-    }, [viewMode, fadeAnim]);
-
-    // Load saved progress
-    useEffect(() => {
-        const loadSettings = async () => {
+        const init = async () => {
             try {
-                const key = `progress_${uri}`;
-                const savedPage = await AsyncStorage.getItem(key);
-                if (savedPage) {
-                    const pageNum = parseInt(savedPage, 10);
-                    if (!isNaN(pageNum) && pageNum > 1) {
-                        setInitialPage(pageNum);
-                        setPageInfo(prev => ({ ...prev, current: pageNum }));
+                setDocumentLoaded(false);
+                setDocumentError(false);
+
+                console.log("ReaderScreen: Initializing document", uri);
+
+                // 1. Load progress first
+                let targetPage = 0;
+                try {
+                    const key = `progress_${uri}`;
+                    const savedPage = await AsyncStorage.getItem(key);
+                    if (savedPage) {
+                        const pageNum = parseInt(savedPage, 10);
+                        if (!isNaN(pageNum) && pageNum > 0) {
+                            targetPage = pageNum;
+                            // Update states so UI reflects correct initial state
+                            if (isMountedRef.current) {
+                                setInitialPage(pageNum);
+                                setCurrentPage(pageNum);
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.warn("ReaderScreen: Failed to load progress", e);
+                }
+
+                // 2. Open the document
+                const info = await pdfCacheService.openDocument(uri);
+                console.log("ReaderScreen: Document opened", info);
+
+                if (isMountedRef.current) {
+                    setTotalPages(info.pageCount);
+                    totalPagesRef.current = info.pageCount;
+
+                    // 3. Load the specific initial page
+                    const actualTargetPage = Math.min(targetPage, info.pageCount - 1);
+                    console.log("ReaderScreen: Loading target page", actualTargetPage);
+
+                    // Set loaded state BEFORE extracting page so FlatList can mount with correct initialScrollIndex
+                    setDocumentLoaded(true);
+
+                    await loadPageInternal(actualTargetPage, info.pageCount, width);
+
+                    // 4. Prefetch neighbors immediately
+                    prefetchPages(actualTargetPage);
+
+                    // Final scroll adjustment if needed
+                    if (actualTargetPage > 0) {
+                        setTimeout(() => {
+                            if (isMountedRef.current && flatListRef.current) {
+                                flatListRef.current.scrollToIndex({
+                                    index: actualTargetPage,
+                                    animated: false
+                                });
+                            }
+                        }, 100);
                     }
                 }
             } catch (e) {
-                console.warn("ReaderScreen: Failed to load settings", e);
+                console.error("ReaderScreen: Initialization failed", e);
+                if (isMountedRef.current) {
+                    setDocumentError(true);
+                    setDocumentLoaded(true);
+                }
             }
         };
-        loadSettings();
-    }, [uri]);
 
-    const saveProgress = async (page: number) => {
-        try {
-            await AsyncStorage.setItem(`progress_${uri}`, page.toString());
-        } catch (e) {
-            console.warn("ReaderScreen: Failed to save progress", e);
+        init();
+    }, [uri]); // Only restart if URI changes
+
+    const loadPageInternal = useCallback(async (pageNum: number, totalPagesCount: number, screenWidth: number) => {
+        if (pageNum < 0 || pageNum >= totalPagesCount) return;
+        if (isLoadingPage.current.has(pageNum)) return;
+
+        // Si on a déjà la HD en cache, c'est fini
+        const cached = pdfCacheService.getCachedPageUri(pageNum);
+        if (cached && !cached.includes('thumb')) {
+            setPageUris(prev => ({ ...prev, [pageNum]: cached }));
+            return;
         }
-    };
 
-    // Prepare file (copy SAF to local if needed)
-    useEffect(() => {
-        let isMounted = true;
+        isLoadingPage.current.add(pageNum);
+        setLoadingPages(prev => new Set(prev).add(pageNum));
 
-        const prepareFile = async () => {
-            setPreparing(true);
-            setLoading(true);
-
-            try {
-                let pdfPath = uri;
-
-                if (uri.startsWith("content://")) {
-                    // Fallback: Copie temporaire dans le cache
-                    // react-native-pdf a du mal avec certains content:// URIs directs (permissions)
-                    // On utilise un fichier temporaire UNIQUE pour éviter de remplir le stockage (pas de doublons multiples)
-                    const tempDir = `${FileSystem.cacheDirectory}reader_temp/`;
-                    await FileSystem.makeDirectoryAsync(tempDir, { intermediates: true });
-
-                    // Nom fixe pour écraser le précédent automatiquement (Max 1 fichier cache sur tout le tel)
-                    const destination = `${tempDir}temp_comic.pdf`;
-
-                    // Si existe déjà, on supprime pour être propre
-                    try {
-                        await FileSystem.deleteAsync(destination, { idempotent: true });
-                    } catch { }
-
-                    const success = await FolderService.copySafToLocal(uri, destination);
-                    if (!success) throw new Error("Impossible de copier le fichier temporaire");
-                    pdfPath = destination;
-                }
-
-                if (isMounted) {
-                    setLocalUri(pdfPath);
-                    setPreparing(false);
-                }
-            } catch (err) {
-                console.error("ReaderScreen: Failed to prepare file:", err);
-                if (isMounted) {
-                    setError(true);
-                    setLoading(false);
-                    setPreparing(false);
-                }
+        try {
+            // PIPELINE STREAMING :
+            // 1. Extraire la vignette (Hyper rapide)
+            const thumbUri = await pdfCacheService.smartExtract(pageNum, screenWidth, 'thumb');
+            if (isMountedRef.current) {
+                setPageUris(prev => ({ ...prev, [pageNum]: thumbUri }));
             }
-        };
 
-        prepareFile();
-        return () => {
-            isMounted = false;
-            // Nettoyage agressif au démontage
-            if (localUri && localUri.includes("reader_temp")) {
-                FileSystem.deleteAsync(localUri, { idempotent: true }).catch(() => { });
+            // 2. Extraire la version HD (En fond)
+            const hdUri = await pdfCacheService.smartExtract(pageNum, screenWidth, 'hd');
+            if (isMountedRef.current) {
+                setPageUris(prev => ({ ...prev, [pageNum]: hdUri }));
+                setLoadingPages(prev => {
+                    const next = new Set(prev);
+                    next.delete(pageNum);
+                    return next;
+                });
             }
-        };
-    }, [uri]);
+        } catch (e) {
+            console.error(`ReaderScreen: Failed to load page ${pageNum}`, e);
+            if (isMountedRef.current) {
+                setErrorPages(prev => new Set(prev).add(pageNum));
+                setLoadingPages(prev => {
+                    const next = new Set(prev);
+                    next.delete(pageNum);
+                    return next;
+                });
+            }
+        } finally {
+            isLoadingPage.current.delete(pageNum);
+        }
+    }, [width]);
 
-    // Handle back button
+    const loadPage = useCallback(async (pageNum: number) => {
+        return loadPageInternal(pageNum, totalPagesRef.current, width);
+    }, [loadPageInternal, width]);
+
+    const prefetchPages = useCallback(async (aroundPage: number) => {
+        pdfCacheService.prefetchPages(aroundPage, width);
+    }, [width]);
+
     useEffect(() => {
         const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
             onClose();
@@ -144,42 +202,97 @@ export const ReaderScreen: React.FC<ReaderScreenProps> = ({ uri, title, onClose 
         return () => backHandler.remove();
     }, [onClose]);
 
-    const isPdf = uri.toLowerCase().endsWith(".pdf") ||
-        (localUri && localUri.toLowerCase().endsWith(".pdf")) ||
-        uri.startsWith("content://") ||
-        title.toLowerCase().endsWith(".pdf");
+    const saveProgress = useCallback(async (page: number) => {
+        try {
+            await AsyncStorage.setItem(`progress_${uri}`, page.toString());
+        } catch (e) {
+            console.warn("ReaderScreen: Failed to save progress", e);
+        }
+    }, [uri]);
+
+    const handlePageChange = useCallback((pageIndex: number) => {
+        if (pageIndex === currentPage) return;
+
+        setCurrentPage(pageIndex);
+        saveProgress(pageIndex);
+        prefetchPages(pageIndex);
+    }, [currentPage, saveProgress, prefetchPages]);
 
     const toggleControls = useCallback(() => setShowControls(prev => !prev), []);
-    const toggleViewMode = () => {
-        setViewMode(prev => prev === "horizontal" ? "vertical" : "horizontal");
-    };
 
-    const handleLoadComplete = useCallback((numberOfPages: number) => {
-        setLoading(false);
-        setPageInfo(prev => ({ ...prev, total: numberOfPages }));
-        fadeIn(); // Smooth fade-in when loaded
-    }, [fadeIn]);
+    const toggleViewMode = useCallback(() => {
+        const nextMode = viewMode === "horizontal" ? "vertical" : "horizontal";
+        setViewMode(nextMode);
+        showModeToast(nextMode);
+    }, [viewMode]);
 
-    const handlePageChanged = useCallback((page: number, numberOfPages: number) => {
-        setPageInfo({ current: page, total: numberOfPages });
-        saveProgress(page);
-    }, []);
+    const retryPage = useCallback((pageNum: number) => {
+        isLoadingPage.current.delete(pageNum);
+        setErrorPages(prev => {
+            const next = new Set(prev);
+            next.delete(pageNum);
+            return next;
+        });
+        loadPage(pageNum);
+    }, [loadPage]);
 
-    const handleError = useCallback((err: any) => {
-        console.error("PDF Error:", err);
-        setLoading(false);
-        setError(true);
-    }, []);
+    const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: Array<{ index: number | null }> }) => {
+        const firstVisible = viewableItems[0];
+        if (firstVisible && firstVisible.index !== null) {
+            handlePageChange(firstVisible.index);
+        }
+    }).current;
 
-    const renderLoading = useCallback(() => (
-        <ActivityIndicator size="large" color={p.primaryBright} />
-    ), [p.primaryBright]);
+    const viewabilityConfig = useRef({
+        itemVisiblePercentThreshold: 50,
+    }).current;
 
-    const pdfSource = localUri ? { uri: localUri, cache: true } : null;
+    const renderPage = useCallback(({ item: pageNum }: { item: number }) => {
+        // Safety: if the page is rendered but no URI is present in state, trigger load
+        if (!pageUris[pageNum] && !loadingPages.has(pageNum) && !errorPages.has(pageNum)) {
+            // Use setTimeout to avoid "Cannot update during transition" warnings
+            setTimeout(() => loadPage(pageNum), 0);
+        }
+
+        return (
+            <ZoomablePage
+                uri={pageUris[pageNum] || null}
+                loading={loadingPages.has(pageNum)}
+                error={errorPages.has(pageNum)}
+                width={width}
+                height={height}
+                onTap={toggleControls}
+                onRetry={() => retryPage(pageNum)}
+            />
+        );
+    }, [pageUris, loadingPages, errorPages, width, height, toggleControls, retryPage, loadPage]);
+
+    const getItemLayout = useCallback((_: any, index: number) => ({
+        length: viewMode === "horizontal" ? width : height,
+        offset: (viewMode === "horizontal" ? width : height) * index,
+        index,
+    }), [width, height, viewMode]);
+
+    const keyExtractor = useCallback((item: number) => `page_${item}`, []);
+
+    if (!documentLoaded) {
+        return (
+            <View style={[styles.container, { backgroundColor: "#000" }]}>
+                <ActivityIndicator size="large" color={p.primaryBright} />
+                {documentError && (
+                    <View style={styles.errorContainer}>
+                        <Ionicons name="alert-circle-outline" size={48} color={p.danger} />
+                        <Text style={[styles.errorText, { color: p.text }]}>
+                            Impossible de charger le PDF
+                        </Text>
+                    </View>
+                )}
+            </View>
+        );
+    }
 
     return (
         <View style={[styles.container, { backgroundColor: "#000" }]}>
-            {/* Header */}
             {showControls && (
                 <View style={[styles.header, { backgroundColor: `${p.background}F0` }]}>
                     <Pressable onPress={onClose} style={styles.backBtn}>
@@ -189,11 +302,9 @@ export const ReaderScreen: React.FC<ReaderScreenProps> = ({ uri, title, onClose 
                         <Text style={[styles.title, { color: p.text }]} numberOfLines={1}>
                             {title}
                         </Text>
-                        {isPdf && !loading && !error && (
-                            <Text style={[styles.pageInfo, { color: p.muted }]}>
-                                {pageInfo.current} / {pageInfo.total}
-                            </Text>
-                        )}
+                        <Text style={[styles.pageInfo, { color: p.muted }]}>
+                            {currentPage + 1} / {totalPages}
+                        </Text>
                     </View>
                     <Pressable onPress={toggleViewMode} style={styles.modeBtn}>
                         <Ionicons
@@ -205,64 +316,55 @@ export const ReaderScreen: React.FC<ReaderScreenProps> = ({ uri, title, onClose 
                 </View>
             )}
 
-            {/* PDF Viewer */}
             <View style={styles.viewer}>
-                {isPdf ? (
-                    <View style={styles.pdfContainer}>
-                        {error ? (
-                            <View style={styles.errorContainer}>
-                                <Ionicons name="alert-circle-outline" size={48} color={p.danger} />
-                                <Text style={[styles.errorText, { color: p.text }]}>
-                                    Impossible de charger le PDF
-                                </Text>
-                                <Pressable
-                                    style={[styles.retryBtn, { backgroundColor: p.primary }]}
-                                    onPress={() => { setError(false); setLoading(true); }}
-                                >
-                                    <Text style={styles.retryText}>Réessayer</Text>
-                                </Pressable>
-                            </View>
-                        ) : pdfSource ? (
-                            <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
-                                <Pdf
-                                    key={viewMode}
-                                    source={pdfSource}
-                                    style={[styles.pdf, { width, height }]}
-                                    page={initialPage}
-                                    onLoadComplete={handleLoadComplete}
-                                    onPageChanged={handlePageChanged}
-                                    onError={handleError}
-                                    onPageSingleTap={toggleControls}
-                                    // --- Performance & Cache ---
-                                    trustAllCerts={false}
-                                    enableAntialiasing={true}
-                                    scale={1.1}
-                                    maxScale={3.0}
-                                    minScale={1.0}
-                                    // --- Expérience de Lecture ---
-                                    horizontal={viewMode === "horizontal"}
-                                    enablePaging={viewMode === "horizontal"}
-                                    fitPolicy={0}
-                                    spacing={10}
-                                    // --- Interaction ---
-                                    enableRTL={false}
-                                    enableDoubleTapZoom={true}
-                                    renderActivityIndicator={renderLoading}
-                                    showsHorizontalScrollIndicator={false}
-                                    showsVerticalScrollIndicator={false}
-                                />
-                            </Animated.View>
-                        ) : null}
-                    </View>
-                ) : (
-                    <View style={styles.unsupported}>
-                        <Ionicons name="alert-circle-outline" size={48} color={p.muted} />
-                        <Text style={[styles.unsupportedText, { color: p.muted }]}>
-                            {t.reader.unsupported}
-                        </Text>
-                    </View>
-                )}
+                <FlatList
+                    key={`${uri}_${viewMode}`} // Force remount quand on change de mode pour éviter les bugs
+                    ref={flatListRef}
+                    data={Array.from({ length: totalPages }, (_, i) => i)}
+                    renderItem={renderPage}
+                    keyExtractor={keyExtractor}
+                    horizontal={viewMode === "horizontal"}
+                    pagingEnabled={viewMode === "horizontal"}
+                    decelerationRate={viewMode === "horizontal" ? "fast" : "normal"}
+                    scrollEventThrottle={16}
+                    showsHorizontalScrollIndicator={false}
+                    showsVerticalScrollIndicator={false}
+                    getItemLayout={(_data, index) => ({
+                        length: viewMode === "horizontal" ? width : height,
+                        offset: (viewMode === "horizontal" ? width : height) * index,
+                        index,
+                    })}
+                    onViewableItemsChanged={onViewableItemsChanged}
+                    viewabilityConfig={viewabilityConfig}
+                    initialScrollIndex={currentPage} // Garde la page actuelle lors du changement
+                    onScrollToIndexFailed={(info) => {
+                        const wait = new Promise(resolve => setTimeout(resolve, 200));
+                        wait.then(() => {
+                            flatListRef.current?.scrollToIndex({
+                                index: info.index,
+                                animated: false,
+                            });
+                        });
+                    }}
+                    windowSize={5}
+                    maxToRenderPerBatch={2}
+                    updateCellsBatchingPeriod={30}
+                    removeClippedSubviews={true}
+                />
             </View>
+
+            {/* Toast de changement de mode */}
+            <Animated.View
+                pointerEvents="none"
+                style={[styles.toastContainer, toastStyle, { backgroundColor: `${p.background}E0` }]}
+            >
+                <Ionicons
+                    name={viewMode === "vertical" ? "document-text" : "book"}
+                    size={24}
+                    color={p.primaryBright}
+                />
+                <Text style={[styles.toastText, { color: p.text }]}>{toastText}</Text>
+            </Animated.View>
         </View>
     );
 };
@@ -308,40 +410,9 @@ const styles = StyleSheet.create({
         marginTop: 2,
     },
     viewer: { flex: 1 },
-    pdfContainer: { flex: 1 },
-    pdf: {
-        flex: 1,
-        backgroundColor: "#000",
-    },
-    loading: {
-        ...StyleSheet.absoluteFillObject,
-        backgroundColor: "rgba(0,0,0,0.95)",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 12,
-    },
-    loadingText: {
-        color: "#fff",
-        fontSize: 14,
-        fontWeight: "600",
-    },
-    unsupported: {
-        flex: 1,
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 40,
-        gap: 20,
-    },
-    unsupportedText: {
-        textAlign: "center",
-        fontSize: 15,
-        fontWeight: "700",
-    },
     errorContainer: {
-        flex: 1,
+        position: "absolute",
         alignItems: "center",
-        justifyContent: "center",
-        padding: 40,
         gap: 16,
     },
     errorText: {
@@ -349,13 +420,26 @@ const styles = StyleSheet.create({
         fontWeight: "800",
         textAlign: "center",
     },
-    retryBtn: {
+    toastContainer: {
+        position: "absolute",
+        top: "45%",
+        alignSelf: "center",
+        flexDirection: "row",
+        alignItems: "center",
+        paddingVertical: 12,
         paddingHorizontal: 20,
-        paddingVertical: 10,
-        borderRadius: radius.md,
+        borderRadius: 30,
+        gap: 10,
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.1)",
+        elevation: 10,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 5,
     },
-    retryText: {
-        color: "#fff",
-        fontWeight: "800",
+    toastText: {
+        fontSize: 14,
+        fontWeight: "700",
     },
 });
