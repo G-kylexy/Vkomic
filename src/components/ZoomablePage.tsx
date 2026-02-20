@@ -7,9 +7,14 @@ import Animated, {
     withSpring,
     runOnJS
 } from "react-native-reanimated";
+import { Image } from 'expo-image';
+
+const AnimatedExpoImage = Animated.createAnimatedComponent(Image);
 
 interface ZoomablePageProps {
-    uri: string | null;
+    thumbUri: string | null;
+    hdUri: string | null;
+    pageNum: number;
     loading: boolean;
     error: boolean;
     width: number;
@@ -19,7 +24,9 @@ interface ZoomablePageProps {
 }
 
 export const ZoomablePage: React.FC<ZoomablePageProps> = ({
-    uri,
+    thumbUri,
+    hdUri,
+    pageNum,
     loading,
     error,
     width,
@@ -50,19 +57,38 @@ export const ZoomablePage: React.FC<ZoomablePageProps> = ({
         savedTranslateY.value = 0;
     };
 
+    // Reset uniquement au changement de PAGE
+    // Protégé contre le gel des composants par FlashList lors du recyclage
+    React.useEffect(() => {
+        try {
+            scale.value = 1;
+            translateX.value = 0;
+            translateY.value = 0;
+            savedScale.value = 1;
+            savedTranslateX.value = 0;
+            savedTranslateY.value = 0;
+        } catch {
+            // Composant recyclé/gelé par FlashList — ignoré
+        }
+    }, [pageNum]);
+
     const doubleTapGesture = Gesture.Tap()
         .numberOfTaps(2)
         .onEnd((e) => {
-            if (scale.value > 1.2) {
+            'worklet';
+            if (scale.value > 1.1) {
                 resetValues();
             } else {
-                scale.value = withSpring(2.5);
-                // On déplace pour zoomer vers le point touché
-                const targetX = (width / 2 - e.x) * 1.5;
-                const targetY = (height / 2 - e.y) * 1.5;
+                const targetScale = 2.5;
+                scale.value = withSpring(targetScale);
+
+                const targetX = (width / 2 - e.x) * (targetScale - 1);
+                const targetY = (height / 2 - e.y) * (targetScale - 1);
+
                 translateX.value = withSpring(targetX);
                 translateY.value = withSpring(targetY);
-                savedScale.value = 2.5;
+
+                savedScale.value = targetScale;
                 savedTranslateX.value = targetX;
                 savedTranslateY.value = targetY;
             }
@@ -75,67 +101,49 @@ export const ZoomablePage: React.FC<ZoomablePageProps> = ({
         });
 
     const pinchGesture = Gesture.Pinch()
-        .onStart((e) => {
+        .onStart(() => {
             'worklet';
-            // On mémorise le point de départ du zoom pour le focal point
             savedScale.value = scale.value;
         })
         .onUpdate((e) => {
             'worklet';
-            const newScale = Math.min(Math.max(savedScale.value * e.scale, 0.8), 6);
-
-            // Calcul du focal point pour que le zoom s'axe sur les doigts
-            if (newScale > 1) {
-                const focalX = e.focalX - width / 2;
-                const focalY = e.focalY - height / 2;
-
-                translateX.value = savedTranslateX.value + (focalX - savedTranslateX.value) * (1 - e.scale);
-                translateY.value = savedTranslateY.value + (focalY - savedTranslateY.value) * (1 - e.scale);
-            }
-
-            scale.value = newScale;
+            scale.value = Math.min(Math.max(savedScale.value * e.scale, 0.9), 6);
         })
         .onEnd(() => {
             'worklet';
-            if (scale.value < 1.05) {
+            if (scale.value < 1.1) {
                 resetValues();
             } else {
                 savedScale.value = scale.value;
-                savedTranslateX.value = translateX.value;
-                savedTranslateY.value = translateY.value;
             }
         });
 
     const panGesture = Gesture.Pan()
+        .averageTouches(true)
         .manualActivation(true)
         .onTouchesMove((_e, manager) => {
             'worklet';
-            // On n'active le pan que si on est déjà zoomé, sinon on laisse la FlatList scroller
-            if (scale.value > 1.01) {
+            if (scale.value > 1.1) {
                 manager.activate();
             } else {
                 manager.fail();
             }
         })
-        .averageTouches(true)
+        .onStart(() => {
+            'worklet';
+            savedTranslateX.value = translateX.value;
+            savedTranslateY.value = translateY.value;
+        })
         .onUpdate((e) => {
             'worklet';
-            const maxTranslateX = (width * scale.value - width) / 2;
-            const maxTranslateY = (height * scale.value - height) / 2;
-
-            // On permet un léger dépassement (bounce effect) de 50px
-            translateX.value = Math.min(
-                Math.max(savedTranslateX.value + e.translationX, -maxTranslateX - 50),
-                maxTranslateX + 50
-            );
-            translateY.value = Math.min(
-                Math.max(savedTranslateY.value + e.translationY, -maxTranslateY - 50),
-                maxTranslateY + 50
-            );
+            if (scale.value > 1.1) {
+                translateX.value = savedTranslateX.value + e.translationX;
+                translateY.value = savedTranslateY.value + e.translationY;
+            }
         })
         .onEnd(() => {
             'worklet';
-            if (scale.value <= 1.01) {
+            if (scale.value <= 1.1) {
                 resetValues();
                 return;
             }
@@ -143,7 +151,6 @@ export const ZoomablePage: React.FC<ZoomablePageProps> = ({
             const maxTranslateX = (width * scale.value - width) / 2;
             const maxTranslateY = (height * scale.value - height) / 2;
 
-            // Retour élastique (Spring) si on a dépassé les bords
             translateX.value = withSpring(
                 Math.min(Math.max(translateX.value, -maxTranslateX), maxTranslateX)
             );
@@ -184,33 +191,48 @@ export const ZoomablePage: React.FC<ZoomablePageProps> = ({
         );
     }
 
-    if (!uri) {
+    if (!thumbUri && !hdUri) {
         return (
             <View style={[styles.container, { width, height }]}>
-                <Text style={styles.errorText}>Pas d'image</Text>
+                <Text style={styles.errorText}>En attente...</Text>
             </View>
         );
     }
 
-    const imageUri = uri.startsWith("/") ? `file://${uri}` : uri;
+    const tUri = thumbUri?.startsWith("/") ? `file://${thumbUri}` : thumbUri;
+    const hUri = hdUri?.startsWith("/") ? `file://${hdUri}` : hdUri;
 
-    // On combine les gestes : le déplacement et le pince-zoom peuvent être simultanés
-    // mais ils sont exclusifs par rapport aux taps.
-    const combinedGestures = Gesture.Exclusive(
-        Gesture.Simultaneous(pinchGesture, panGesture),
-        doubleTapGesture,
-        singleTapGesture
+    const combinedGestures = Gesture.Simultaneous(
+        pinchGesture,
+        panGesture,
+        Gesture.Exclusive(doubleTapGesture, singleTapGesture)
     );
 
     return (
         <View style={[styles.container, { width, height }]}>
             <GestureDetector gesture={combinedGestures}>
                 <Animated.View style={[styles.imageContainer, { width, height }]}>
-                    <Animated.Image
-                        source={{ uri: imageUri }}
-                        style={[styles.image, animatedStyle, { width, height }]}
-                        resizeMode="contain"
-                    />
+                    {/* Thumbnail layer */}
+                    {tUri && (
+                        <AnimatedExpoImage
+                            source={{ uri: tUri }}
+                            style={[animatedStyle, { width, height, position: 'absolute' }]}
+                            contentFit="contain"
+                            cachePolicy="memory-disk"
+                            recyclingKey={`thumb_${pageNum}`}
+                        />
+                    )}
+                    {/* HD layer */}
+                    {hUri && (
+                        <AnimatedExpoImage
+                            source={{ uri: hUri }}
+                            style={[animatedStyle, { width, height, position: 'absolute' }]}
+                            contentFit="contain"
+                            cachePolicy="memory-disk"
+                            transition={200}
+                            recyclingKey={`hd_${pageNum}`}
+                        />
+                    )}
                 </Animated.View>
             </GestureDetector>
         </View>
@@ -227,9 +249,6 @@ const styles = StyleSheet.create({
     imageContainer: {
         justifyContent: "center",
         alignItems: "center",
-    },
-    image: {
-        backgroundColor: "#000",
     },
     errorText: {
         color: "#fff",

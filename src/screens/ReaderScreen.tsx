@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { View, StyleSheet, Pressable, Text, FlatList, BackHandler, useWindowDimensions, ActivityIndicator } from "react-native";
+import { View, StyleSheet, Pressable, Text, BackHandler, useWindowDimensions, ActivityIndicator } from "react-native";
+import { FlashList, FlashListRef } from "@shopify/flash-list";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -35,11 +36,11 @@ export const ReaderScreen: React.FC<ReaderScreenProps> = ({ uri, title, onClose 
     const [totalPages, setTotalPages] = useState(0);
     const [currentPage, setCurrentPage] = useState(0);
     const [initialPage, setInitialPage] = useState(0);
-    const [pageUris, setPageUris] = useState<Record<number, string>>({});
+    const [pageUris, setPageUris] = useState<Record<number, { thumb: string | null; hd: string | null }>>({});
     const [loadingPages, setLoadingPages] = useState<Set<number>>(new Set());
     const [errorPages, setErrorPages] = useState<Set<number>>(new Set());
 
-    const flatListRef = useRef<FlatList>(null);
+    const flatListRef = useRef<FlashListRef<number>>(null);
     const isMountedRef = useRef(true);
     const isLoadingPage = useRef<Set<number>>(new Set());
     const totalPagesRef = useRef(0);
@@ -47,7 +48,7 @@ export const ReaderScreen: React.FC<ReaderScreenProps> = ({ uri, title, onClose 
     const [toastText, setToastText] = useState("");
 
     const showModeToast = (mode: string) => {
-        setToastText(mode === "vertical" ? "Mode Webtoon" : "Mode Page");
+        setToastText(mode === "vertical" ? "Lecture Continue" : "Page par Page");
         toastOpacity.value = withSequence(
             withTiming(1, { duration: 200 }),
             withDelay(1000, withTiming(0, { duration: 400 }))
@@ -63,7 +64,6 @@ export const ReaderScreen: React.FC<ReaderScreenProps> = ({ uri, title, onClose 
         isMountedRef.current = true;
         return () => {
             isMountedRef.current = false;
-            pdfCacheService.scheduleCleanup(120000);
         };
     }, []);
 
@@ -107,13 +107,15 @@ export const ReaderScreen: React.FC<ReaderScreenProps> = ({ uri, title, onClose 
                     const actualTargetPage = Math.min(targetPage, info.pageCount - 1);
                     console.log("ReaderScreen: Loading target page", actualTargetPage);
 
-                    // Set loaded state BEFORE extracting page so FlatList can mount with correct initialScrollIndex
-                    setDocumentLoaded(true);
-
+                    // Charger la page AVANT d'afficher la liseuse pour éviter le clignotement
                     await loadPageInternal(actualTargetPage, info.pageCount, width);
 
-                    // 4. Prefetch neighbors immediately
+                    // Mainenant que l'image est prête (vignette), on affiche tout
+                    setDocumentLoaded(true);
+
+                    // 4. Prefetch neighbors immediately and start progressive background extraction
                     prefetchPages(actualTargetPage);
+                    pdfCacheService.preloadNeighbors(actualTargetPage, width);
 
                     // Final scroll adjustment if needed
                     if (actualTargetPage > 0) {
@@ -144,9 +146,12 @@ export const ReaderScreen: React.FC<ReaderScreenProps> = ({ uri, title, onClose 
         if (isLoadingPage.current.has(pageNum)) return;
 
         // Si on a déjà la HD en cache, c'est fini
-        const cached = pdfCacheService.getCachedPageUri(pageNum);
-        if (cached && !cached.includes('thumb')) {
-            setPageUris(prev => ({ ...prev, [pageNum]: cached }));
+        const hdCached = pdfCacheService.getHdUri(pageNum);
+        if (hdCached) {
+            setPageUris(prev => ({
+                ...prev,
+                [pageNum]: { ...prev[pageNum], hd: hdCached }
+            }));
             return;
         }
 
@@ -154,25 +159,45 @@ export const ReaderScreen: React.FC<ReaderScreenProps> = ({ uri, title, onClose 
         setLoadingPages(prev => new Set(prev).add(pageNum));
 
         try {
-            // PIPELINE STREAMING :
-            // 1. Extraire la vignette (Hyper rapide)
+            // PIPELINE STREAMING OPTIMISÉ (Non-bloquant) :
+            // 1. Extraire et afficher la vignette IMMÉDIATEMENT
             const thumbUri = await pdfCacheService.smartExtract(pageNum, screenWidth, 'thumb');
             if (isMountedRef.current) {
-                setPageUris(prev => ({ ...prev, [pageNum]: thumbUri }));
+                setPageUris(prev => ({
+                    ...prev,
+                    [pageNum]: { ...prev[pageNum], thumb: thumbUri }
+                }));
             }
 
-            // 2. Extraire la version HD (En fond)
-            const hdUri = await pdfCacheService.smartExtract(pageNum, screenWidth, 'hd');
-            if (isMountedRef.current) {
-                setPageUris(prev => ({ ...prev, [pageNum]: hdUri }));
-                setLoadingPages(prev => {
-                    const next = new Set(prev);
-                    next.delete(pageNum);
-                    return next;
+            // 2. Lancer l'extraction HD en tâche de fond (NE PAS ATTENDRE)
+            // Cela permet à loadPageInternal de se terminer et de laisser la place aux pages suivantes
+            pdfCacheService.smartExtract(pageNum, screenWidth, 'hd')
+                .then(hdUri => {
+                    if (isMountedRef.current) {
+                        setPageUris(prev => ({
+                            ...prev,
+                            [pageNum]: { ...prev[pageNum], hd: hdUri }
+                        }));
+                        setLoadingPages(prev => {
+                            const next = new Set(prev);
+                            next.delete(pageNum);
+                            return next;
+                        });
+                    }
+                })
+                .catch(e => {
+                    console.warn(`ReaderScreen: HD loading failed for page ${pageNum}, keeping thumbnail`, e);
+                    if (isMountedRef.current) {
+                        setLoadingPages(prev => {
+                            const next = new Set(prev);
+                            next.delete(pageNum);
+                            return next;
+                        });
+                    }
                 });
-            }
+
         } catch (e) {
-            console.error(`ReaderScreen: Failed to load page ${pageNum}`, e);
+            console.error(`ReaderScreen: Thumbnail failure for page ${pageNum}`, e);
             if (isMountedRef.current) {
                 setErrorPages(prev => new Set(prev).add(pageNum));
                 setLoadingPages(prev => {
@@ -213,6 +238,7 @@ export const ReaderScreen: React.FC<ReaderScreenProps> = ({ uri, title, onClose 
     const handlePageChange = useCallback((pageIndex: number) => {
         if (pageIndex === currentPage) return;
 
+        pdfCacheService.updateVisiblePage(pageIndex);
         setCurrentPage(pageIndex);
         saveProgress(pageIndex);
         prefetchPages(pageIndex);
@@ -245,18 +271,21 @@ export const ReaderScreen: React.FC<ReaderScreenProps> = ({ uri, title, onClose 
 
     const viewabilityConfig = useRef({
         itemVisiblePercentThreshold: 50,
+        minimumViewTime: 1, // Déclenche le changement de page instantanément sans attendre la fin du scroll
     }).current;
 
     const renderPage = useCallback(({ item: pageNum }: { item: number }) => {
         // Safety: if the page is rendered but no URI is present in state, trigger load
-        if (!pageUris[pageNum] && !loadingPages.has(pageNum) && !errorPages.has(pageNum)) {
-            // Use setTimeout to avoid "Cannot update during transition" warnings
+        const uris = pageUris[pageNum];
+        if (!uris && !loadingPages.has(pageNum) && !errorPages.has(pageNum)) {
             setTimeout(() => loadPage(pageNum), 0);
         }
 
         return (
             <ZoomablePage
-                uri={pageUris[pageNum] || null}
+                thumbUri={uris?.thumb || null}
+                hdUri={uris?.hd || null}
+                pageNum={pageNum}
                 loading={loadingPages.has(pageNum)}
                 error={errorPages.has(pageNum)}
                 width={width}
@@ -267,11 +296,6 @@ export const ReaderScreen: React.FC<ReaderScreenProps> = ({ uri, title, onClose 
         );
     }, [pageUris, loadingPages, errorPages, width, height, toggleControls, retryPage, loadPage]);
 
-    const getItemLayout = useCallback((_: any, index: number) => ({
-        length: viewMode === "horizontal" ? width : height,
-        offset: (viewMode === "horizontal" ? width : height) * index,
-        index,
-    }), [width, height, viewMode]);
 
     const keyExtractor = useCallback((item: number) => `page_${item}`, []);
 
@@ -317,8 +341,8 @@ export const ReaderScreen: React.FC<ReaderScreenProps> = ({ uri, title, onClose 
             )}
 
             <View style={styles.viewer}>
-                <FlatList
-                    key={`${uri}_${viewMode}`} // Force remount quand on change de mode pour éviter les bugs
+                <FlashList
+                    key={`${uri}_${viewMode}`}
                     ref={flatListRef}
                     data={Array.from({ length: totalPages }, (_, i) => i)}
                     renderItem={renderPage}
@@ -329,27 +353,10 @@ export const ReaderScreen: React.FC<ReaderScreenProps> = ({ uri, title, onClose 
                     scrollEventThrottle={16}
                     showsHorizontalScrollIndicator={false}
                     showsVerticalScrollIndicator={false}
-                    getItemLayout={(_data, index) => ({
-                        length: viewMode === "horizontal" ? width : height,
-                        offset: (viewMode === "horizontal" ? width : height) * index,
-                        index,
-                    })}
+                    drawDistance={viewMode === "horizontal" ? width * 2 : height * 2}
                     onViewableItemsChanged={onViewableItemsChanged}
                     viewabilityConfig={viewabilityConfig}
-                    initialScrollIndex={currentPage} // Garde la page actuelle lors du changement
-                    onScrollToIndexFailed={(info) => {
-                        const wait = new Promise(resolve => setTimeout(resolve, 200));
-                        wait.then(() => {
-                            flatListRef.current?.scrollToIndex({
-                                index: info.index,
-                                animated: false,
-                            });
-                        });
-                    }}
-                    windowSize={5}
-                    maxToRenderPerBatch={2}
-                    updateCellsBatchingPeriod={30}
-                    removeClippedSubviews={true}
+                    initialScrollIndex={currentPage}
                 />
             </View>
 

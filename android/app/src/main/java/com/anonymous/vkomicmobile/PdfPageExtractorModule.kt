@@ -10,6 +10,8 @@ import com.facebook.react.bridge.*
 import kotlinx.coroutines.*
 import java.io.File
 import java.io.FileOutputStream
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentLinkedQueue
 
 class PdfPageExtractorModule(private val reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
 
@@ -24,12 +26,63 @@ class PdfPageExtractorModule(private val reactContext: ReactApplicationContext) 
     private var currentPfd: ParcelFileDescriptor? = null
     private var currentPageCount: Int = 0
 
+    // JAVASCRIPT: Object Pooling pour éviter la surcharge du Garbage Collector
+    private val bitmapPool: ConcurrentHashMap<String, ConcurrentLinkedQueue<Bitmap>> = ConcurrentHashMap()
+    private val scopeExtract = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
+    private fun getBitmapFromPool(width: Int, height: Int): Bitmap {
+        val key = "${width}x${height}"
+        val queue = bitmapPool.getOrPut(key) { ConcurrentLinkedQueue() }
+        
+        var bitmap = queue.poll()
+        if (bitmap == null || bitmap.isRecycled) {
+            // Création si le pool est vide
+            Log.d(TAG, "Creating new Bitmap: $width x $height")
+            bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        } else {
+            Log.d(TAG, "Reusing Bitmap from pool: $width x $height")
+        }
+        
+        // Réinitialiser la couleur (nécessaire surtout pour le WebP/PDF)
+        bitmap.eraseColor(Color.WHITE)
+        return bitmap
+    }
+
+    private fun releaseBitmapToPool(bitmap: Bitmap) {
+        if (!bitmap.isRecycled) {
+            val key = "${bitmap.width}x${bitmap.height}"
+            val queue = bitmapPool.getOrPut(key) { ConcurrentLinkedQueue() }
+            // Garder seulement un petit nombre de bitmaps en mémoire (ex: max 3 par taille)
+            if (queue.size < 3) {
+                queue.offer(bitmap)
+            } else {
+                bitmap.recycle() // On recycle l'excédent pour économiser la RAM
+            }
+        }
+    }
+    
+    // Nettoyer tous les bitmaps quand le document se ferme
+    private fun clearBitmapPool() {
+        Log.i(TAG, "Clearing Bitmap pool")
+        for ((_, queue) in bitmapPool) {
+            var bitmap = queue.poll()
+            while (bitmap != null) {
+                if (!bitmap.isRecycled) {
+                    bitmap.recycle()
+                }
+                bitmap = queue.poll()
+            }
+        }
+        bitmapPool.clear()
+    }
+
     override fun getName(): String = "PdfPageExtractor"
 
     override fun onCatalystInstanceDestroy() {
         super.onCatalystInstanceDestroy()
         closeDocument()
         scope.cancel()
+        scopeExtract.cancel()
     }
 
     private fun getCacheDir(): File {
@@ -100,7 +153,8 @@ class PdfPageExtractorModule(private val reactContext: ReactApplicationContext) 
 
     @ReactMethod
     fun extractPage(pageNum: Int, width: Int, promise: Promise) {
-        scope.launch {
+        // Use a standard Dispatchers.IO scope but isolate extract scope
+        scopeExtract.launch {
             try {
                 val renderer = currentRenderer
                     ?: throw IllegalStateException("Document not opened")
@@ -109,34 +163,56 @@ class PdfPageExtractorModule(private val reactContext: ReactApplicationContext) 
                     throw IllegalArgumentException("Page index out of bounds: $pageNum")
                 }
 
-                Log.i(TAG, "Extracting page $pageNum at width $width")
+                // SYNCHRONIZED BLOCK:
+                // PdfRenderer is NOT thread-safe. We must ensure only ONE page is rendered at a time per document
+                val (absolutePath, success) = synchronized(renderer) {
+                    // Check again inside block in case closed while waiting
+                    if (currentRenderer == null) {
+                        Pair("", false)
+                    } else {
+                        Log.i(TAG, "Extracting page $pageNum at width $width")
 
-                val page = renderer.openPage(pageNum)
-                val aspectRatio = page.height.toDouble() / page.width.toDouble()
-                val height = (width * aspectRatio).toInt()
+                        val page = renderer.openPage(pageNum)
+                        val aspectRatio = page.height.toDouble() / page.width.toDouble()
+                        val height = (width * aspectRatio).toInt()
 
-                val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-                bitmap.eraseColor(Color.WHITE)
-                
-                page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                page.close()
+                        val bitmap = getBitmapFromPool(width, height)
+                        
+                        page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                        page.close()
 
-                val docId = currentDocId ?: "unknown"
-                val cacheFile = File(getCacheDir(), "${docId}_page_$pageNum.jpg")
-                
-                FileOutputStream(cacheFile).use { output ->
-                    bitmap.compress(Bitmap.CompressFormat.JPEG, 90, output)
+                        val docId = currentDocId ?: "unknown"
+                        // INCLUDE WIDTH IN FILENAME to separate thumb and HD caches!
+                        // CHANGE EXTENSION TO WEBP
+                        val cacheFile = File(getCacheDir(), "${docId}_page_${pageNum}_w${width}.webp")
+                        
+                        FileOutputStream(cacheFile).use { output ->
+                            // WEBP is faster to encode/decode and smaller than JPEG
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                                bitmap.compress(Bitmap.CompressFormat.WEBP_LOSSY, 85, output)
+                            } else {
+                                @Suppress("DEPRECATION")
+                                bitmap.compress(Bitmap.CompressFormat.WEBP, 85, output)
+                            }
+                        }
+                        
+                        releaseBitmapToPool(bitmap)
+
+                        Log.i(TAG, "Page $pageNum saved to: ${cacheFile.absolutePath}")
+                        Pair(cacheFile.absolutePath, true)
+                    }
                 }
                 
-                bitmap.recycle()
-
-                // Return absolute path without file:// prefix
-                val absolutePath = cacheFile.absolutePath
-                Log.i(TAG, "Page $pageNum saved to: $absolutePath")
-
-                withContext(Dispatchers.Main) {
-                    promise.resolve(absolutePath)
+                if (success) {
+                    withContext(Dispatchers.Main) {
+                        promise.resolve(absolutePath)
+                    }
+                } else {
+                   withContext(Dispatchers.Main) {
+                        promise.reject("RENDER_ERROR", "Document closed before rendering")
+                   }
                 }
+                
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to extract page $pageNum", e)
                 withContext(Dispatchers.Main) {
@@ -161,7 +237,13 @@ class PdfPageExtractorModule(private val reactContext: ReactApplicationContext) 
     private suspend fun closeDocumentInternal() {
         withContext(Dispatchers.IO) {
             try {
-                currentRenderer?.close()
+                clearBitmapPool()
+                // Wait/sync before closing to avoid crashing active renders
+                currentRenderer?.let {
+                    synchronized(it) {
+                        it.close()
+                    }
+                }
                 currentPfd?.close()
                 Log.i(TAG, "Document closed")
             } catch (e: Exception) {
