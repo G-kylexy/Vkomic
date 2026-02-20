@@ -124,39 +124,35 @@ const MainView: React.FC<MainViewProps> = ({
     );
   };
 
-  if (activeTab === "home") {
-    return (
-      <>
-        {/* BrowserView est TOUJOURS monté pour préserver le navPath */}
-        <div style={{ display: activeTab === "home" ? "contents" : "none" }}>
-          <BrowserView
-            vkToken={vkToken}
-            vkGroupId={vkGroupId}
-            vkTopicId={vkTopicId}
-            syncedData={syncedData}
-            setSyncedData={setSyncedData}
-            hasFullSynced={hasFullSynced}
-            setHasFullSynced={setHasFullSynced}
-            searchQuery={searchQuery}
-            setSearchQuery={setSearchQuery}
-            onVkStatusChange={onVkStatusChange}
-            addDownload={addDownload}
-            downloads={downloads}
-            pauseDownload={pauseDownload}
-            resumeDownload={resumeDownload}
-            cancelDownload={cancelDownload}
-            retryDownload={retryDownload}
-            navPath={navPath}
-            setNavPath={setNavPath}
-          />
-        </div>
-        {/* Les autres vues sont rendues normalement */}
-        {activeTab !== "home" && renderSecondaryContent()}
-      </>
-    );
-  }
-
-  return renderSecondaryContent();
+  return (
+    <>
+      {/* BrowserView est TOUJOURS monté pour préserver le navPath, la position de scroll et le cache */}
+      <div style={{ display: activeTab === "home" ? "contents" : "none" }}>
+        <BrowserView
+          vkToken={vkToken}
+          vkGroupId={vkGroupId}
+          vkTopicId={vkTopicId}
+          syncedData={syncedData}
+          setSyncedData={setSyncedData}
+          hasFullSynced={hasFullSynced}
+          setHasFullSynced={setHasFullSynced}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          onVkStatusChange={onVkStatusChange}
+          addDownload={addDownload}
+          downloads={downloads}
+          pauseDownload={pauseDownload}
+          resumeDownload={resumeDownload}
+          cancelDownload={cancelDownload}
+          retryDownload={retryDownload}
+          navPath={navPath}
+          setNavPath={setNavPath}
+        />
+      </div>
+      {/* Les autres vues sont rendues normalement */}
+      {activeTab !== "home" && renderSecondaryContent()}
+    </>
+  );
 };
 
 export default React.memo(MainView);
