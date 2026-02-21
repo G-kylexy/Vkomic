@@ -50,49 +50,57 @@ const getDisplayTitle = (node: VkNode, language: string) => {
   return title;
 };
 
+const ICON_CONFIGS = {
+  PDF: {
+    icon: FileText,
+    color: "text-rose-400",
+    bg: "group-hover:bg-rose-500/20 bg-rose-500/10",
+    border: "border-rose-500/20",
+  },
+  BOOK: {
+    icon: BookOpen,
+    color: "text-purple-400",
+    bg: "group-hover:bg-purple-500/20 bg-purple-500/10",
+    border: "border-purple-500/20",
+  },
+  ARCHIVE: {
+    icon: FileArchive,
+    color: "text-amber-400",
+    bg: "group-hover:bg-amber-500/20 bg-amber-500/10",
+    border: "border-amber-500/20",
+  },
+  IMAGE: {
+    icon: Image,
+    color: "text-cyan-400",
+    bg: "group-hover:bg-cyan-500/20 bg-cyan-500/10",
+    border: "border-cyan-500/20",
+  },
+  DEFAULT: {
+    icon: FileText,
+    color: "text-slate-400",
+    bg: "group-hover:bg-slate-700/50 bg-slate-800/50",
+    border: "border-slate-700",
+  },
+};
+
 const getFileIconConfig = (extension?: string) => {
   const ext = extension?.toUpperCase() || "";
   switch (ext) {
     case "PDF":
-      return {
-        icon: FileText,
-        color: "text-rose-400",
-        bg: "group-hover:bg-rose-500/20 bg-rose-500/10",
-        border: "border-rose-500/20",
-      };
+      return ICON_CONFIGS.PDF;
     case "CBZ":
     case "CBR":
-      return {
-        icon: BookOpen,
-        color: "text-purple-400",
-        bg: "group-hover:bg-purple-500/20 bg-purple-500/10",
-        border: "border-purple-500/20",
-      };
+      return ICON_CONFIGS.BOOK;
     case "ZIP":
     case "RAR":
     case "7Z":
-      return {
-        icon: FileArchive,
-        color: "text-amber-400",
-        bg: "group-hover:bg-amber-500/20 bg-amber-500/10",
-        border: "border-amber-500/20",
-      };
+      return ICON_CONFIGS.ARCHIVE;
     case "JPG":
     case "PNG":
     case "JPEG":
-      return {
-        icon: Image,
-        color: "text-cyan-400",
-        bg: "group-hover:bg-cyan-500/20 bg-cyan-500/10",
-        border: "border-cyan-500/20",
-      };
+      return ICON_CONFIGS.IMAGE;
     default:
-      return {
-        icon: FileText,
-        color: "text-slate-400",
-        bg: "group-hover:bg-slate-700/50 bg-slate-800/50",
-        border: "border-slate-700",
-      };
+      return ICON_CONFIGS.DEFAULT;
   }
 };
 
@@ -460,17 +468,25 @@ const BrowserView: React.FC<BrowserViewProps> = ({
     [displayedNodes],
   );
 
+  const fileNodesMap = React.useMemo(() => {
+    const map = new Map<string, VkNode>();
+    fileNodes.forEach((n) => map.set(n.id, n));
+    return map;
+  }, [fileNodes]);
+
   const activeDownloadsInView = React.useMemo(() => {
     if (fileNodes.length === 0) return [];
     const active: VkNode[] = [];
-    fileNodes.forEach((node) => {
-      const d = downloadsById.get(node.id);
-      if (d && ["pending", "downloading", "paused"].includes(d.status)) {
-        active.push(node);
+    downloads.forEach((d) => {
+      if (["pending", "downloading", "paused"].includes(d.status)) {
+        const node = fileNodesMap.get(d.id);
+        if (node) {
+          active.push(node);
+        }
       }
     });
     return active;
-  }, [fileNodes, downloadsById]);
+  }, [fileNodes.length, downloads, fileNodesMap]);
 
   const hasActiveDownloads = activeDownloadsInView.length > 0;
 
