@@ -28,8 +28,8 @@ class PdfCacheService {
 
     calculateRenderWidth(screenWidth: number): number {
         const pixelRatio = PixelRatio.get();
-        // Qualité maximale : x3 pour des traits ultra-nets même au zoom maximal
-        this.renderWidth = Math.floor(screenWidth * pixelRatio * 3.0);
+        // Qualité maximale : x4 pour des traits ultra-nets même au zoom maximal (légèrement amélioré)
+        this.renderWidth = Math.floor(screenWidth * pixelRatio * 4.0);
         return this.renderWidth;
     }
 

@@ -255,16 +255,17 @@ export const ReaderScreen: React.FC<ReaderScreenProps> = ({ uri, title, onClose 
                 height={height}
                 onTap={toggleControls}
                 onRetry={() => retryPage(pageNum)}
+                themeColor={p.primaryBright}
             />
         );
-    }, [pageUris, width, height, toggleControls, retryPage, loadPage, renderTick]);
+    }, [pageUris, width, height, toggleControls, retryPage, loadPage, renderTick, p.primaryBright]);
 
 
     const keyExtractor = useCallback((item: number) => `page_${item}`, []);
 
     if (!documentLoaded) {
         return (
-            <View style={[styles.container, { backgroundColor: "#000" }]}>
+            <View style={[styles.container, { backgroundColor: "#000", justifyContent: 'center', alignItems: 'center' }]}>
                 <ActivityIndicator size="large" color={p.primaryBright} />
                 {documentError && (
                     <View style={styles.errorContainer}>

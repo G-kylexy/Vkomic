@@ -20,6 +20,7 @@ interface ZoomablePageProps {
     height: number;
     onTap: () => void;
     onRetry?: () => void;
+    themeColor?: string;
 }
 
 export const ZoomablePage: React.FC<ZoomablePageProps> = ({
@@ -31,6 +32,7 @@ export const ZoomablePage: React.FC<ZoomablePageProps> = ({
     height,
     onTap,
     onRetry,
+    themeColor = "#fff",
 }) => {
     const scale = useSharedValue(1);
     const savedScale = useSharedValue(1);
@@ -177,7 +179,7 @@ export const ZoomablePage: React.FC<ZoomablePageProps> = ({
     if (!uri) {
         return (
             <View style={[styles.container, { width, height }]}>
-                <ActivityIndicator size="large" color="#fff" />
+                <ActivityIndicator size="large" color={themeColor} />
             </View>
         );
     }
