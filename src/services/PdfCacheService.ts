@@ -133,7 +133,7 @@ class PdfCacheService {
     /**
      * Pré-charge les pages voisines en HD silencieusement.
      */
-    prefetchAround(centerPage: number, screenWidth: number, count = 3) {
+    prefetchAround(centerPage: number, screenWidth: number, count = 1) {
         if (!this.isDocumentOpen) return;
         for (let i = 1; i <= count; i++) {
             if (centerPage + i < this.totalPages) {

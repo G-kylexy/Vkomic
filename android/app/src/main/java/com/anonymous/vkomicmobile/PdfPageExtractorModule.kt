@@ -183,17 +183,12 @@ class PdfPageExtractorModule(private val reactContext: ReactApplicationContext) 
 
                         val docId = currentDocId ?: "unknown"
                         // INCLUDE WIDTH IN FILENAME to separate thumb and HD caches!
-                        // CHANGE EXTENSION TO WEBP
-                        val cacheFile = File(getCacheDir(), "${docId}_page_${pageNum}_w${width}.webp")
+                        // SWITCHED TO JPEG for significantly faster hardware encoding!
+                        val cacheFile = File(getCacheDir(), "${docId}_page_${pageNum}_w${width}.jpg")
                         
                         FileOutputStream(cacheFile).use { output ->
-                            // WEBP is faster to encode/decode and smaller than JPEG
-                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-                                bitmap.compress(Bitmap.CompressFormat.WEBP_LOSSY, 85, output)
-                            } else {
-                                @Suppress("DEPRECATION")
-                                bitmap.compress(Bitmap.CompressFormat.WEBP, 85, output)
-                            }
+                            // JPEG is much faster to compress than WebP for high-resolution 12MP bitmaps
+                            bitmap.compress(Bitmap.CompressFormat.JPEG, 90, output)
                         }
                         
                         releaseBitmapToPool(bitmap)
