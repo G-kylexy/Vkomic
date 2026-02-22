@@ -202,6 +202,7 @@ export const ZoomablePage: React.FC<ZoomablePageProps> = ({
                         contentFit="contain"
                         cachePolicy="memory-disk"
                         recyclingKey={`page_${pageNum}`}
+                        allowDownscaling={false}
                     />
                 </Animated.View>
             </GestureDetector>
