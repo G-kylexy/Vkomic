@@ -12,8 +12,7 @@ import { Image } from 'expo-image';
 const AnimatedExpoImage = Animated.createAnimatedComponent(Image);
 
 interface ZoomablePageProps {
-    thumbUri: string | null;
-    hdUri: string | null;
+    uri: string | null;
     pageNum: number;
     loading: boolean;
     error: boolean;
@@ -24,8 +23,7 @@ interface ZoomablePageProps {
 }
 
 export const ZoomablePage: React.FC<ZoomablePageProps> = ({
-    thumbUri,
-    hdUri,
+    uri,
     pageNum,
     loading,
     error,
@@ -57,8 +55,7 @@ export const ZoomablePage: React.FC<ZoomablePageProps> = ({
         savedTranslateY.value = 0;
     };
 
-    // Reset uniquement au changement de PAGE
-    // Protégé contre le gel des composants par FlashList lors du recyclage
+    // Reset au changement de page
     React.useEffect(() => {
         try {
             scale.value = 1;
@@ -68,7 +65,7 @@ export const ZoomablePage: React.FC<ZoomablePageProps> = ({
             savedTranslateX.value = 0;
             savedTranslateY.value = 0;
         } catch {
-            // Composant recyclé/gelé par FlashList — ignoré
+            // FlashList recycling protection
         }
     }, [pageNum]);
 
@@ -81,13 +78,10 @@ export const ZoomablePage: React.FC<ZoomablePageProps> = ({
             } else {
                 const targetScale = 2.5;
                 scale.value = withSpring(targetScale);
-
                 const targetX = (width / 2 - e.x) * (targetScale - 1);
                 const targetY = (height / 2 - e.y) * (targetScale - 1);
-
                 translateX.value = withSpring(targetX);
                 translateY.value = withSpring(targetY);
-
                 savedScale.value = targetScale;
                 savedTranslateX.value = targetX;
                 savedTranslateY.value = targetY;
@@ -147,17 +141,14 @@ export const ZoomablePage: React.FC<ZoomablePageProps> = ({
                 resetValues();
                 return;
             }
-
             const maxTranslateX = (width * scale.value - width) / 2;
             const maxTranslateY = (height * scale.value - height) / 2;
-
             translateX.value = withSpring(
                 Math.min(Math.max(translateX.value, -maxTranslateX), maxTranslateX)
             );
             translateY.value = withSpring(
                 Math.min(Math.max(translateY.value, -maxTranslateY), maxTranslateY)
             );
-
             savedTranslateX.value = translateX.value;
             savedTranslateY.value = translateY.value;
         });
@@ -169,14 +160,6 @@ export const ZoomablePage: React.FC<ZoomablePageProps> = ({
             { scale: scale.value },
         ],
     }));
-
-    if (loading) {
-        return (
-            <View style={[styles.container, { width, height }]}>
-                <ActivityIndicator size="large" color="#fff" />
-            </View>
-        );
-    }
 
     if (error) {
         return (
@@ -191,16 +174,15 @@ export const ZoomablePage: React.FC<ZoomablePageProps> = ({
         );
     }
 
-    if (!thumbUri && !hdUri) {
+    if (!uri) {
         return (
             <View style={[styles.container, { width, height }]}>
-                <Text style={styles.errorText}>En attente...</Text>
+                <ActivityIndicator size="large" color="#fff" />
             </View>
         );
     }
 
-    const tUri = thumbUri?.startsWith("/") ? `file://${thumbUri}` : thumbUri;
-    const hUri = hdUri?.startsWith("/") ? `file://${hdUri}` : hdUri;
+    const imageUri = uri.startsWith("/") ? `file://${uri}` : uri;
 
     const combinedGestures = Gesture.Simultaneous(
         pinchGesture,
@@ -212,27 +194,13 @@ export const ZoomablePage: React.FC<ZoomablePageProps> = ({
         <View style={[styles.container, { width, height }]}>
             <GestureDetector gesture={combinedGestures}>
                 <Animated.View style={[styles.imageContainer, { width, height }]}>
-                    {/* Thumbnail layer */}
-                    {tUri && (
-                        <AnimatedExpoImage
-                            source={{ uri: tUri }}
-                            style={[animatedStyle, { width, height, position: 'absolute' }]}
-                            contentFit="contain"
-                            cachePolicy="memory-disk"
-                            recyclingKey={`thumb_${pageNum}`}
-                        />
-                    )}
-                    {/* HD layer */}
-                    {hUri && (
-                        <AnimatedExpoImage
-                            source={{ uri: hUri }}
-                            style={[animatedStyle, { width, height, position: 'absolute' }]}
-                            contentFit="contain"
-                            cachePolicy="memory-disk"
-                            transition={200}
-                            recyclingKey={`hd_${pageNum}`}
-                        />
-                    )}
+                    <AnimatedExpoImage
+                        source={{ uri: imageUri }}
+                        style={[animatedStyle, { width, height }]}
+                        contentFit="contain"
+                        cachePolicy="memory-disk"
+                        recyclingKey={`page_${pageNum}`}
+                    />
                 </Animated.View>
             </GestureDetector>
         </View>

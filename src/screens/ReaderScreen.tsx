@@ -29,7 +29,7 @@ export const ReaderScreen: React.FC<ReaderScreenProps> = ({ uri, title, onClose 
     const [totalPages, setTotalPages] = useState(0);
     const [currentPage, setCurrentPage] = useState(0);
     const [initialPage, setInitialPage] = useState(0);
-    const [pageUris, setPageUris] = useState<Record<number, { thumb: string | null; hd: string | null }>>({});
+    const [pageUris, setPageUris] = useState<Record<number, string>>({});
 
     // We keep ref sets for loading/error to avoid mass re-renders on FlatList when fast-scrolling
     const loadingPagesRef = useRef<Set<number>>(new Set());
@@ -115,8 +115,7 @@ export const ReaderScreen: React.FC<ReaderScreenProps> = ({ uri, title, onClose 
 
                     // 4. Prefetch neighbors immediately
                     pdfCacheService.updateVisiblePage(actualTargetPage);
-                    pdfCacheService.prefetchPages(actualTargetPage, width);
-                    pdfCacheService.preloadNeighbors(actualTargetPage, width);
+                    pdfCacheService.prefetchAround(actualTargetPage, width);
 
                     // Final scroll adjustment if needed
                     if (actualTargetPage > 0) {
@@ -142,25 +141,14 @@ export const ReaderScreen: React.FC<ReaderScreenProps> = ({ uri, title, onClose 
         init();
     }, [uri]);
 
-    const updateUris = (pageNum: number, updates: { thumb?: string, hd?: string }) => {
-        if (!isMountedRef.current) return;
-        setPageUris(prev => {
-            const current = prev[pageNum] || { thumb: null, hd: null };
-            return {
-                ...prev,
-                [pageNum]: { ...current, ...updates }
-            };
-        });
-    };
-
     const loadPageInternal = useCallback(async (pageNum: number, totalPagesCount: number, screenWidth: number) => {
         if (pageNum < 0 || pageNum >= totalPagesCount) return;
         if (loadingPagesRef.current.has(pageNum)) return;
 
-        // Si on a déjà la HD en cache, c'est fini
-        const hdCached = pdfCacheService.getHdUri(pageNum);
-        if (hdCached) {
-            updateUris(pageNum, { hd: hdCached });
+        // Retour immédiat si déjà en cache
+        const cached = pdfCacheService.getCachedUri(pageNum);
+        if (cached) {
+            setPageUris(prev => ({ ...prev, [pageNum]: cached }));
             return;
         }
 
@@ -168,38 +156,18 @@ export const ReaderScreen: React.FC<ReaderScreenProps> = ({ uri, title, onClose 
         forceRender();
 
         try {
-            // PIPELINE STREAMING OPTIMISÉ (Non-bloquant) :
-            // 1. Extraire et afficher la vignette IMMÉDIATEMENT
-            const thumbUri = await pdfCacheService.smartExtract(pageNum, screenWidth, 'thumb');
+            const hdUri = await pdfCacheService.extractPage(pageNum, screenWidth);
             if (isMountedRef.current) {
-                updateUris(pageNum, { thumb: thumbUri });
+                setPageUris(prev => ({ ...prev, [pageNum]: hdUri }));
             }
-
-            // 2. Lancer l'extraction HD en tâche de fond (NE PAS ATTENDRE)
-            // Cela permet à loadPageInternal de se terminer et de laisser la place aux pages suivantes
-            pdfCacheService.smartExtract(pageNum, screenWidth, 'hd')
-                .then(hdUri => {
-                    if (isMountedRef.current) {
-                        updateUris(pageNum, { hd: hdUri });
-                        loadingPagesRef.current.delete(pageNum);
-                        forceRender();
-                    }
-                })
-                .catch(e => {
-                    console.warn(`ReaderScreen: HD loading failed for page ${pageNum}`, e);
-                    if (isMountedRef.current) {
-                        loadingPagesRef.current.delete(pageNum);
-                        forceRender();
-                    }
-                });
-
         } catch (e) {
-            console.error(`ReaderScreen: Thumbnail failure for page ${pageNum}`, e);
+            console.error(`ReaderScreen: extraction failed page ${pageNum}`, e);
             if (isMountedRef.current) {
                 errorPagesRef.current.add(pageNum);
-                loadingPagesRef.current.delete(pageNum);
-                forceRender();
             }
+        } finally {
+            loadingPagesRef.current.delete(pageNum);
+            if (isMountedRef.current) forceRender();
         }
     }, [width]);
 
@@ -235,7 +203,7 @@ export const ReaderScreen: React.FC<ReaderScreenProps> = ({ uri, title, onClose 
             if (isMountedRef.current) {
                 pdfCacheService.updateVisiblePage(pageIndex);
                 saveProgress(pageIndex);
-                pdfCacheService.prefetchPages(pageIndex, width);
+                pdfCacheService.prefetchAround(pageIndex, width);
             }
         }, 150); // 150ms debounce
     }, [currentPage, saveProgress, width]);
@@ -268,19 +236,18 @@ export const ReaderScreen: React.FC<ReaderScreenProps> = ({ uri, title, onClose 
     }).current;
 
     const renderPage = useCallback(({ item: pageNum }: { item: number }) => {
-        const uris = pageUris[pageNum];
+        const pageUri = pageUris[pageNum];
         const isLoading = loadingPagesRef.current.has(pageNum);
         const isError = errorPagesRef.current.has(pageNum);
 
         // Safety: if the page is rendered but no URI is present in state, trigger load
-        if (!uris && !isLoading && !isError) {
+        if (!pageUri && !isLoading && !isError) {
             setTimeout(() => loadPage(pageNum), 0);
         }
 
         return (
             <ZoomablePage
-                thumbUri={uris?.thumb || null}
-                hdUri={uris?.hd || null}
+                uri={pageUri || null}
                 pageNum={pageNum}
                 loading={isLoading}
                 error={isError}
