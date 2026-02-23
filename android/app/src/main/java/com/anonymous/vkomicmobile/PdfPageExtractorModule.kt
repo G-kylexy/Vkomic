@@ -52,11 +52,11 @@ class PdfPageExtractorModule(private val reactContext: ReactApplicationContext) 
         if (!bitmap.isRecycled) {
             val key = "${bitmap.width}x${bitmap.height}"
             val queue = bitmapPool.getOrPut(key) { ConcurrentLinkedQueue() }
-            // Garder seulement un petit nombre de bitmaps en mémoire (ex: max 3 par taille)
-            if (queue.size < 3) {
+            // Garder seulement 1 seul bitmap en mémoire par taille pour les gigantesques résolutions x3
+            if (queue.size < 1) {
                 queue.offer(bitmap)
             } else {
-                bitmap.recycle() // On recycle l'excédent pour économiser la RAM
+                bitmap.recycle() // On recycle l'excédent immédiat pour sauver la RAM
             }
         }
     }
@@ -213,6 +213,80 @@ class PdfPageExtractorModule(private val reactContext: ReactApplicationContext) 
                 withContext(Dispatchers.Main) {
                     promise.reject("EXTRACT_ERROR", e.message)
                 }
+            }
+        }
+    }
+
+    /**
+     * Extrait une REGION spécifique d'une page à haute résolution (pour le zoom par tuiles).
+     * cropX, cropY, cropW, cropH sont en coordonnées normalisées [0..1] du PDF (peuvent déborder pour le letterboxing).
+     * outputWidth, outputHeight = taille du bitmap de sortie (= taille écran en pixels physiques).
+     */
+    @ReactMethod
+    fun extractPageRegion(
+        pageNum: Int,
+        cropX: Double, cropY: Double,
+        cropW: Double, cropH: Double,
+        outputWidth: Int, outputHeight: Int,
+        promise: Promise
+    ) {
+        scopeExtract.launch {
+            try {
+                val renderer = currentRenderer
+                    ?: throw IllegalStateException("Document not opened")
+
+                if (pageNum < 0 || pageNum >= currentPageCount) {
+                    throw IllegalArgumentException("Page index out of bounds: $pageNum")
+                }
+
+                val (absolutePath, success) = synchronized(renderer) {
+                    if (currentRenderer == null) {
+                        Pair("", false)
+                    } else {
+                        val page = renderer.openPage(pageNum)
+                        val pageW = page.width.toFloat()
+                        val pageH = page.height.toFloat()
+
+                        // Scale: combien de pixels de sortie par unité normalisée de page
+                        val sx = outputWidth.toFloat() / (cropW.toFloat() * pageW)
+                        val sy = outputHeight.toFloat() / (cropH.toFloat() * pageH)
+
+                        // Translation: le point (cropX*pageW, cropY*pageH) doit arriver en (0,0) du bitmap
+                        val tx = -cropX.toFloat() * pageW * sx
+                        val ty = -cropY.toFloat() * pageH * sy
+
+                        val matrix = android.graphics.Matrix()
+                        matrix.setScale(sx, sy)
+                        matrix.postTranslate(tx, ty)
+
+                        val bitmap = Bitmap.createBitmap(outputWidth, outputHeight, Bitmap.Config.ARGB_8888)
+                        bitmap.eraseColor(Color.BLACK) // Fond noir pour les zones hors page
+
+                        page.render(bitmap, null, matrix, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                        page.close()
+
+                        val docId = currentDocId ?: "unknown"
+                        val cacheFile = File(getCacheDir(), "${docId}_region_${pageNum}.jpg")
+
+                        FileOutputStream(cacheFile).use { output ->
+                            bitmap.compress(Bitmap.CompressFormat.JPEG, 92, output)
+                        }
+
+                        releaseBitmapToPool(bitmap)
+
+                        Log.d(TAG, "Region extracted: page=$pageNum crop=($cropX,$cropY,$cropW,$cropH) -> ${cacheFile.absolutePath}")
+                        Pair(cacheFile.absolutePath, true)
+                    }
+                }
+
+                if (success) {
+                    withContext(Dispatchers.Main) { promise.resolve(absolutePath) }
+                } else {
+                    withContext(Dispatchers.Main) { promise.reject("RENDER_ERROR", "Document closed before rendering") }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "extractPageRegion failed page $pageNum", e)
+                withContext(Dispatchers.Main) { promise.reject("EXTRACT_REGION_ERROR", e.message) }
             }
         }
     }

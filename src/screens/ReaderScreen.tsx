@@ -317,7 +317,7 @@ export const ReaderScreen: React.FC<ReaderScreenProps> = ({ uri, title, onClose 
                     scrollEventThrottle={16}
                     showsHorizontalScrollIndicator={false}
                     showsVerticalScrollIndicator={false}
-                    drawDistance={viewMode === "horizontal" ? width * 2 : height * 2}
+                    drawDistance={viewMode === "horizontal" ? width * 0.5 : height * 0.5}
                     onViewableItemsChanged={onViewableItemsChanged}
                     viewabilityConfig={viewabilityConfig}
                     initialScrollIndex={currentPage}

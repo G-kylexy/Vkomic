@@ -26,6 +26,14 @@ class NativeDownloadModule(private val reactContext: ReactApplicationContext) : 
         private const val EVENT_ERROR = "NativeDownloadError"
     }
 
+    private fun prepareSafFileName(fileName: String, mimeType: String): String {
+        // Eviter le bug "manga.pdf (1)" sans extension en laissant le système ajouter l'extension
+        if (mimeType == "application/pdf" && fileName.lowercase().endsWith(".pdf")) {
+            return fileName.substring(0, fileName.length - 4)
+        }
+        return fileName
+    }
+
     private val executor = Executors.newFixedThreadPool(3)
     private val activeDownloads = ConcurrentHashMap<String, DownloadTask>()
 
@@ -244,7 +252,8 @@ class NativeDownloadModule(private val reactContext: ReactApplicationContext) : 
                 
                 // Try create
                 try {
-                    targetUri = DocumentsContract.createDocument(resolver, dirUri, mimeType, fileName)
+                    val safeName = prepareSafFileName(fileName, mimeType)
+                    targetUri = DocumentsContract.createDocument(resolver, dirUri, mimeType, safeName)
                 } catch (e: Exception) {
                     // Fallback or permission issue
                     promise.reject("CREATE_ERROR", "Failed to create document: ${e.message}")
@@ -523,7 +532,8 @@ class NativeDownloadModule(private val reactContext: ReactApplicationContext) : 
                     val docId = DocumentsContract.getTreeDocumentId(treeUri)
                     val dirUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, docId)
                     
-                    createdUri = DocumentsContract.createDocument(resolver, dirUri, mimeType, fileName)
+                    val safeName = prepareSafFileName(fileName, mimeType)
+                    createdUri = DocumentsContract.createDocument(resolver, dirUri, mimeType, safeName)
                         ?: throw IOException("Failed to create SAF document: $fileName")
                 } else {
                     // Vérifier la taille existante pour la reprise

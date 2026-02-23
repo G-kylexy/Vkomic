@@ -10,7 +10,8 @@ export interface PdfDocumentInfo {
 
 class PdfCacheService {
     private cache: Map<number, string> = new Map();
-    private maxCachedPages = 15;
+    // Limiter drastiquement pour ne pas saturer la RAM (OOM) avec des images HD (très grosses)
+    private maxCachedPages = 3;
     private currentDocId: string | null = null;
     private totalPages: number = 0;
     private isDocumentOpen: boolean = false;
@@ -28,8 +29,10 @@ class PdfCacheService {
 
     calculateRenderWidth(screenWidth: number): number {
         const pixelRatio = PixelRatio.get();
-        // Qualité maximale : x3 (compromis performance/clarté optimal)
-        this.renderWidth = Math.floor(screenWidth * pixelRatio * 3.0);
+        // Résolution de base 1.5x la taille de l'écran (= ~1800px).
+        // L'image de base reste ainsi très nette pendant que l'utilisateur zoome, 
+        // tout en gardant une empreinte RAM faible (~20 Mo/page).
+        this.renderWidth = Math.floor(screenWidth * pixelRatio * 1.5);
         return this.renderWidth;
     }
 
@@ -147,6 +150,22 @@ class PdfCacheService {
 
     getCachedUri(pageNum: number): string | null {
         return this.cache.get(pageNum) || null;
+    }
+
+    /**
+     * Extrait une région spécifique d'une page en haute définition (pour le zoom par tuiles).
+     * cropX, cropY, cropW, cropH en coordonnées normalisées [0..1] du PDF.
+     * outputWidth, outputHeight = taille du bitmap de sortie en pixels physiques.
+     */
+    async extractPageRegion(
+        pageNum: number,
+        cropX: number, cropY: number,
+        cropW: number, cropH: number,
+        outputWidth: number, outputHeight: number
+    ): Promise<string> {
+        if (!this.isDocumentOpen) throw new Error("No document open");
+        const uri = await PdfPageExtractor.extractPageRegion(pageNum, cropX, cropY, cropW, cropH, outputWidth, outputHeight);
+        return `${uri}?t=${Date.now()}`;
     }
 
     async closeDocument() {
