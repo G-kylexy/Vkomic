@@ -29,10 +29,9 @@ class PdfCacheService {
 
     calculateRenderWidth(screenWidth: number): number {
         const pixelRatio = PixelRatio.get();
-        // Résolution de base 1.5x la taille de l'écran (= ~1800px).
-        // L'image de base reste ainsi très nette pendant que l'utilisateur zoome, 
-        // tout en gardant une empreinte RAM faible (~20 Mo/page).
-        this.renderWidth = Math.floor(screenWidth * pixelRatio * 1.5);
+        // Résolution de base 2.0x la taille de l'écran (Supersampling de base).
+        // Restitué à 2.0x pour éviter le flou pendant que l'utilisateur déplace ses doigts.
+        this.renderWidth = Math.floor(screenWidth * pixelRatio * 2.0);
         return this.renderWidth;
     }
 

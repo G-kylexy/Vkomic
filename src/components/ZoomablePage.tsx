@@ -5,7 +5,8 @@ import Animated, {
     useSharedValue,
     useAnimatedStyle,
     withSpring,
-    runOnJS
+    runOnJS,
+    SharedValue
 } from "react-native-reanimated";
 import { Image } from 'expo-image';
 import { pdfCacheService } from "../services/PdfCacheService";
@@ -23,6 +24,47 @@ interface ZoomablePageProps {
     onRetry?: () => void;
     themeColor?: string;
 }
+
+interface PatchState {
+    id: number;
+    uri: string;
+    originTx: number;
+    originTy: number;
+}
+
+/** Component interne pour afficher un patch spécifique et le suivre à la trace */
+const HdPatchLayer = React.memo(({ patch, translateX, translateY, onLoad }: {
+    patch: PatchState;
+    translateX: SharedValue<number>;
+    translateY: SharedValue<number>;
+    onLoad: (id: number) => void;
+}) => {
+    // Style animé du patch HD : suit le delta de translation par rapport à l'endroit où il a pop.
+    const patchAnimatedStyle = useAnimatedStyle(() => {
+        return {
+            transform: [
+                { translateX: translateX.value - patch.originTx },
+                { translateY: translateY.value - patch.originTy },
+            ],
+        };
+    });
+
+    return (
+        <Animated.View
+            pointerEvents="none"
+            style={[StyleSheet.absoluteFill, patchAnimatedStyle]}
+        >
+            <Image
+                source={{ uri: patch.uri.startsWith("/") ? `file://${patch.uri}` : patch.uri }}
+                style={StyleSheet.absoluteFill}
+                contentFit="fill"
+                cachePolicy="none"
+                transition={150} // Fondu progressif pour donner l'effet "mise au point"
+                onLoad={() => onLoad(patch.id)}
+            />
+        </Animated.View>
+    );
+});
 
 export const ZoomablePage: React.FC<ZoomablePageProps> = ({
     uri,
@@ -43,7 +85,9 @@ export const ZoomablePage: React.FC<ZoomablePageProps> = ({
     const savedTranslateY = useSharedValue(0);
 
     // --- HD Overlay State ---
-    const [hdPatchUri, setHdPatchUri] = useState<string | null>(null);
+    // Au lieu d'écraser le patch brutalement, on garde une liste des patchs (généralement 1 ou 2 max).
+    // Quand le NOUVEAU patch finit de charger (décodage GPU), on efface l'ANCIEN.
+    const [patches, setPatches] = useState<PatchState[]>([]);
     const [imageNaturalSize, setImageNaturalSize] = useState<{ w: number; h: number } | null>(null);
     const hdRequestIdRef = useRef(0);
     const hdDelayTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -83,13 +127,9 @@ export const ZoomablePage: React.FC<ZoomablePageProps> = ({
         return { displayW, displayH, marginX, marginY };
     }, [imageNaturalSize, width, height]);
 
-    /**
-     * Demande un patch HD de la zone visible au module natif.
-     * Le patch est un bitmap taille-écran qui couvre exactement le viewport.
-     */
     const requestHdPatch = useCallback(async (s: number, tx: number, ty: number) => {
         if (s <= 1.15 || !imageNaturalSize) {
-            setHdPatchUri(null);
+            setPatches([]);
             return;
         }
 
@@ -101,13 +141,11 @@ export const ZoomablePage: React.FC<ZoomablePageProps> = ({
         const cx = width / 2;
         const cy = height / 2;
 
-        // Viewport corners in container (unscaled) coordinates
         const vpLeft = (0 - cx - tx) / s + cx;
         const vpTop = (0 - cy - ty) / s + cy;
         const vpRight = (width - cx - tx) / s + cx;
         const vpBottom = (height - cy - ty) / s + cy;
 
-        // Convert to normalized page coordinates [0..1] (may exceed bounds for letterboxing)
         const cropX = (vpLeft - marginX) / displayW;
         const cropY = (vpTop - marginY) / displayH;
         const cropW = (vpRight - vpLeft) / displayW;
@@ -117,16 +155,22 @@ export const ZoomablePage: React.FC<ZoomablePageProps> = ({
 
         try {
             const pixelRatio = PixelRatio.get();
-            const outputWidth = Math.floor(width * pixelRatio);
-            const outputHeight = Math.floor(height * pixelRatio);
+            // Restauration de la qualité UHD à 1.5x
+            // On s'assure que tout est aussi net qu'auparavant.
+            const qualityMultiplier = 1.5;
+            const outputWidth = Math.floor(width * pixelRatio * qualityMultiplier);
+            const outputHeight = Math.floor(height * pixelRatio * qualityMultiplier);
 
             const patchUri = await pdfCacheService.extractPageRegion(
                 pageNum, cropX, cropY, cropW, cropH, outputWidth, outputHeight
             );
 
-            // Only apply if this is still the latest request
             if (hdRequestIdRef.current === requestId) {
-                setHdPatchUri(patchUri);
+                // On ajoute le nouveau patch à la liste, SANS supprimer le vieux tout de suite.
+                setPatches(prev => {
+                    const newPatch = { id: requestId, uri: patchUri, originTx: tx, originTy: ty };
+                    return [...prev, newPatch].slice(-3); // Au pire 3 patches en cours
+                });
             }
         } catch (e) {
             // Silently fail (document may have been closed)
@@ -136,16 +180,25 @@ export const ZoomablePage: React.FC<ZoomablePageProps> = ({
     const clearHdPatch = useCallback(() => {
         hdRequestIdRef.current++;
         if (hdDelayTimerRef.current) clearTimeout(hdDelayTimerRef.current);
-        setHdPatchUri(null);
+        setPatches([]); // Vide brutalement lors du Pincement
     }, []);
 
-    /** Demande un patch HD après un délai (pour laisser l'animation spring se terminer) */
-    const delayedRequestHdPatch = useCallback((s: number, tx: number, ty: number, delayMs: number = 80) => {
+    const delayedRequestHdPatch = useCallback((s: number, tx: number, ty: number, delayMs: number = 20) => {
         if (hdDelayTimerRef.current) clearTimeout(hdDelayTimerRef.current);
         hdDelayTimerRef.current = setTimeout(() => {
+            // NE PAS appeler clearHdPatch() ici !
+            // La transition fluide se charge de remplacer le patch à la volée.
             requestHdPatch(s, tx, ty);
         }, delayMs);
     }, [requestHdPatch]);
+
+    // Cleanup : le délai DOIT être >= la durée du transition (150ms)
+    // pour éviter que l'ancien patch disparaisse pendant que le nouveau est encore transparent.
+    const onPatchLoadFinished = useCallback((id: number) => {
+        setTimeout(() => {
+            setPatches(prev => prev.filter(p => p.id >= id));
+        }, 200); // 200ms > 150ms de transition = sécurité totale
+    }, []);
 
     // --- Transform Logic ---
 
@@ -165,7 +218,6 @@ export const ZoomablePage: React.FC<ZoomablePageProps> = ({
         savedTranslateY.value = 0;
     };
 
-    // Reset on page recycle (FlashList)
     useEffect(() => {
         try {
             scale.value = 1;
@@ -174,9 +226,8 @@ export const ZoomablePage: React.FC<ZoomablePageProps> = ({
             savedScale.value = 1;
             savedTranslateX.value = 0;
             savedTranslateY.value = 0;
-            setHdPatchUri(null);
+            setPatches([]);
         } catch {
-            // FlashList recycling protection
         }
     }, [pageNum]);
 
@@ -197,8 +248,8 @@ export const ZoomablePage: React.FC<ZoomablePageProps> = ({
                 savedScale.value = targetScale;
                 savedTranslateX.value = targetX;
                 savedTranslateY.value = targetY;
-                // Délai très court pour le double-tap car le spring est rapide
-                runOnJS(delayedRequestHdPatch)(targetScale, targetX, targetY, 150);
+                runOnJS(clearHdPatch)();
+                runOnJS(delayedRequestHdPatch)(targetScale, targetX, targetY, 100);
             }
         });
 
@@ -212,6 +263,7 @@ export const ZoomablePage: React.FC<ZoomablePageProps> = ({
         .onStart(() => {
             'worklet';
             savedScale.value = scale.value;
+            // Le scale change physiquement → l'ancien patch n'est plus à la bonne taille, on nettoie
             runOnJS(clearHdPatch)();
         })
         .onUpdate((e) => {
@@ -225,8 +277,7 @@ export const ZoomablePage: React.FC<ZoomablePageProps> = ({
                 runOnJS(clearHdPatch)();
             } else {
                 savedScale.value = scale.value;
-                // Le pinch n'a pas de grand spring : patch presque immédiat
-                runOnJS(delayedRequestHdPatch)(scale.value, translateX.value, translateY.value, 80);
+                runOnJS(delayedRequestHdPatch)(scale.value, translateX.value, translateY.value, 0);
             }
         });
 
@@ -245,7 +296,6 @@ export const ZoomablePage: React.FC<ZoomablePageProps> = ({
             'worklet';
             savedTranslateX.value = translateX.value;
             savedTranslateY.value = translateY.value;
-            runOnJS(clearHdPatch)();
         })
         .onUpdate((e) => {
             'worklet';
@@ -265,12 +315,14 @@ export const ZoomablePage: React.FC<ZoomablePageProps> = ({
             const maxTranslateY = (height * scale.value - height) / 2;
             const clampedTx = Math.min(Math.max(translateX.value, -maxTranslateX), maxTranslateX);
             const clampedTy = Math.min(Math.max(translateY.value, -maxTranslateY), maxTranslateY);
-            translateX.value = withSpring(clampedTx);
-            translateY.value = withSpring(clampedTy);
+            // Spring amorti sans rebond (critically damped) pour éviter d'exposer les bords du patch
+            const springConfig = { damping: 20, stiffness: 300 };
+            translateX.value = withSpring(clampedTx, springConfig);
+            translateY.value = withSpring(clampedTy, springConfig);
             savedTranslateX.value = clampedTx;
             savedTranslateY.value = clampedTy;
-            // Patch très rapide après le relachement du pan
-            runOnJS(delayedRequestHdPatch)(scale.value, clampedTx, clampedTy, 100);
+            // Zero Flicker : l'ancien patch reste intact, le nouveau le remplace dès qu'il est prêt
+            runOnJS(delayedRequestHdPatch)(scale.value, clampedTx, clampedTy, 0);
         });
 
     const animatedStyle = useAnimatedStyle(() => ({
@@ -303,7 +355,6 @@ export const ZoomablePage: React.FC<ZoomablePageProps> = ({
     }
 
     const imageUri = uri.startsWith("/") ? `file://${uri}` : uri;
-    const hdUri = hdPatchUri ? (hdPatchUri.startsWith("/") ? `file://${hdPatchUri}` : hdPatchUri) : null;
 
     const combinedGestures = Gesture.Simultaneous(
         pinchGesture,
@@ -315,7 +366,6 @@ export const ZoomablePage: React.FC<ZoomablePageProps> = ({
         <View style={[styles.container, { width, height }]}>
             <GestureDetector gesture={combinedGestures}>
                 <Animated.View style={[styles.imageContainer, { width, height }]}>
-                    {/* Couche 1 : Image de base à résolution native (légère, fluide) */}
                     <AnimatedExpoImage
                         source={{ uri: imageUri }}
                         style={[animatedStyle, { width, height }]}
@@ -328,18 +378,16 @@ export const ZoomablePage: React.FC<ZoomablePageProps> = ({
                 </Animated.View>
             </GestureDetector>
 
-            {/* Couche 2 : Patch HD de la zone visible (apparaît quand le zoom se stabilise) */}
-            {hdUri && (
-                <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-                    <Image
-                        source={{ uri: hdUri }}
-                        style={StyleSheet.absoluteFill}
-                        contentFit="fill"
-                        cachePolicy="none"
-                        transition={200}
-                    />
-                </View>
-            )}
+            {/* Affiche tous les patchs (habituellement 1, parfois 2 le temps de la transition) */}
+            {patches.map(patch => (
+                <HdPatchLayer
+                    key={patch.id}
+                    patch={patch}
+                    translateX={translateX}
+                    translateY={translateY}
+                    onLoad={onPatchLoadFinished}
+                />
+            ))}
         </View>
     );
 };

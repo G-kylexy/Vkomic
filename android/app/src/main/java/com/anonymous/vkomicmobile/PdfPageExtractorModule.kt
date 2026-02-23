@@ -29,6 +29,7 @@ class PdfPageExtractorModule(private val reactContext: ReactApplicationContext) 
     // JAVASCRIPT: Object Pooling pour éviter la surcharge du Garbage Collector
     private val bitmapPool: ConcurrentHashMap<String, ConcurrentLinkedQueue<Bitmap>> = ConcurrentHashMap()
     private val scopeExtract = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private var currentRegionJob: Job? = null
 
     private fun getBitmapFromPool(width: Int, height: Int): Bitmap {
         val key = "${width}x${height}"
@@ -183,12 +184,11 @@ class PdfPageExtractorModule(private val reactContext: ReactApplicationContext) 
 
                         val docId = currentDocId ?: "unknown"
                         // INCLUDE WIDTH IN FILENAME to separate thumb and HD caches!
-                        // SWITCHED TO JPEG for significantly faster hardware encoding!
-                        val cacheFile = File(getCacheDir(), "${docId}_page_${pageNum}_w${width}.jpg")
+                        val cacheFile = File(getCacheDir(), "${docId}_page_${pageNum}_w${width}.webp")
                         
                         FileOutputStream(cacheFile).use { output ->
-                            // JPEG is much faster to compress than WebP for high-resolution 12MP bitmaps
-                            bitmap.compress(Bitmap.CompressFormat.JPEG, 90, output)
+                            // WebP LOSSY : ~30% plus petit que JPEG à qualité égale + décodage hardware Android
+                            bitmap.compress(Bitmap.CompressFormat.WEBP_LOSSY, 90, output)
                         }
                         
                         releaseBitmapToPool(bitmap)
@@ -230,7 +230,10 @@ class PdfPageExtractorModule(private val reactContext: ReactApplicationContext) 
         outputWidth: Int, outputHeight: Int,
         promise: Promise
     ) {
-        scopeExtract.launch {
+        // Annuler la demande de patch précédente si elle est encore en cours de création.
+        // Ça libère instantanément le GPU/CPU pour le patch le plus récent !
+        currentRegionJob?.cancel()
+        currentRegionJob = scopeExtract.launch {
             try {
                 val renderer = currentRenderer
                     ?: throw IllegalStateException("Document not opened")
@@ -259,17 +262,29 @@ class PdfPageExtractorModule(private val reactContext: ReactApplicationContext) 
                         matrix.setScale(sx, sy)
                         matrix.postTranslate(tx, ty)
 
+                        // Si on a été annulé en attendant le lock, on arrête les frais avant de calculer
+                        if (!isActive) {
+                            page.close()
+                            return@synchronized Pair("", false)
+                        }
+
                         val bitmap = Bitmap.createBitmap(outputWidth, outputHeight, Bitmap.Config.ARGB_8888)
-                        bitmap.eraseColor(Color.BLACK) // Fond noir pour les zones hors page
+                        bitmap.eraseColor(Color.BLACK)
 
                         page.render(bitmap, null, matrix, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
                         page.close()
 
+                        // Vérifier encore une fois avant la lourde opération d'écriture WebP
+                        if (!isActive) {
+                            releaseBitmapToPool(bitmap)
+                            return@synchronized Pair("", false)
+                        }
+
                         val docId = currentDocId ?: "unknown"
-                        val cacheFile = File(getCacheDir(), "${docId}_region_${pageNum}.jpg")
+                        val cacheFile = File(getCacheDir(), "${docId}_region_${pageNum}.webp")
 
                         FileOutputStream(cacheFile).use { output ->
-                            bitmap.compress(Bitmap.CompressFormat.JPEG, 92, output)
+                            bitmap.compress(Bitmap.CompressFormat.WEBP_LOSSY, 92, output)
                         }
 
                         releaseBitmapToPool(bitmap)
