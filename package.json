@@ -1,6 +1,7 @@
 {
   "name": "vkomic-mobile",
   "version": "1.3.5",
+  "author": "G-kylexy",
   "main": "expo/AppEntry",
   "scripts": {
     "start": "expo start",
