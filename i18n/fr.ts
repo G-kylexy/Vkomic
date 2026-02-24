@@ -88,6 +88,7 @@ export const fr = {
     size: "Taille",
     modified: "Modifié",
     openFolder: "Ouvrir",
+    openFolderOnVk: "Voir sur VK",
     openFile: "Ouvrir le fichier",
     downloadFile: "Télécharger",
     downloadAll: "Tout télécharger",

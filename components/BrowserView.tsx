@@ -9,6 +9,7 @@ import {
   Play,
   Pause,
   X,
+  Library,
   Check,
   ChevronRight,
   Home,
@@ -101,9 +102,10 @@ interface BrowserFolderItemProps {
   language: string;
   t: Translations;
   navigateTo: (node: VkNode) => void;
+  openLink: (url: string) => void;
 }
 
-const BrowserFolderItem = React.memo(({ node, language, t, navigateTo }: BrowserFolderItemProps) => {
+const BrowserFolderItem = React.memo(({ node, language, t, navigateTo, openLink }: BrowserFolderItemProps) => {
   const displayTitle = getDisplayTitle(node, language);
   return (
     <div
@@ -150,8 +152,17 @@ const BrowserFolderItem = React.memo(({ node, language, t, navigateTo }: Browser
             </div>
           </div>
 
-          <button className="w-full py-2.5 rounded border border-[#2d3748] text-[11px] font-bold text-slate-400 uppercase tracking-widest hover:bg-[#1f2937] hover:text-white hover:border-slate-500 transition-all">
+          <button className="w-full py-2.5 rounded border border-[#2d3748] text-[11px] font-bold text-slate-400 uppercase tracking-widest hover:bg-[#1f2937] hover:text-white hover:border-slate-500 transition-all mb-6">
             {t.library.openFolder}
+          </button>
+          
+          <button className="w-full py-2.5 rounded border border-[#2d3748] text-[11px] font-bold text-slate-400 uppercase tracking-widest hover:bg-[#1f2937] hover:text-white hover:border-slate-500 transition-all"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openLink(node.url);
+                  }}>
+            
+            {t.library.openFolderOnVk}
           </button>
         </div>
       </div>
@@ -662,6 +673,12 @@ const BrowserView: React.FC<BrowserViewProps> = ({
     });
   };
 
+  const openLink = (url: string) => {
+        tauriShell.openExternal(url).catch(() => {
+          window.open(url, "_blank");
+        });
+      };
+
   if (!syncedData) {
     return (
       <div className="flex-1 px-4 sm:px-8 flex flex-col pt-6 animate-fade-in overflow-y-auto custom-scrollbar pb-24">
@@ -832,6 +849,7 @@ const BrowserView: React.FC<BrowserViewProps> = ({
                   language={language}
                   t={t}
                   navigateTo={navigateTo}
+                  openLink={openLink}
                 />
               ))}
             </div>
