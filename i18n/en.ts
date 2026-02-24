@@ -88,6 +88,7 @@ export const en: Translations = {
     size: "Size",
     modified: "Modified",
     openFolder: "Open folder",
+    openFolderOnVk: "view on VK",
     openFile: "Open file",
     downloadFile: "Download",
     downloadAll: "Download All",
