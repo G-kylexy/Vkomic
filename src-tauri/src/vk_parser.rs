@@ -229,9 +229,9 @@ pub fn parse_topic_body(text: &str, exclude_topic_id: Option<&str>) -> Vec<VkNod
                 None => format!("topic_{}", topic_id),
             };
 
-            if seen_ids.contains(&unique_id) {
+            /*if seen_ids.contains(&unique_id) {
                 continue;
-            }
+            }*/
 
             // Find URL position in line for title extraction
             let url_match = caps.get(0).unwrap();
@@ -272,24 +272,28 @@ pub fn parse_topic_body(text: &str, exclude_topic_id: Option<&str>) -> Vec<VkNod
             }
 
             if title.len() < 200 {
-                seen_ids.insert(unique_id.clone());
-                nodes.push(VkNode {
-                    id: unique_id,
-                    title,
-                    node_type: "genre".to_string(),
-                    url: Some(format!("https://vk.com/topic-{}_{}", group_id, topic_id)),
-                    vk_group_id: Some(group_id.to_string()),
-                    vk_topic_id: Some(topic_id.to_string()),
-                    children: Some(Vec::new()),
-                    is_loaded: Some(false),
-                    count: None,
-                    extension: None,
-                    structure_only: None,
-                    vk_owner_id: None,
-                    vk_doc_id: None,
-                    vk_access_key: None,
-                    size_bytes: None,
-                });
+                if let Some(existing) = nodes.iter_mut().find(|n| n.id == unique_id) {
+                    existing.title = format!("{} / {}", existing.title, title);
+                } else {
+                    seen_ids.insert(unique_id.clone());
+                    nodes.push(VkNode {
+                        id: unique_id,
+                        title,
+                        node_type: "genre".to_string(),
+                        url: Some(format!("https://vk.com/topic-{}_{}", group_id, topic_id)),
+                        vk_group_id: Some(group_id.to_string()),
+                        vk_topic_id: Some(topic_id.to_string()),
+                        children: Some(Vec::new()),
+                        is_loaded: Some(false),
+                        count: None,
+                        extension: None,
+                        structure_only: None,
+                        vk_owner_id: None,
+                        vk_doc_id: None,
+                        vk_access_key: None,
+                        size_bytes: None,
+                    });
+                }
             }
         }
 
