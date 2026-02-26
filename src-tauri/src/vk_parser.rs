@@ -63,7 +63,7 @@ pub fn clean_title(text: &str) -> String {
 }
 
 pub fn parse_topic_body(text: &str, exclude_topic_id: Option<&str>) -> Vec<VkNode> {
-    let mut nodes = Vec::new();
+    let mut nodes: Vec<VkNode> = Vec::new();
     let mut seen_ids = std::collections::HashSet::new();
 
     // 1. BBCode
@@ -79,9 +79,6 @@ pub fn parse_topic_body(text: &str, exclude_topic_id: Option<&str>) -> Vec<VkNod
         }
 
         let unique_id = format!("topic_{}", topic_id);
-        if seen_ids.contains(&unique_id) {
-            continue;
-        }
 
         let mut title = clean_title(link_text);
         if title.len() < 2 {
@@ -89,24 +86,28 @@ pub fn parse_topic_body(text: &str, exclude_topic_id: Option<&str>) -> Vec<VkNod
         }
 
         if title.len() < 200 {
-            seen_ids.insert(unique_id.clone());
-            nodes.push(VkNode {
-                id: unique_id,
-                title,
-                node_type: "genre".to_string(),
-                url: Some(format!("https://vk.com/topic-{}_{}", group_id, topic_id)),
-                vk_group_id: Some(group_id.to_string()),
-                vk_topic_id: Some(topic_id.to_string()),
-                children: Some(Vec::new()),
-                is_loaded: Some(false),
-                count: None,
-                extension: None,
-                structure_only: None,
-                vk_owner_id: None,
-                vk_doc_id: None,
-                vk_access_key: None,
-                size_bytes: None,
-            });
+            if let Some(existing) = nodes.iter_mut().find(|n| n.id == unique_id) {
+                existing.title = format!("{} - {}", existing.title, title);
+            } else {
+                seen_ids.insert(unique_id.clone());
+                nodes.push(VkNode {
+                    id: unique_id,
+                    title,
+                    node_type: "genre".to_string(),
+                    url: Some(format!("https://vk.com/topic-{}_{}", group_id, topic_id)),
+                    vk_group_id: Some(group_id.to_string()),
+                    vk_topic_id: Some(topic_id.to_string()),
+                    children: Some(Vec::new()),
+                    is_loaded: Some(false),
+                    count: None,
+                    extension: None,
+                    structure_only: None,
+                    vk_owner_id: None,
+                    vk_doc_id: None,
+                    vk_access_key: None,
+                    size_bytes: None,
+                });
+            }
         }
     }
 
@@ -114,7 +115,7 @@ pub fn parse_topic_body(text: &str, exclude_topic_id: Option<&str>) -> Vec<VkNod
     for caps in RE_MENTION.captures_iter(text) {
         let group_id = &caps[1];
         let topic_id = &caps[2];
-        let post_id = caps.get(3).map(|m| m.as_str());
+        let _post_id = caps.get(3).map(|m| m.as_str());
         let link_text = caps.get(4).map(|m| m.as_str());
 
         if let Some(ex) = exclude_topic_id {
@@ -123,14 +124,7 @@ pub fn parse_topic_body(text: &str, exclude_topic_id: Option<&str>) -> Vec<VkNod
             }
         }
 
-        let unique_id = match post_id {
-            Some(pid) => format!("topic_{}_post{}", topic_id, pid),
-            None => format!("topic_{}", topic_id),
-        };
-
-        if seen_ids.contains(&unique_id) {
-            continue;
-        }
+        let unique_id = format!("topic_{}", topic_id);
 
         let mut title = match link_text {
             Some(t) => clean_title(t),
@@ -141,24 +135,28 @@ pub fn parse_topic_body(text: &str, exclude_topic_id: Option<&str>) -> Vec<VkNod
         }
 
         if title.len() < 200 {
-            seen_ids.insert(unique_id.clone());
-            nodes.push(VkNode {
-                id: unique_id,
-                title,
-                node_type: "genre".to_string(),
-                url: Some(format!("https://vk.com/topic-{}_{}", group_id, topic_id)),
-                vk_group_id: Some(group_id.to_string()),
-                vk_topic_id: Some(topic_id.to_string()),
-                children: Some(Vec::new()),
-                is_loaded: Some(false),
-                count: None,
-                extension: None,
-                structure_only: None,
-                vk_owner_id: None,
-                vk_doc_id: None,
-                vk_access_key: None,
-                size_bytes: None,
-            });
+            if let Some(existing) = nodes.iter_mut().find(|n| n.id == unique_id) {
+                existing.title = format!("{} - {}", existing.title, title);
+            } else {
+                seen_ids.insert(unique_id.clone());
+                nodes.push(VkNode {
+                    id: unique_id,
+                    title,
+                    node_type: "genre".to_string(),
+                    url: Some(format!("https://vk.com/topic-{}_{}", group_id, topic_id)),
+                    vk_group_id: Some(group_id.to_string()),
+                    vk_topic_id: Some(topic_id.to_string()),
+                    children: Some(Vec::new()),
+                    is_loaded: Some(false),
+                    count: None,
+                    extension: None,
+                    structure_only: None,
+                    vk_owner_id: None,
+                    vk_doc_id: None,
+                    vk_access_key: None,
+                    size_bytes: None,
+                });
+            }
         }
     }
 
@@ -180,9 +178,6 @@ pub fn parse_topic_body(text: &str, exclude_topic_id: Option<&str>) -> Vec<VkNod
             }
 
             let unique_id = format!("topic_{}", topic_id);
-            if seen_ids.contains(&unique_id) {
-                continue;
-            }
 
             let mut title = clean_title(link_text);
             if title.len() < 2 {
@@ -190,24 +185,28 @@ pub fn parse_topic_body(text: &str, exclude_topic_id: Option<&str>) -> Vec<VkNod
             }
 
             if title.len() < 200 {
-                seen_ids.insert(unique_id.clone());
-                nodes.push(VkNode {
-                    id: unique_id,
-                    title,
-                    node_type: "genre".to_string(),
-                    url: Some(format!("https://vk.com/topic-{}_{}", group_id, topic_id)),
-                    vk_group_id: Some(group_id.to_string()),
-                    vk_topic_id: Some(topic_id.to_string()),
-                    children: Some(Vec::new()),
-                    is_loaded: Some(false),
-                    count: None,
-                    extension: None,
-                    structure_only: None,
-                    vk_owner_id: None,
-                    vk_doc_id: None,
-                    vk_access_key: None,
-                    size_bytes: None,
-                });
+                if let Some(existing) = nodes.iter_mut().find(|n| n.id == unique_id) {
+                    existing.title = format!("{} - {}", existing.title, title);
+                } else {
+                    seen_ids.insert(unique_id.clone());
+                    nodes.push(VkNode {
+                        id: unique_id,
+                        title,
+                        node_type: "genre".to_string(),
+                        url: Some(format!("https://vk.com/topic-{}_{}", group_id, topic_id)),
+                        vk_group_id: Some(group_id.to_string()),
+                        vk_topic_id: Some(topic_id.to_string()),
+                        children: Some(Vec::new()),
+                        is_loaded: Some(false),
+                        count: None,
+                        extension: None,
+                        structure_only: None,
+                        vk_owner_id: None,
+                        vk_doc_id: None,
+                        vk_access_key: None,
+                        size_bytes: None,
+                    });
+                }
             }
         }
 
@@ -215,7 +214,7 @@ pub fn parse_topic_body(text: &str, exclude_topic_id: Option<&str>) -> Vec<VkNod
         for caps in RE_URL.captures_iter(line) {
             let group_id = &caps[1];
             let topic_id = &caps[2];
-            let post_id = caps.get(3).map(|m| m.as_str());
+            let _post_id = caps.get(3).map(|m| m.as_str());
 
             // Skip if already processed via inverted format
             if let Some(ex) = exclude_topic_id {
@@ -224,10 +223,8 @@ pub fn parse_topic_body(text: &str, exclude_topic_id: Option<&str>) -> Vec<VkNod
                 }
             }
 
-            let unique_id = match post_id {
-                Some(pid) => format!("topic_{}_post{}", topic_id, pid),
-                None => format!("topic_{}", topic_id),
-            };
+            // Ignore post_id to merge all links pointing to the same topic
+            let unique_id = format!("topic_{}", topic_id);
 
             /*if seen_ids.contains(&unique_id) {
                 continue;
@@ -273,7 +270,7 @@ pub fn parse_topic_body(text: &str, exclude_topic_id: Option<&str>) -> Vec<VkNod
 
             if title.len() < 200 {
                 if let Some(existing) = nodes.iter_mut().find(|n| n.id == unique_id) {
-                    existing.title = format!("{} / {}", existing.title, title);
+                    existing.title = format!("{} - {}", existing.title, title);
                 } else {
                     seen_ids.insert(unique_id.clone());
                     nodes.push(VkNode {

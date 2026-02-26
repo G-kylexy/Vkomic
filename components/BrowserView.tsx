@@ -128,7 +128,7 @@ const BrowserFolderItem = React.memo(({ node, language, t, navigateTo, openLink 
 
         <div className="mt-auto">
           <h3
-            className="text-white font-bold text-lg mb-3 leading-snug line-clamp-2"
+            className="text-white font-bold text-lg mb-3 leading-snug line-clamp-4"
             title={node.title}
           >
             {displayTitle}
@@ -155,13 +155,13 @@ const BrowserFolderItem = React.memo(({ node, language, t, navigateTo, openLink 
           <button className="w-full py-2.5 rounded border border-[#2d3748] text-[11px] font-bold text-slate-400 uppercase tracking-widest hover:bg-[#1f2937] hover:text-white hover:border-slate-500 transition-all mb-6">
             {t.library.openFolder}
           </button>
-          
+
           <button className="w-full py-2.5 rounded border border-[#2d3748] text-[11px] font-bold text-slate-400 uppercase tracking-widest hover:bg-[#1f2937] hover:text-white hover:border-slate-500 transition-all"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    openLink(node.url);
-                  }}>
-            
+            onClick={(e) => {
+              e.stopPropagation();
+              openLink(node.url);
+            }}>
+
             {t.library.openFolderOnVk}
           </button>
         </div>
@@ -548,6 +548,14 @@ const BrowserView: React.FC<BrowserViewProps> = ({
     }
   };
 
+  // Auto-sync ONCE per application launch
+  useEffect(() => {
+    if (vkToken && !sessionStorage.getItem("vk_auto_synced_session")) {
+      sessionStorage.setItem("vk_auto_synced_session", "true");
+      handleFullSync();
+    }
+  }, [vkToken]);
+
   // Optimisation: mémoriser la fonction pour éviter le re-rendu de tous les enfants (BrowserFileItem)
   // lors des mises à jour fréquentes de `downloads` (barres de progression).
   const navigateTo = React.useCallback(
@@ -674,10 +682,10 @@ const BrowserView: React.FC<BrowserViewProps> = ({
   };
 
   const openLink = (url: string) => {
-        tauriShell.openExternal(url).catch(() => {
-          window.open(url, "_blank");
-        });
-      };
+    tauriShell.openExternal(url).catch(() => {
+      window.open(url, "_blank");
+    });
+  };
 
   if (!syncedData) {
     return (
@@ -765,7 +773,7 @@ const BrowserView: React.FC<BrowserViewProps> = ({
                               ? undefined
                               : navigateUp(index)
                           }
-                          className={`font-medium transition-colors max-w-[180px] truncate text-left ${index === navPath.length - 1
+                          className={`font-medium transition-colors text-left ${index === navPath.length - 1
                             ? "text-white cursor-default"
                             : "text-slate-500 hover:text-slate-300"
                             }`}
