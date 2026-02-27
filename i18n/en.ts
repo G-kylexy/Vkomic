@@ -18,10 +18,10 @@ export const en: Translations = {
   sidebar: {
     connected: "Connected",
     disconnected: "Disconnected",
-    latency: "Latency",
-    lastSync: "Last sync",
+    lastSync: "Last synchronization",
     connectedToVK: "Connected to VK",
-    region: "Region",
+    checkingUpdates: "Checking index...",
+    syncDone: "Index up to date",
   },
 
   // Settings

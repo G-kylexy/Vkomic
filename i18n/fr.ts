@@ -16,10 +16,10 @@ export const fr = {
   sidebar: {
     connected: "Connecté",
     disconnected: "Déconnecté",
-    latency: "Latence",
-    lastSync: "Dernière synchro",
+    lastSync: "Dernière synchronisation",
     connectedToVK: "Connecté à VK",
-    region: "Région",
+    checkingUpdates: "Vérification des index...",
+    syncDone: "Index à jour",
   },
 
   // Settings

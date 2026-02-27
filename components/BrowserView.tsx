@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Folder,
   FileText,
@@ -26,6 +26,7 @@ import {
   fetchRootIndex,
   fetchNodeContent,
   fetchFolderTreeUpToDepth,
+  performPassiveSync,
   tauriShell,
 } from "../lib/tauri";
 import { normalizeText } from "../utils/text";
@@ -548,14 +549,6 @@ const BrowserView: React.FC<BrowserViewProps> = ({
     }
   };
 
-  // Auto-sync ONCE per application launch
-  useEffect(() => {
-    if (vkToken && !sessionStorage.getItem("vk_auto_synced_session")) {
-      sessionStorage.setItem("vk_auto_synced_session", "true");
-      handleFullSync();
-    }
-  }, [vkToken]);
-
   // Optimisation: mémoriser la fonction pour éviter le re-rendu de tous les enfants (BrowserFileItem)
   // lors des mises à jour fréquentes de `downloads` (barres de progression).
   const navigateTo = React.useCallback(
@@ -691,8 +684,12 @@ const BrowserView: React.FC<BrowserViewProps> = ({
     return (
       <div className="flex-1 px-4 sm:px-8 flex flex-col pt-6 animate-fade-in overflow-y-auto custom-scrollbar pb-24">
         <div className="flex-1 flex flex-col items-center justify-center -mt-20">
-          <div className="w-16 h-16 bg-slate-800 rounded-2xl flex items-center justify-center mb-6 border border-slate-700 shadow-lg shadow-blue-900/10">
-            <Folder className="text-slate-500" size={32} />
+          <div className="relative mb-6">
+            <div className="absolute inset-0 bg-gradient-to-br from-blue-500/20 to-purple-500/20 blur-3xl rounded-full" />
+            <div className="relative w-20 h-20 bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl flex items-center justify-center border border-slate-700/50 shadow-xl shadow-blue-900/20">
+              <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-2xl" />
+              <Folder className="text-slate-400 relative z-10" size={36} />
+            </div>
           </div>
           <h2 className="text-white text-xl font-bold mb-2">
             {t.library.empty}
@@ -712,8 +709,9 @@ const BrowserView: React.FC<BrowserViewProps> = ({
             <button
               onClick={handleFullSync}
               disabled={isLoading}
-              className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 px-8 rounded-lg flex items-center gap-2 transition-all shadow-lg shadow-blue-600/20 hover:shadow-blue-500/40 text-sm tracking-wide uppercase"
+              className="relative group bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 px-8 rounded-xl flex items-center gap-2 transition-all shadow-lg shadow-blue-600/25 hover:shadow-blue-500/40 text-sm tracking-wide uppercase overflow-hidden"
             >
+              <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 group-hover:translate-x-full transition-transform duration-700 -skew-x-12" />
               <RefreshCw size={18} className={isLoading ? "animate-spin" : ""} />
               {isLoading ? t.library.syncing : t.library.syncButton}
             </button>

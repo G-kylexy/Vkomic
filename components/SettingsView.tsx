@@ -37,6 +37,19 @@ const SettingsView: React.FC<
     const [localDownloadPath, setLocalDownloadPath] = useState(downloadPath);
     const [isSaved, setIsSaved] = useState(false);
     const [showResetConfirm, setShowResetConfirm] = useState(false);
+    const [appVersion, setAppVersion] = useState<string | null>(null);
+
+    useEffect(() => {
+      (async () => {
+        try {
+          const { getVersion } = await import("@tauri-apps/api/app");
+          const version = await getVersion();
+          setAppVersion(version);
+        } catch {
+          setAppVersion(null);
+        }
+      })();
+    }, []);
 
     useEffect(() => {
       setLocalToken(vkToken);
@@ -291,12 +304,12 @@ const SettingsView: React.FC<
             </div>
 
             {/* Bouton de sauvegarde global */}
-            <div className="pt-4 flex justify-end sticky bottom-0 bg-[#050B14]/90 p-4 backdrop-blur-sm border-t border-slate-800/50 -mx-4 sm:-mx-8 -mb-10 sm:-mb-8 mt-8">
+            <div className="pt-4 flex justify-end sticky bottom-0 bg-white/[0.03] backdrop-blur-2xl p-4 border-t border-white/[0.08] shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.6)] -mx-4 sm:-mx-8 -mb-10 sm:-mb-8 mt-8 z-10 transition-all">
               <button
                 onClick={handleSave}
                 className={`flex items-center gap-2 px-8 py-3 rounded-md font-semibold text-sm transition-all duration-300 shadow-lg ${isSaved
-                  ? "bg-emerald-600 text-white shadow-emerald-900/20"
-                  : "bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/20"
+                  ? "bg-emerald-600/90 hover:bg-emerald-500 text-white shadow-emerald-900/20"
+                  : "bg-blue-600/90 hover:bg-blue-500 text-white shadow-blue-900/20"
                   }`}
               >
                 <Save size={18} />
@@ -304,6 +317,14 @@ const SettingsView: React.FC<
               </button>
             </div>
           </div>
+          {/* Version en bas */}
+          {appVersion && (
+            <div className="pt-12 pb-6 flex justify-center opacity-30 hover:opacity-100 transition-opacity duration-700">
+              <span className="text-[9px] font-mono text-slate-500 uppercase tracking-[0.4em] select-none">
+                Build Version {appVersion}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Modal de confirmation personnalisé (évite le bug de focus Electron) */}

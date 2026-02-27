@@ -577,5 +577,69 @@ impl VkApi {
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         }
     }
+
+    /// Passive sync helper: Get the total comment count for a list of topics
+    pub async fn get_topic_counts(&self, group_id: &str, topic_ids: Vec<String>) -> Result<std::collections::HashMap<String, i32>> {
+        let mut results = std::collections::HashMap::new();
+        if topic_ids.is_empty() { return Ok(results); }
+
+        let chunks: Vec<&[String]> = topic_ids.chunks(25).collect();
+        let gid = group_id.replace('-', "");
+
+        let batch_requests: Vec<_> = chunks.iter().map(|chunk| {
+            let calls: Vec<String> = chunk.iter().map(|tid| {
+                format!("API.board.getComments({{\"group_id\":{},\"topic_id\":{},\"count\":1}}).count", gid, tid)
+            }).collect();
+            let code = format!("return [{}];", calls.join(","));
+            (chunk.to_vec(), code)
+        }).collect();
+
+        let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(10));
+        let mut handles = Vec::new();
+        
+        for (chunk, code) in batch_requests {
+            let sem = semaphore.clone();
+            let client = self.client.clone();
+            let token = self.token.clone();
+            
+            handles.push(tokio::spawn(async move {
+                let _permit = sem.acquire().await.unwrap();
+                let params = [
+                    ("access_token", token.as_str()),
+                    ("v", "5.131"),
+                    ("code", code.as_str()),
+                ];
+                let mut attempts = 0;
+                loop {
+                    match client.post("https://api.vk.com/method/execute").form(&params).send().await {
+                        Ok(r) => match r.json::<Value>().await {
+                            Ok(json) => break Some((chunk, json)),
+                            Err(_) => { if attempts >= 3 { break None; } }
+                        },
+                        Err(_) => { if attempts >= 3 { break None; } }
+                    }
+                    attempts += 1;
+                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                }
+            }));
+        }
+
+        let fetched = futures::future::join_all(handles).await;
+        for result in fetched {
+            if let Ok(Some((chunk, res_val))) = result {
+                if let Some(responses) = res_val.get("response").and_then(|r| r.as_array()) {
+                    for (i, tid) in chunk.iter().enumerate() {
+                        if let Some(count_val) = responses.get(i).and_then(|v| v.as_i64()) {
+                            results.insert(tid.clone(), count_val as i32);
+                        } else if let Some(count_val) = responses.get(i).and_then(|v| v.as_bool()).map(|b| if b { 1 } else { 0 }) {
+                             // Sometimes VK returns false/boolean if the topic is deleted/banned
+                             if count_val == 0 { results.insert(tid.clone(), 0); }
+                        }
+                    }
+                }
+            }
+        }
+        Ok(results)
+    }
 }
 

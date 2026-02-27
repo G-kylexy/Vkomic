@@ -10,7 +10,7 @@ export const useVkConnection = (vkToken: string) => {
     const [vkStatus, setVkStatus] = useState<VkConnectionStatus>({
         connected: false,
         latencyMs: null,
-        lastSync: null,
+        lastSync: localStorage.getItem("vk_last_sync_time"),
         region: null,
         regionAggregate: null,
     });
@@ -21,10 +21,15 @@ export const useVkConnection = (vkToken: string) => {
                 ...prev,
                 connected: false,
                 latencyMs: null,
-                lastSync: null,
             }));
         }
     }, [vkToken]);
+
+    useEffect(() => {
+        if (vkStatus.lastSync) {
+            localStorage.setItem("vk_last_sync_time", vkStatus.lastSync);
+        }
+    }, [vkStatus.lastSync]);
 
     useEffect(() => {
         // Déduit une région agrégée à partir de la timezone/locale
