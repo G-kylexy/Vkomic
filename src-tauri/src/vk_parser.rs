@@ -87,7 +87,9 @@ pub fn parse_topic_body(text: &str, exclude_topic_id: Option<&str>) -> Vec<VkNod
 
         if title.len() < 200 {
             if let Some(existing) = nodes.iter_mut().find(|n| n.id == unique_id) {
-                existing.title = format!("{} - {}", existing.title, title);
+                if !existing.title.contains(&title) {
+                    existing.title = format!("{} - {}", existing.title, title);
+                }
             } else {
                 seen_ids.insert(unique_id.clone());
                 nodes.push(VkNode {
@@ -136,7 +138,9 @@ pub fn parse_topic_body(text: &str, exclude_topic_id: Option<&str>) -> Vec<VkNod
 
         if title.len() < 200 {
             if let Some(existing) = nodes.iter_mut().find(|n| n.id == unique_id) {
-                existing.title = format!("{} - {}", existing.title, title);
+                if !existing.title.contains(&title) {
+                    existing.title = format!("{} - {}", existing.title, title);
+                }
             } else {
                 seen_ids.insert(unique_id.clone());
                 nodes.push(VkNode {
@@ -186,7 +190,9 @@ pub fn parse_topic_body(text: &str, exclude_topic_id: Option<&str>) -> Vec<VkNod
 
             if title.len() < 200 {
                 if let Some(existing) = nodes.iter_mut().find(|n| n.id == unique_id) {
-                    existing.title = format!("{} - {}", existing.title, title);
+                    if !existing.title.contains(&title) {
+                        existing.title = format!("{} - {}", existing.title, title);
+                    }
                 } else {
                     seen_ids.insert(unique_id.clone());
                     nodes.push(VkNode {
@@ -270,7 +276,9 @@ pub fn parse_topic_body(text: &str, exclude_topic_id: Option<&str>) -> Vec<VkNod
 
             if title.len() < 200 {
                 if let Some(existing) = nodes.iter_mut().find(|n| n.id == unique_id) {
-                    existing.title = format!("{} - {}", existing.title, title);
+                    if !existing.title.contains(&title) {
+                        existing.title = format!("{} - {}", existing.title, title);
+                    }
                 } else {
                     seen_ids.insert(unique_id.clone());
                     nodes.push(VkNode {

@@ -53,6 +53,7 @@ interface SidebarProps {
   setActiveTab: (id: string) => void;
   vkStatus: VkConnectionStatus;
   isCheckingUpdates: boolean;
+  activeDownloadsCount?: number;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -60,6 +61,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   setActiveTab,
   vkStatus,
   isCheckingUpdates,
+  activeDownloadsCount = 0,
 }) => {
   const { t, language } = useTranslation();
   const navItems: NavItem[] = [
@@ -131,7 +133,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id)}
-              className={`w-full flex items-center justify-center lg:justify-start gap-3 px-3 lg:px-4 py-3 rounded-lg transition-all text-sm font-medium border relative group
+              className={`w-full flex items-center justify-between px-3 lg:px-4 py-3 rounded-lg transition-all text-sm font-medium border relative group
                 ${isActive
                   ? "bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-900/40"
                   : "text-slate-400 hover:text-white hover:bg-slate-800/50 border-transparent"
@@ -139,15 +141,23 @@ const Sidebar: React.FC<SidebarProps> = ({
               `}
               title={item.label}
             >
-              <item.icon
-                size={18}
-                className={
-                  isActive
-                    ? "text-white"
-                    : "text-slate-500 group-hover:text-white"
-                }
-              />
-              <span className="hidden lg:inline">{item.label}</span>
+              <div className="flex items-center justify-center lg:justify-start gap-3 flex-1">
+                <item.icon
+                  size={18}
+                  className={
+                    isActive
+                      ? "text-white flex-shrink-0"
+                      : "text-slate-500 group-hover:text-white flex-shrink-0"
+                  }
+                />
+                <span className="hidden lg:inline">{item.label}</span>
+              </div>
+
+              {item.id === "downloads" && activeDownloadsCount > 0 && (
+                <div className="absolute lg:relative top-2 right-2 lg:top-auto lg:right-auto flex h-4 w-4 lg:h-5 lg:min-w-5 items-center justify-center rounded-full bg-blue-500 text-[9px] lg:text-[10px] font-bold text-white shadow-sm lg:px-1.5">
+                  {activeDownloadsCount > 99 ? '99+' : activeDownloadsCount}
+                </div>
+              )}
             </button>
           );
         })}

@@ -130,7 +130,7 @@ const BrowserFolderItem = React.memo(({ node, language, t, navigateTo, openLink 
         <div className="mt-auto">
           <h3
             className="text-white font-bold text-lg mb-3 leading-snug line-clamp-4"
-            title={node.title}
+            title=""
           >
             {displayTitle}
           </h3>
@@ -153,7 +153,7 @@ const BrowserFolderItem = React.memo(({ node, language, t, navigateTo, openLink 
             </div>
           </div>
 
-          <button className="w-full py-2.5 rounded border border-[#2d3748] text-[11px] font-bold text-slate-400 uppercase tracking-widest hover:bg-[#1f2937] hover:text-white hover:border-slate-500 transition-all mb-6">
+          <button className="w-full py-2.5 rounded border border-[#2d3748] text-[11px] font-bold text-slate-400 uppercase tracking-widest hover:bg-[#1f2937] hover:text-white hover:border-slate-500 transition-all mb-2">
             {t.library.openFolder}
           </button>
 
@@ -213,7 +213,7 @@ const BrowserFileItem = React.memo(({
       }}
       className="group px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3 hover:bg-[#131926] transition-colors cursor-pointer"
     >
-      <div className="flex items-start gap-3 flex-1 min-w-0">
+      <div className="flex items-center gap-3 flex-1 min-w-0">
         <div
           className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors flex-shrink-0 ${fileConfig.bg}`}
         >
@@ -227,10 +227,10 @@ const BrowserFileItem = React.memo(({
         </div>
 
         <div className="flex-1 min-w-0 flex flex-col justify-center">
-          <div className="flex items-start justify-between gap-2">
+          <div className="flex items-center justify-between gap-2">
             <h3
               className="text-slate-200 font-semibold text-sm leading-snug line-clamp-2 break-words pr-2 group-hover:text-white transition-colors flex-1 min-w-0"
-              title={node.title}
+              title=""
             >
               {displayTitle}
             </h3>

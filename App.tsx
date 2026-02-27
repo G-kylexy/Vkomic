@@ -157,6 +157,7 @@ const App: React.FC = () => {
           setActiveTab={setActiveTab}
           vkStatus={connection.vkStatus}
           isCheckingUpdates={isCheckingUpdates}
+          activeDownloadsCount={downloads.downloads.filter(d => ["pending", "downloading"].includes(d.status)).length}
         />
 
         <div className="content-wrapper flex-1 flex flex-col h-full relative min-w-0">
