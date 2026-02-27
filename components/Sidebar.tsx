@@ -3,25 +3,6 @@ import { NavItem, VkConnectionStatus } from "../types";
 import { Globe, Download, Library, Settings } from "./Icons";
 import { useTranslation } from "../i18n";
 
-// Technical tips that rotate
-// Technical tips that rotate
-const TIPS_FR = [
-  "📚 On s'occupe du téléchargement, vous fournissez le café.",
-  "📂 Un clic sur le dossier parent et hop, toute la série est à vous.",
-  "🔍 Marre de scroller ? La barre de recherche est votre meilleure amie.",
-  "💾 Votre dossier de téléchargement va finir par déborder.",
-  "🌍 Tout VK sur votre disque dur, ou presque.",
-  "🤫 Votre collection est entre de bonnes mains (les vôtres).",
-];
-
-const TIPS_EN = [
-  "📚 We handle the download, you handle the coffee.",
-  "📂 Click the parent folder and boom, the whole series is yours.",
-  "🔍 Tired of scrolling? Search is your best friend.",
-  "💾 Your download folder might need a bigger disk soon.",
-  "🌍 All of VK on your hard drive, almost.",
-  "🤫 Your collection is in good hands (yours).",
-];
 
 const formatRelativeTime = (isoDate: string | null, language: string): string => {
   const isFr = language === "fr";
@@ -71,21 +52,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     { id: "settings", label: t.nav.settings, icon: Settings },
   ];
 
-  // Rotating fun tip
-  const tips = language === "fr" ? TIPS_FR : TIPS_EN;
-  const [tipIndex, setTipIndex] = useState(() => Math.floor(Math.random() * tips.length));
-  const [tipVisible, setTipVisible] = useState(true);
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setTipVisible(false);
-      setTimeout(() => {
-        setTipIndex((prev) => (prev + 1) % tips.length);
-        setTipVisible(true);
-      }, 300);
-    }, 12000);
-    return () => clearInterval(interval);
-  }, [tips.length]);
 
   // Relative time that updates every minute
   const [relativeTime, setRelativeTime] = useState(() =>
@@ -215,15 +182,14 @@ const Sidebar: React.FC<SidebarProps> = ({
             </span>
           </div>
 
-          {/* Fun tip */}
-          <div className="mt-3 pt-3 border-t border-slate-800/50">
-            <p
-              className={`text-[10px] text-slate-500 leading-relaxed transition-all duration-300 ${tipVisible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-1"
-                }`}
-            >
-              {tips[tipIndex]}
-            </p>
-          </div>
+          {/* App version */}
+          {appVersion && (
+            <div className="mt-3 pt-3 border-t border-slate-800/50">
+              <p className="text-[10px] text-slate-500 leading-relaxed font-mono">
+                VKomic v{appVersion}
+              </p>
+            </div>
+          )}
         </div>
       </div>
 

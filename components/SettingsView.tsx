@@ -37,19 +37,6 @@ const SettingsView: React.FC<
     const [localDownloadPath, setLocalDownloadPath] = useState(downloadPath);
     const [isSaved, setIsSaved] = useState(false);
     const [showResetConfirm, setShowResetConfirm] = useState(false);
-    const [appVersion, setAppVersion] = useState<string | null>(null);
-
-    useEffect(() => {
-      (async () => {
-        try {
-          const { getVersion } = await import("@tauri-apps/api/app");
-          const version = await getVersion();
-          setAppVersion(version);
-        } catch {
-          setAppVersion(null);
-        }
-      })();
-    }, []);
 
     useEffect(() => {
       setLocalToken(vkToken);
@@ -317,14 +304,7 @@ const SettingsView: React.FC<
               </button>
             </div>
           </div>
-          {/* Version en bas */}
-          {appVersion && (
-            <div className="pt-12 pb-6 flex justify-center opacity-30 hover:opacity-100 transition-opacity duration-700">
-              <span className="text-[9px] font-mono text-slate-500 uppercase tracking-[0.4em] select-none">
-                Build Version {appVersion}
-              </span>
-            </div>
-          )}
+
         </div>
 
         {/* Modal de confirmation personnalisé (évite le bug de focus Electron) */}
