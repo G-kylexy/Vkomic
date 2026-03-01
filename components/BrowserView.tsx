@@ -559,14 +559,34 @@ const BrowserView: React.FC<BrowserViewProps> = ({
         return;
       }
 
+      const resolvePath = (nodes: VkNode[] | null, targetId: string, currentPath: VkNode[] = []): VkNode[] | null => {
+        if (!nodes) return null;
+        for (const n of nodes) {
+          if (n.id === targetId) return [...currentPath, n];
+          if (n.children) {
+            const found = resolvePath(n.children, targetId, [...currentPath, n]);
+            if (found) return found;
+          }
+        }
+        return null;
+      };
+
+      let initialNewPath: VkNode[] | null = null;
+
       // Si on est en mode recherche et qu'on navigue dans un DOSSIER, on quitte la recherche
+      // et on reconstruit le chemin complet pour le fil d'ariane
       if (isSearching) {
         setSearchQuery("");
+        initialNewPath = resolvePath(syncedData, node.id);
       }
 
       // Si le nœud a des enfants ET n'est pas marqué "structureOnly", on peut naviguer directement
       if (node.children && node.children.length > 0 && !node.structureOnly) {
-        setNavPath((prev) => [...prev, node]);
+        if (initialNewPath) {
+          setNavPath(initialNewPath);
+        } else {
+          setNavPath((prev) => [...prev, node]);
+        }
         return;
       }
 
@@ -604,7 +624,12 @@ const BrowserView: React.FC<BrowserViewProps> = ({
           if (syncedData) {
             setSyncedData(updateTree(syncedData));
           }
-          setNavPath((prev) => [...prev, finalNode]);
+
+          if (initialNewPath) {
+            setNavPath([...initialNewPath.slice(0, -1), finalNode]);
+          } else {
+            setNavPath((prev) => [...prev, finalNode]);
+          }
         } catch (err) {
           console.error(err);
           setError("Impossible de charger le contenu.");
@@ -612,7 +637,11 @@ const BrowserView: React.FC<BrowserViewProps> = ({
           setIsLoading(false);
         }
       } else {
-        setNavPath((prev) => [...prev, node]);
+        if (initialNewPath) {
+          setNavPath(initialNewPath);
+        } else {
+          setNavPath((prev) => [...prev, node]);
+        }
       }
     },
     [addDownload, isSearching, setSearchQuery, syncedData, setSyncedData, vkToken],
