@@ -125,22 +125,21 @@ body {
 }
 
 .animate-rainbow {
-  background: linear-gradient(
-    45deg,
-    #ef4444,
-    #f97316,
-    #eab308,
-    #22c55e,
-    #3b82f6,
-    #a855f7,
-    #ec4899
-  );
+  background: linear-gradient(45deg,
+      #ef4444,
+      #f97316,
+      #eab308,
+      #22c55e,
+      #3b82f6,
+      #a855f7,
+      #ec4899);
   background-size: 200% 200%;
   animation: rainbow-move 12s ease infinite;
 }
 
 /* Custom slow ping for status indicator */
 @keyframes ping-slow {
+
   75%,
   100% {
     transform: scale(2);
@@ -150,4 +149,122 @@ body {
 
 .animate-ping-slow {
   animation: ping-slow 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+/* ══════════════════════════════════════════════════════
+   True Liquid Glass Effect (Android Material You/iOS style)
+   ══════════════════════════════════════════════════════ */
+
+/* Des taches de couleur d'ambiance pour faire ressortir l'effet verre dépoli */
+.ambient-glow {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.25;
+}
+
+.ambient-glow-1 {
+  background: #3b82f6;
+  /* Bleu */
+  width: 400px;
+  height: 400px;
+  top: -10%;
+  left: 20%;
+  animation: float-glow 15s ease-in-out infinite;
+}
+
+.ambient-glow-2 {
+  background: #8b5cf6;
+  /* Violet */
+  width: 350px;
+  height: 350px;
+  bottom: 0%;
+  right: 15%;
+  animation: float-glow 20s ease-in-out infinite reverse;
+}
+
+@keyframes float-glow {
+
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+
+  50% {
+    transform: translate(30px, -30px) scale(1.1);
+  }
+}
+
+/* ── Liquid Glass Pill Button ── */
+
+.liquid-glass-btn {
+  position: relative;
+  overflow: hidden;
+
+  /* Fond ultra transparent pour maximiser l'effet du blur (effet verre clair/sombre) */
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(48px) saturate(220%) contrast(1.1);
+  -webkit-backdrop-filter: blur(48px) saturate(220%) contrast(1.1);
+
+  /* Liserés de réfraction lumineux (effet 3D biseauté) */
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid rgba(255, 255, 255, 0.25);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.4);
+
+  /* Ombre portée douce + reflet interne */
+  box-shadow:
+    0 16px 40px rgba(0, 0, 0, 0.4),
+    inset 0 1px 1px rgba(255, 255, 255, 0.2),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.2);
+
+  /* Forme de pastille (Pill) exactement comme Android */
+  border-radius: 9999px;
+
+  transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.liquid-glass-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg,
+      rgba(255, 255, 255, 0.15) 0%,
+      rgba(255, 255, 255, 0) 50%,
+      rgba(255, 255, 255, 0.02) 100%);
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.liquid-glass-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-top-color: rgba(255, 255, 255, 0.4);
+  box-shadow:
+    0 24px 50px rgba(0, 0, 0, 0.5),
+    inset 0 1px 2px rgba(255, 255, 255, 0.35);
+  transform: translateY(-4px) scale(1.03);
+}
+
+.liquid-glass-btn:active {
+  transform: translateY(2px) scale(0.96);
+  background: rgba(255, 255, 255, 0.02);
+  box-shadow:
+    0 8px 20px rgba(0, 0, 0, 0.3),
+    inset 0 2px 5px rgba(0, 0, 0, 0.3);
+}
+
+/* ── État sauvegardé (Vert Émeraude liquide) ── */
+
+.liquid-glass-btn-saved {
+  background: rgba(16, 185, 129, 0.12);
+  border-color: rgba(16, 185, 129, 0.2);
+  border-top-color: rgba(52, 211, 153, 0.45);
+  box-shadow:
+    0 16px 40px rgba(16, 185, 129, 0.25),
+    inset 0 1px 1px rgba(110, 231, 183, 0.4);
+}
+
+.liquid-glass-btn-saved:hover {
+  background: rgba(16, 185, 129, 0.2);
 }

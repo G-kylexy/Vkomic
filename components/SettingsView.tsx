@@ -117,8 +117,12 @@ const SettingsView: React.FC<
     };
 
     return (
-      <>
-        <div className="flex-1 px-4 sm:px-8 pt-6 sm:pt-8 animate-fade-in overflow-y-auto custom-scrollbar pb-28 sm:pb-24">
+      <div className="relative flex flex-col w-full h-full overflow-hidden bg-[#050B14]">
+        {/* Flous ambiants pour donner du relief au Liquid Glass */}
+        <div className="ambient-glow ambient-glow-1"></div>
+        <div className="ambient-glow ambient-glow-2"></div>
+
+        <div className="flex-1 w-full px-4 sm:px-8 pt-6 sm:pt-8 animate-fade-in overflow-y-auto custom-scrollbar pb-32 relative z-10">
           {/* En-tete */}
           <div className="mb-8">
             <h1 className="text-3xl font-bold text-white mb-2 tracking-tight">
@@ -289,58 +293,56 @@ const SettingsView: React.FC<
                 </button>
               </div>
             </div>
-
-            {/* Bouton de sauvegarde global */}
-            <div className="pt-4 flex justify-end sticky bottom-0 bg-white/[0.03] backdrop-blur-2xl p-4 border-t border-white/[0.08] shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.6)] -mx-4 sm:-mx-8 -mb-10 sm:-mb-8 mt-8 z-10 transition-all">
-              <button
-                onClick={handleSave}
-                className={`flex items-center gap-2 px-8 py-3 rounded-md font-semibold text-sm transition-all duration-300 shadow-lg ${isSaved
-                  ? "bg-emerald-600/90 hover:bg-emerald-500 text-white shadow-emerald-900/20"
-                  : "bg-blue-600/90 hover:bg-blue-500 text-white shadow-blue-900/20"
-                  }`}
-              >
-                <Save size={18} />
-                {isSaved ? t.settings.saved : t.settings.saveAll}
-              </button>
-            </div>
           </div>
+        </div>
 
+        {/* Bouton de sauvegarde global en vraie pastille flottante (Pill) */}
+        <div className="absolute bottom-8 right-8 lg:bottom-12 lg:right-12 z-[60] pointer-events-none">
+          <button
+            onClick={handleSave}
+            className={`liquid-glass-btn pointer-events-auto flex items-center justify-center gap-3 px-8 py-4 font-bold text-[15px] text-white cursor-pointer select-none tracking-wide ${isSaved ? "liquid-glass-btn-saved" : ""}`}
+          >
+            <Save size={20} />
+            {isSaved ? t.settings.saved : t.settings.saveAll}
+          </button>
         </div>
 
         {/* Modal de confirmation personnalisé (évite le bug de focus Electron) */}
-        {showResetConfirm && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-            <div className="bg-[#0f1523] border border-slate-700 rounded-xl p-6 max-w-md w-full shadow-2xl">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-full bg-rose-500/20 flex items-center justify-center">
-                  <AlertCircle className="text-rose-400" size={20} />
+        {
+          showResetConfirm && (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+              <div className="bg-[#0f1523] border border-slate-700 rounded-xl p-6 max-w-md w-full shadow-2xl">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-full bg-rose-500/20 flex items-center justify-center">
+                    <AlertCircle className="text-rose-400" size={20} />
+                  </div>
+                  <h3 className="text-lg font-bold text-white">{t.settings.resetDatabase}</h3>
                 </div>
-                <h3 className="text-lg font-bold text-white">{t.settings.resetDatabase}</h3>
-              </div>
-              <p className="text-slate-400 text-sm mb-6">{t.settings.resetWarning}</p>
-              <div className="flex gap-3 justify-end">
-                <button
-                  onClick={() => setShowResetConfirm(false)}
-                  className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium transition-colors"
-                >
-                  Annuler
-                </button>
-                <button
-                  onClick={() => {
-                    onResetDatabase();
-                    setShowResetConfirm(false);
-                    setIsSaved(true);
-                    setTimeout(() => setIsSaved(false), 2000);
-                  }}
-                  className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-sm font-bold transition-colors"
-                >
-                  Confirmer
-                </button>
+                <p className="text-slate-400 text-sm mb-6">{t.settings.resetWarning}</p>
+                <div className="flex gap-3 justify-end">
+                  <button
+                    onClick={() => setShowResetConfirm(false)}
+                    className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium transition-colors"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    onClick={() => {
+                      onResetDatabase();
+                      setShowResetConfirm(false);
+                      setIsSaved(true);
+                      setTimeout(() => setIsSaved(false), 2000);
+                    }}
+                    className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-sm font-bold transition-colors"
+                  >
+                    Confirmer
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        )}
-      </>
+          )
+        }
+      </div >
     );
   };
 
