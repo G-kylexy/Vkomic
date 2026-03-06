@@ -273,15 +273,9 @@ const SettingsView: React.FC<
                     <Trash2 size={16} className="text-rose-500" />
                     {t.settings.resetDatabase}
                   </h3>
-                  <p className="text-slate-400 text-xs leading-relaxed mb-3">
+                  <p className="text-slate-400 text-xs leading-relaxed">
                     {t.settings.resetDatabaseDescription}
                   </p>
-                  <div className="flex items-start gap-2 text-amber-500 bg-amber-500/10 px-3 py-2 rounded-lg border border-amber-500/20">
-                    <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />
-                    <span className="text-[11px] font-medium">
-                      {t.settings.resetWarning}
-                    </span>
-                  </div>
                 </div>
 
                 <button

@@ -111,7 +111,7 @@ const BrowserFolderItem = React.memo(({ node, language, t, navigateTo, openLink 
   return (
     <div
       onClick={() => navigateTo(node)}
-      className="bg-[#131926] rounded-lg border border-[#1e293b] flex flex-col transition-all hover:border-blue-500/50 hover:shadow-lg hover:shadow-blue-500/10 group cursor-pointer relative overflow-hidden"
+      className="bg-[#0f1523] rounded-xl border border-slate-800/60 flex flex-col transition-all hover:border-blue-500/50 hover:shadow-lg hover:shadow-blue-500/10 group cursor-pointer relative overflow-hidden shadow-sm"
     >
       <div className="p-5 flex-1 flex flex-col h-full">
         <div className="flex justify-between items-start mb-6">
@@ -211,7 +211,7 @@ const BrowserFileItem = React.memo(({
       onClick={() => {
         if (!isDownloading && !isCompleted) navigateTo(node);
       }}
-      className="group px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3 hover:bg-[#131926] transition-colors cursor-pointer"
+      className="group px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3 hover:bg-[#161f32] transition-colors cursor-pointer"
     >
       <div className="flex items-center gap-3 flex-1 min-w-0">
         <div
@@ -711,39 +711,43 @@ const BrowserView: React.FC<BrowserViewProps> = ({
 
   if (!syncedData) {
     return (
-      <div className="flex-1 px-4 sm:px-8 flex flex-col pt-6 animate-fade-in overflow-y-auto custom-scrollbar pb-24">
-        <div className="flex-1 flex flex-col items-center justify-center -mt-20">
-          <div className="relative mb-6">
-            <div className="absolute inset-0 bg-gradient-to-br from-blue-500/20 to-purple-500/20 blur-3xl rounded-full" />
-            <div className="relative w-20 h-20 bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl flex items-center justify-center border border-slate-700/50 shadow-xl shadow-blue-900/20">
-              <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-2xl" />
-              <Folder className="text-slate-400 relative z-10" size={36} />
+      <div className="relative flex flex-col w-full h-full overflow-hidden bg-[#050B14]">
+        <div className="ambient-glow ambient-glow-1"></div>
+        <div className="ambient-glow ambient-glow-2" style={{ opacity: 0.12 }}></div>
+        <div className="flex-1 w-full px-4 sm:px-8 flex flex-col pt-6 animate-fade-in overflow-y-auto custom-scrollbar pb-32 relative z-10">
+          <div className="flex-1 flex flex-col items-center justify-center -mt-20">
+            <div className="relative mb-6">
+              <div className="absolute inset-0 bg-gradient-to-br from-blue-500/20 to-purple-500/20 blur-3xl rounded-full" />
+              <div className="relative w-20 h-20 bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl flex items-center justify-center border border-slate-700/50 shadow-xl shadow-blue-900/20">
+                <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-2xl" />
+                <Folder className="text-slate-400 relative z-10" size={36} />
+              </div>
             </div>
-          </div>
-          <h2 className="text-white text-xl font-bold mb-2">
-            {t.library.empty}
-          </h2>
-          <p className="text-slate-400 mb-8 font-medium text-center max-w-md px-6">
-            {t.library.emptyDescription}
-          </p>
+            <h2 className="text-white text-xl font-bold mb-2">
+              {t.library.empty}
+            </h2>
+            <p className="text-slate-400 mb-8 font-medium text-center max-w-md px-6">
+              {t.library.emptyDescription}
+            </p>
 
-          {error && (
-            <div className="mb-6 flex items-center gap-2 text-rose-400 bg-rose-500/10 px-4 py-2 rounded-lg border border-rose-500/20">
-              <AlertCircle size={16} />
-              <span className="text-sm">{error}</span>
+            {error && (
+              <div className="mb-6 flex items-center gap-2 text-rose-400 bg-rose-500/10 px-4 py-2 rounded-lg border border-rose-500/20">
+                <AlertCircle size={16} />
+                <span className="text-sm">{error}</span>
+              </div>
+            )}
+
+            <div className="flex justify-center">
+              <button
+                onClick={handleFullSync}
+                disabled={isLoading}
+                className="relative group bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 px-8 rounded-xl flex items-center gap-2 transition-all shadow-lg shadow-blue-600/25 hover:shadow-blue-500/40 text-sm tracking-wide uppercase overflow-hidden"
+              >
+                <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 group-hover:translate-x-full transition-transform duration-700 -skew-x-12" />
+                <RefreshCw size={18} className={isLoading ? "animate-spin" : ""} />
+                {isLoading ? t.library.syncing : t.library.syncButton}
+              </button>
             </div>
-          )}
-
-          <div className="flex justify-center">
-            <button
-              onClick={handleFullSync}
-              disabled={isLoading}
-              className="relative group bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 px-8 rounded-xl flex items-center gap-2 transition-all shadow-lg shadow-blue-600/25 hover:shadow-blue-500/40 text-sm tracking-wide uppercase overflow-hidden"
-            >
-              <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 group-hover:translate-x-full transition-transform duration-700 -skew-x-12" />
-              <RefreshCw size={18} className={isLoading ? "animate-spin" : ""} />
-              {isLoading ? t.library.syncing : t.library.syncButton}
-            </button>
           </div>
         </div>
       </div>
@@ -751,215 +755,219 @@ const BrowserView: React.FC<BrowserViewProps> = ({
   }
 
   return (
-    <div className="flex-1 flex flex-col h-full animate-fade-in overflow-hidden">
-      {/* Header / Breadcrumbs - Fixed */}
-      <div className="w-full flex-shrink-0 z-10 bg-[#050B14]/95 backdrop-blur-xl border-b border-slate-800/50 shadow-sm">
-        <div className="w-full px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between text-sm min-h-[32px]">
-            <div className="flex items-center gap-2 overflow-x-auto flex-nowrap flex-1 min-w-0 pr-2 custom-scrollbar-none">
-              {!isSearching && (
-                <>
-                  <button
-                    onClick={clearNav}
-                    className={`flex items-center justify-center w-8 h-8 rounded-lg transition-colors ${navPath.length === 0
-                      ? "bg-blue-600 text-white shadow-lg shadow-blue-900/40"
-                      : "bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white"
-                      }`}
-                    title="Accueil"
-                  >
-                    <Home size={16} />
-                  </button>
+    <div className="relative flex flex-col w-full h-full overflow-hidden bg-[#050B14]">
+      <div className="ambient-glow ambient-glow-1"></div>
+      <div className="ambient-glow ambient-glow-2" style={{ opacity: 0.12 }}></div>
+      <div className="flex-1 flex flex-col h-full animate-fade-in overflow-hidden relative z-10">
+        {/* Header / Breadcrumbs - Fixed */}
+        <div className="w-full flex-shrink-0 z-10 bg-[#050B14]/95 backdrop-blur-xl border-b border-slate-800/50 shadow-sm">
+          <div className="w-full px-4 sm:px-6 lg:px-8 py-4">
+            <div className="flex items-center justify-between text-sm min-h-[32px]">
+              <div className="flex items-center gap-2 overflow-x-auto flex-nowrap flex-1 min-w-0 pr-2 custom-scrollbar-none">
+                {!isSearching && (
+                  <>
+                    <button
+                      onClick={clearNav}
+                      className={`flex items-center justify-center w-8 h-8 rounded-lg transition-colors ${navPath.length === 0
+                        ? "bg-blue-600 text-white shadow-lg shadow-blue-900/40"
+                        : "bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white"
+                        }`}
+                      title="Accueil"
+                    >
+                      <Home size={16} />
+                    </button>
 
 
 
-                  {breadcrumbs.map((crumb, idx) => {
-                    if (crumb.isEllipsis) {
+                    {breadcrumbs.map((crumb, idx) => {
+                      if (crumb.isEllipsis) {
+                        return (
+                          <div
+                            key={`ellipsis-${idx}`}
+                            className="flex items-center gap-2 text-slate-500"
+                          >
+                            <ChevronRight size={14} className="text-slate-600" />
+                            <span className="text-xs">...</span>
+                          </div>
+                        );
+                      }
+
+                      const node = crumb.node as VkNode;
+                      const index = crumb.originalIndex as number;
+
                       return (
                         <div
-                          key={`ellipsis-${idx}`}
-                          className="flex items-center gap-2 text-slate-500"
+                          key={node.id}
+                          className="flex items-center gap-2 whitespace-nowrap"
                         >
                           <ChevronRight size={14} className="text-slate-600" />
-                          <span className="text-xs">...</span>
+                          <button
+                            onClick={() =>
+                              index === navPath.length - 1
+                                ? undefined
+                                : navigateUp(index)
+                            }
+                            className={`font-medium transition-colors text-left ${index === navPath.length - 1
+                              ? "text-white cursor-default"
+                              : "text-slate-500 hover:text-slate-300"
+                              }`}
+                          >
+                            {getDisplayTitle(node, language)}
+                          </button>
                         </div>
                       );
-                    }
-
-                    const node = crumb.node as VkNode;
-                    const index = crumb.originalIndex as number;
-
-                    return (
-                      <div
-                        key={node.id}
-                        className="flex items-center gap-2 whitespace-nowrap"
-                      >
-                        <ChevronRight size={14} className="text-slate-600" />
-                        <button
-                          onClick={() =>
-                            index === navPath.length - 1
-                              ? undefined
-                              : navigateUp(index)
-                          }
-                          className={`font-medium transition-colors text-left ${index === navPath.length - 1
-                            ? "text-white cursor-default"
-                            : "text-slate-500 hover:text-slate-300"
-                            }`}
-                        >
-                          {getDisplayTitle(node, language)}
-                        </button>
-                      </div>
-                    );
-                  })}
-                </>
-              )}
-              {isSearching && (
-                <div className="flex items-center gap-2">
-                  <div className="text-white font-medium">
-                    {t.library.searching}
+                    })}
+                  </>
+                )}
+                {isSearching && (
+                  <div className="flex items-center gap-2">
+                    <div className="text-white font-medium">
+                      {t.library.searching}
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
 
-            <div className="flex items-center gap-2 flex-shrink-0 ml-2">
-              {fileNodes.length > 0 && (
-                <button
-                  onClick={handleGlobalAction}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-lg ${hasActiveDownloads
-                    ? "bg-rose-600 hover:bg-rose-500 text-white shadow-rose-900/20"
-                    : "bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/20"
-                    }`}
-                  title={
-                    hasActiveDownloads
-                      ? t.library.cancelAll
-                      : t.library.downloadAll
-                  }
-                >
-                  {hasActiveDownloads ? (
-                    <X size={14} />
-                  ) : (
-                    <DownloadCloud size={14} />
-                  )}
-                  <span className="hidden sm:inline">
-                    {hasActiveDownloads
-                      ? t.library.cancelAll
-                      : t.library.downloadAll}
-                  </span>
-                </button>
-              )}
-              {navPath.length === 0 && !isSearching && (
-                <button
-                  onClick={handleFullSync}
-                  className="flex items-center justify-center rounded-lg transition-all bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/20 w-9 h-9"
-                  disabled={isLoading}
-                  title="Synchroniser"
-                >
-                  <RefreshCw
-                    size={18}
-                    className={isLoading ? "animate-spin" : ""}
-                  />
-                </button>
-              )}
+              <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                {fileNodes.length > 0 && (
+                  <button
+                    onClick={handleGlobalAction}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-lg ${hasActiveDownloads
+                      ? "bg-rose-600 hover:bg-rose-500 text-white shadow-rose-900/20"
+                      : "bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/20"
+                      }`}
+                    title={
+                      hasActiveDownloads
+                        ? t.library.cancelAll
+                        : t.library.downloadAll
+                    }
+                  >
+                    {hasActiveDownloads ? (
+                      <X size={14} />
+                    ) : (
+                      <DownloadCloud size={14} />
+                    )}
+                    <span className="hidden sm:inline">
+                      {hasActiveDownloads
+                        ? t.library.cancelAll
+                        : t.library.downloadAll}
+                    </span>
+                  </button>
+                )}
+                {navPath.length === 0 && !isSearching && (
+                  <button
+                    onClick={handleFullSync}
+                    className="flex items-center justify-center rounded-lg transition-all bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/20 w-9 h-9"
+                    disabled={isLoading}
+                    title="Synchroniser"
+                  >
+                    <RefreshCw
+                      size={18}
+                      className={isLoading ? "animate-spin" : ""}
+                    />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Content - Scrollable */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar relative pb-24 md:pb-10">
-        <div className="w-full px-4 sm:px-6 lg:px-8 py-6 flex flex-col gap-6 min-h-full">
-          {isLoading && (
-            <div className="absolute inset-0 bg-[#050B14]/60 z-20 flex items-center justify-center backdrop-blur-sm">
-              <RefreshCw className="animate-spin text-blue-500" size={40} />
-            </div>
-          )}
-
-          {/* Folders Grid */}
-          {folderNodes.length > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
-              {folderNodes.map((node) => (
-                <BrowserFolderItem
-                  key={node.id}
-                  node={node}
-                  language={language}
-                  t={t}
-                  navigateTo={navigateTo}
-                  openLink={openLink}
-                />
-              ))}
-            </div>
-          )}
-
-          {/* Files List Box - responsive, type "Settings card" */}
-          {fileNodes.length > 0 && (
-            <div className="bg-[#0f1523] border border-[#1e293b] rounded-xl shadow-lg overflow-hidden flex flex-col">
-              <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between text-xs text-slate-400 bg-[#0f1523] sticky top-0 z-10">
-                <span className="font-semibold text-slate-200">
-                  {t.library.fileLabel} · {fileNodes.length}
-                </span>
-                {activeDownloadsInView.length > 0 && (
-                  <span className="hidden sm:inline-block">
-                    {activeDownloadsInView.length} en cours / en file d'attente
-                  </span>
-                )}
+        {/* Content - Scrollable */}
+        <div className="flex-1 overflow-y-auto custom-scrollbar relative pb-24 md:pb-10">
+          <div className="w-full px-4 sm:px-6 lg:px-8 py-6 flex flex-col gap-6 min-h-full">
+            {isLoading && (
+              <div className="absolute inset-0 bg-[#050B14]/60 z-20 flex items-center justify-center backdrop-blur-sm">
+                <RefreshCw className="animate-spin text-blue-500" size={40} />
               </div>
-              <div className="divide-y divide-slate-800">
-                {fileNodes.map((node) => (
-                  <BrowserFileItem
+            )}
+
+            {/* Folders Grid */}
+            {folderNodes.length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
+                {folderNodes.map((node) => (
+                  <BrowserFolderItem
                     key={node.id}
                     node={node}
-                    activeDownload={downloadsById.get(node.id)}
                     language={language}
                     t={t}
                     navigateTo={navigateTo}
-                    pauseDownload={pauseDownload}
-                    resumeDownload={resumeDownload}
-                    cancelDownload={cancelDownload}
-                    retryDownload={retryDownload}
+                    openLink={openLink}
                   />
                 ))}
               </div>
-            </div>
-          )}
+            )}
 
-          {displayedNodes.length === 0 && !isLoading && (
-            <div className="flex flex-col items-center justify-center py-12">
-              {isSearching ? (
-                <div className="bg-[#131926] border border-[#1e293b] rounded-xl p-8 max-w-lg w-full shadow-2xl flex flex-col items-center text-center animate-fade-in">
-                  <div className="w-16 h-16 bg-blue-500/10 rounded-full flex items-center justify-center mb-6">
-                    <Search className="text-blue-500 w-8 h-8" />
-                  </div>
-
-                  <h3 className="text-white text-lg font-bold mb-2">
-                    {t.library.noResults}
-                  </h3>
-
-                  <p className="text-slate-400 text-sm mb-8 leading-relaxed">
-                    Vous n'avez probablement pas encore synchronisé ce dossier.
-                    <br />
-                    Voulez-vous continuer votre recherche directement sur VK ?
-                  </p>
-
-                  <button
-                    onClick={openVkSearch}
-                    className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg shadow-lg shadow-blue-900/20 transition-all flex items-center justify-center gap-2 group"
-                  >
-                    <span className="uppercase text-xs tracking-wider">
-                      Rechercher sur VK
+            {/* Files List Box - responsive, type "Settings card" */}
+            {fileNodes.length > 0 && (
+              <div className="bg-[#0f1523] border border-slate-800/60 rounded-xl shadow-sm overflow-hidden flex flex-col">
+                <div className="px-4 py-3 border-b border-slate-800/60 flex items-center justify-between text-xs text-slate-400 bg-[#0f1523] sticky top-0 z-10">
+                  <span className="font-semibold text-slate-200">
+                    {t.library.fileLabel} · {fileNodes.length}
+                  </span>
+                  {activeDownloadsInView.length > 0 && (
+                    <span className="hidden sm:inline-block">
+                      {activeDownloadsInView.length} en cours / en file d'attente
                     </span>
-                    <ChevronRight
-                      size={14}
-                      className="group-hover:translate-x-1 transition-transform"
+                  )}
+                </div>
+                <div className="divide-y divide-slate-800">
+                  {fileNodes.map((node) => (
+                    <BrowserFileItem
+                      key={node.id}
+                      node={node}
+                      activeDownload={downloadsById.get(node.id)}
+                      language={language}
+                      t={t}
+                      navigateTo={navigateTo}
+                      pauseDownload={pauseDownload}
+                      resumeDownload={resumeDownload}
+                      cancelDownload={cancelDownload}
+                      retryDownload={retryDownload}
                     />
-                  </button>
+                  ))}
                 </div>
-              ) : (
-                <div className="text-slate-500 italic">
-                  {t.library.noResults}
-                </div>
-              )}
-            </div>
-          )}
+              </div>
+            )}
+
+            {displayedNodes.length === 0 && !isLoading && (
+              <div className="flex flex-col items-center justify-center py-12">
+                {isSearching ? (
+                  <div className="bg-[#131926] border border-[#1e293b] rounded-xl p-8 max-w-lg w-full shadow-2xl flex flex-col items-center text-center animate-fade-in">
+                    <div className="w-16 h-16 bg-blue-500/10 rounded-full flex items-center justify-center mb-6">
+                      <Search className="text-blue-500 w-8 h-8" />
+                    </div>
+
+                    <h3 className="text-white text-lg font-bold mb-2">
+                      {t.library.noResults}
+                    </h3>
+
+                    <p className="text-slate-400 text-sm mb-8 leading-relaxed">
+                      Vous n'avez probablement pas encore synchronisé ce dossier.
+                      <br />
+                      Voulez-vous continuer votre recherche directement sur VK ?
+                    </p>
+
+                    <button
+                      onClick={openVkSearch}
+                      className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg shadow-lg shadow-blue-900/20 transition-all flex items-center justify-center gap-2 group"
+                    >
+                      <span className="uppercase text-xs tracking-wider">
+                        Rechercher sur VK
+                      </span>
+                      <ChevronRight
+                        size={14}
+                        className="group-hover:translate-x-1 transition-transform"
+                      />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="text-slate-500 italic">
+                    {t.library.noResults}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

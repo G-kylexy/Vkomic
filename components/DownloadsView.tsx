@@ -357,123 +357,127 @@ const DownloadsView: React.FC<DownloadsViewProps> = ({
 
 
   return (
-    <div
-      ref={scrollContainerRef}
-      onScroll={handleScroll}
-      className="flex-1 min-h-0 px-4 sm:px-8 pt-6 sm:pt-8 pb-10 flex flex-col animate-fade-in overflow-y-auto custom-scrollbar"
-    >
-      <div className="w-full flex flex-col">
-        {/* Stats */}
-        <div className="mb-10">
-          <div className="flex items-center gap-3 mb-6">
-            <BarChart className="text-slate-200" size={24} />
-            <h2 className="text-2xl font-bold text-white tracking-tight">{t.downloads.overviewTitle}</h2>
+    <div className="relative flex flex-col w-full h-full overflow-hidden bg-[#050B14]">
+      <div className="ambient-glow ambient-glow-1"></div>
+      <div className="ambient-glow ambient-glow-2"></div>
+      <div
+        ref={scrollContainerRef}
+        onScroll={handleScroll}
+        className="flex-1 w-full px-4 sm:px-8 pt-6 sm:pt-8 animate-fade-in overflow-y-auto custom-scrollbar pb-32 relative z-10 flex flex-col"
+      >
+        <div className="w-full flex flex-col">
+          {/* Stats */}
+          <div className="mb-10">
+            <div className="flex items-center gap-3 mb-6">
+              <BarChart className="text-slate-200" size={24} />
+              <h2 className="text-2xl font-bold text-white tracking-tight">{t.downloads.overviewTitle}</h2>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="bg-[#0f1523] border border-slate-800/60 rounded-xl p-6 flex flex-col justify-center shadow-sm">
+                <span className="text-4xl font-bold text-white mb-2">{indexedCount}</span>
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">{t.downloads.statsIndexed}</span>
+              </div>
+              <div className="bg-[#0f1523] border border-slate-800/60 rounded-xl p-6 flex flex-col justify-center shadow-sm">
+                <span className="text-4xl font-bold text-white mb-2">{downloadCounts.downloaded}</span>
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">{t.downloads.statsDownloaded}</span>
+              </div>
+              <div className="bg-[#0f1523] border border-slate-800/60 rounded-xl p-6 flex flex-col justify-center shadow-sm sm:col-span-2 lg:col-span-1">
+                <span className="text-4xl font-bold text-white mb-2">{downloadCounts.inProgress}</span>
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">{t.downloads.statsInProgress}</span>
+              </div>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            <div className="bg-[#131926] border border-[#1e293b] rounded-xl p-6 flex flex-col justify-center shadow-lg">
-              <span className="text-4xl font-bold text-white mb-2">{indexedCount}</span>
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">{t.downloads.statsIndexed}</span>
+          {/* Header */}
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <Download className="text-slate-200" size={24} />
+              <h2 className="text-2xl font-bold text-white tracking-tight">{t.downloads.title}</h2>
             </div>
-            <div className="bg-[#131926] border border-[#1e293b] rounded-xl p-6 flex flex-col justify-center shadow-lg">
-              <span className="text-4xl font-bold text-white mb-2">{downloadCounts.downloaded}</span>
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">{t.downloads.statsDownloaded}</span>
-            </div>
-            <div className="bg-[#131926] border border-[#1e293b] rounded-xl p-6 flex flex-col justify-center shadow-lg sm:col-span-2 lg:col-span-1">
-              <span className="text-4xl font-bold text-white mb-2">{downloadCounts.inProgress}</span>
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">{t.downloads.statsInProgress}</span>
-            </div>
+            {downloads.length > 0 && (
+              <button
+                onClick={clearDownloads}
+                className="flex items-center gap-2 px-4 py-2 bg-rose-900/20 hover:bg-rose-900/40 text-rose-400 rounded-lg transition-colors text-sm font-medium"
+                title={t.tooltips.clean}
+              >
+                <Trash2 size={18} />
+                <span>{t.tooltips.clean}</span>
+              </button>
+            )}
           </div>
-        </div>
 
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <Download className="text-slate-200" size={24} />
-            <h2 className="text-2xl font-bold text-white tracking-tight">{t.downloads.title}</h2>
+          {/* Liste */}
+          <div className="bg-[#0f1523] border border-slate-800/60 rounded-xl overflow-hidden shadow-sm flex flex-col min-h-[400px]">
+            {downloads.length === 0 ? (
+              <div className="flex-1 flex flex-col items-center justify-center text-slate-500 py-20">
+                <div className="w-16 h-16 rounded-full bg-slate-800/50 flex items-center justify-center mb-4">
+                  <Download size={24} />
+                </div>
+                <p className="font-medium">{t.downloads.noDownloads}</p>
+                <p className="text-xs text-slate-600 mt-1">{t.downloads.noDownloadsDescription}</p>
+              </div>
+            ) : (
+              <>
+                {/* Desktop */}
+                <div className="hidden md:block overflow-x-auto">
+                  <table className="w-full table-fixed text-left border-collapse">
+                    <thead>
+                      <tr>
+                        <th className="py-4 px-6 bg-[#0f1523] text-xs font-bold text-slate-500 uppercase border-b border-slate-800 tracking-wider w-[30%]">
+                          {t.downloads.tableSeries}
+                        </th>
+                        <th className="py-4 px-6 bg-[#0f1523] text-xs font-bold text-slate-500 uppercase border-b border-slate-800 tracking-wider w-[10%]">
+                          {t.downloads.tableVolume}
+                        </th>
+                        <th className="py-4 px-6 bg-[#0f1523] text-xs font-bold text-slate-500 uppercase border-b border-slate-800 tracking-wider w-[30%]">
+                          {t.downloads.tableStatus}
+                        </th>
+                        <th className="py-4 px-6 bg-[#0f1523] text-xs font-bold text-slate-500 uppercase border-b border-slate-800 tracking-wider w-[15%]">
+                          {t.downloads.tableSize}
+                        </th>
+                        <th className="py-4 px-6 bg-[#0f1523] text-xs font-bold text-slate-500 uppercase border-b border-slate-800 tracking-wider text-right w-[15%]">
+                          {t.downloads.tableActions}
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="text-slate-300">
+                      {visibleDownloads.map((d) => (
+                        <DownloadRow
+                          key={d.id}
+                          d={d}
+                          t={t}
+                          pauseDownload={pauseDownload}
+                          resumeDownload={resumeDownload}
+                          cancelDownload={cancelDownload}
+                          retryDownload={retryDownload}
+                          openFolder={openFolder}
+                        />
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Mobile */}
+                <div className="md:hidden flex flex-col gap-3 p-4">
+                  {visibleDownloads.map((d) => (
+                    <DownloadCard
+                      key={d.id}
+                      d={d}
+                      t={t}
+                      pauseDownload={pauseDownload}
+                      resumeDownload={resumeDownload}
+                      cancelDownload={cancelDownload}
+                      retryDownload={retryDownload}
+                      openFolder={openFolder}
+                    />
+                  ))}
+                </div>
+
+
+              </>
+            )}
           </div>
-          {downloads.length > 0 && (
-            <button
-              onClick={clearDownloads}
-              className="flex items-center gap-2 px-4 py-2 bg-rose-900/20 hover:bg-rose-900/40 text-rose-400 rounded-lg transition-colors text-sm font-medium"
-              title={t.tooltips.clean}
-            >
-              <Trash2 size={18} />
-              <span>{t.tooltips.clean}</span>
-            </button>
-          )}
-        </div>
-
-        {/* Liste */}
-        <div className="bg-[#131926] border border-[#1e293b] rounded-xl overflow-hidden shadow-xl flex flex-col min-h-[400px]">
-          {downloads.length === 0 ? (
-            <div className="flex-1 flex flex-col items-center justify-center text-slate-500 py-20">
-              <div className="w-16 h-16 rounded-full bg-slate-800/50 flex items-center justify-center mb-4">
-                <Download size={24} />
-              </div>
-              <p className="font-medium">{t.downloads.noDownloads}</p>
-              <p className="text-xs text-slate-600 mt-1">{t.downloads.noDownloadsDescription}</p>
-            </div>
-          ) : (
-            <>
-              {/* Desktop */}
-              <div className="hidden md:block overflow-x-auto">
-                <table className="w-full table-fixed text-left border-collapse">
-                  <thead>
-                    <tr>
-                      <th className="py-4 px-6 bg-[#0f1523] text-xs font-bold text-slate-500 uppercase border-b border-slate-800 tracking-wider w-[30%]">
-                        {t.downloads.tableSeries}
-                      </th>
-                      <th className="py-4 px-6 bg-[#0f1523] text-xs font-bold text-slate-500 uppercase border-b border-slate-800 tracking-wider w-[10%]">
-                        {t.downloads.tableVolume}
-                      </th>
-                      <th className="py-4 px-6 bg-[#0f1523] text-xs font-bold text-slate-500 uppercase border-b border-slate-800 tracking-wider w-[30%]">
-                        {t.downloads.tableStatus}
-                      </th>
-                      <th className="py-4 px-6 bg-[#0f1523] text-xs font-bold text-slate-500 uppercase border-b border-slate-800 tracking-wider w-[15%]">
-                        {t.downloads.tableSize}
-                      </th>
-                      <th className="py-4 px-6 bg-[#0f1523] text-xs font-bold text-slate-500 uppercase border-b border-slate-800 tracking-wider text-right w-[15%]">
-                        {t.downloads.tableActions}
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="text-slate-300">
-                    {visibleDownloads.map((d) => (
-                      <DownloadRow
-                        key={d.id}
-                        d={d}
-                        t={t}
-                        pauseDownload={pauseDownload}
-                        resumeDownload={resumeDownload}
-                        cancelDownload={cancelDownload}
-                        retryDownload={retryDownload}
-                        openFolder={openFolder}
-                      />
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Mobile */}
-              <div className="md:hidden flex flex-col gap-3 p-4">
-                {visibleDownloads.map((d) => (
-                  <DownloadCard
-                    key={d.id}
-                    d={d}
-                    t={t}
-                    pauseDownload={pauseDownload}
-                    resumeDownload={resumeDownload}
-                    cancelDownload={cancelDownload}
-                    retryDownload={retryDownload}
-                    openFolder={openFolder}
-                  />
-                ))}
-              </div>
-
-
-            </>
-          )}
         </div>
       </div>
     </div>

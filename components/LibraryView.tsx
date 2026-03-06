@@ -115,7 +115,7 @@ const LibraryItem = React.memo<LibraryItemProps>(({
   return (
     <div
       onDoubleClick={handleDoubleClick}
-      className="bg-[#111827] rounded-xl border border-slate-800 p-5 flex flex-col justify-between hover:border-blue-500/40 transition-all duration-200 cursor-pointer"
+      className="bg-[#0f1523] rounded-xl border border-slate-800/60 p-5 shadow-sm flex flex-col justify-between hover:border-blue-500/40 transition-all duration-200 cursor-pointer"
     >
       <div className="flex items-center gap-3 mb-4">
         <button
@@ -232,21 +232,25 @@ const LibraryView: React.FC<LibraryViewProps> = ({
 
   if (!effectivePath) {
     return (
-      <div className="flex-1 px-4 sm:px-8 pt-6 sm:pt-8 flex flex-col animate-fade-in overflow-y-auto custom-scrollbar pb-20">
-        <div className="flex-1 flex flex-col items-center justify-center text-center px-6 text-slate-400 gap-4">
-          <div className="w-16 h-16 rounded-full bg-slate-800/50 flex items-center justify-center mb-2">
-            <Settings size={32} className="text-slate-500" />
+      <div className="relative flex flex-col w-full h-full overflow-hidden bg-[#050B14]">
+        <div className="ambient-glow ambient-glow-1"></div>
+        <div className="ambient-glow ambient-glow-2"></div>
+        <div className="flex-1 w-full px-4 sm:px-8 pt-6 sm:pt-8 flex flex-col animate-fade-in overflow-y-auto custom-scrollbar pb-32 relative z-10">
+          <div className="flex-1 flex flex-col items-center justify-center text-center px-6 text-slate-400 gap-4">
+            <div className="w-16 h-16 rounded-full bg-slate-800/50 flex items-center justify-center mb-2">
+              <Settings size={32} className="text-slate-500" />
+            </div>
+            <p className="font-medium text-lg">{t.library.noDownloadPath}</p>
+            {onNavigateToSettings && (
+              <button
+                onClick={onNavigateToSettings}
+                className="mt-2 flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium shadow-lg"
+              >
+                <Settings size={18} />
+                <span>{t.library.configureFolder}</span>
+              </button>
+            )}
           </div>
-          <p className="font-medium text-lg">{t.library.noDownloadPath}</p>
-          {onNavigateToSettings && (
-            <button
-              onClick={onNavigateToSettings}
-              className="mt-2 flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium shadow-lg"
-            >
-              <Settings size={18} />
-              <span>{t.library.configureFolder}</span>
-            </button>
-          )}
         </div>
       </div>
     );
@@ -254,111 +258,119 @@ const LibraryView: React.FC<LibraryViewProps> = ({
 
   if (!hasFsBridge) {
     return (
-      <div className="flex-1 px-4 sm:px-8 pt-6 sm:pt-8 flex flex-col animate-fade-in overflow-y-auto custom-scrollbar pb-20">
-        <div className="flex-1 flex flex-col items-center justify-center text-center px-6 text-slate-400 gap-3">
-          <p className="font-medium text-lg">{t.library.desktopOnly}</p>
+      <div className="relative flex flex-col w-full h-full overflow-hidden bg-[#050B14]">
+        <div className="ambient-glow ambient-glow-1"></div>
+        <div className="ambient-glow ambient-glow-2"></div>
+        <div className="flex-1 w-full px-4 sm:px-8 pt-6 sm:pt-8 flex flex-col animate-fade-in overflow-y-auto custom-scrollbar pb-32 relative z-10">
+          <div className="flex-1 flex flex-col items-center justify-center text-center px-6 text-slate-400 gap-3">
+            <p className="font-medium text-lg">{t.library.desktopOnly}</p>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex-1 px-4 sm:px-8 pt-6 sm:pt-8 flex flex-col animate-fade-in overflow-y-auto custom-scrollbar pb-24">
-      <div className="w-full flex flex-col">
-        <div className="pt-2 pb-6">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h1 className="text-3xl font-bold text-white tracking-tight">
-                {t.library.localTitle}
-              </h1>
-              <p className="text-slate-500 text-sm mt-2">
-                {currentPath || effectivePath}
-              </p>
+    <div className="relative flex flex-col w-full h-full overflow-hidden bg-[#050B14]">
+      <div className="ambient-glow ambient-glow-1"></div>
+      <div className="ambient-glow ambient-glow-2"></div>
+      <div className="flex-1 w-full px-4 sm:px-8 pt-6 sm:pt-8 flex flex-col animate-fade-in overflow-y-auto custom-scrollbar pb-32 relative z-10">
+        <div className="w-full flex flex-col">
+          <div className="pt-2 pb-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h1 className="text-3xl font-bold text-white tracking-tight">
+                  {t.library.localTitle}
+                </h1>
+                <p className="text-slate-500 text-sm mt-2">
+                  {currentPath || effectivePath}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleNavigateUp}
+                  disabled={!canNavigateUp || isLoading}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-700/50 text-sm transition-colors ${canNavigateUp && !isLoading
+                    ? "text-slate-200 bg-slate-800 hover:bg-slate-700"
+                    : "text-slate-500 bg-slate-800/50 cursor-not-allowed"
+                    }`}
+                >
+                  <ChevronLeft size={16} />
+                  {t.library.back}
+                </button>
+                <button
+                  onClick={() => currentPath && loadPath(currentPath)}
+                  disabled={!currentPath || isLoading}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-700/50 text-sm text-slate-200 bg-slate-800 hover:bg-slate-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                >
+                  <RefreshCw
+                    size={16}
+                    className={isLoading ? "animate-spin" : ""}
+                  />
+                  {t.library.refresh}
+                </button>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleNavigateUp}
-                disabled={!canNavigateUp || isLoading}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-700/50 text-sm transition-colors ${canNavigateUp && !isLoading
-                  ? "text-slate-200 bg-slate-800 hover:bg-slate-700"
-                  : "text-slate-500 bg-slate-800/50 cursor-not-allowed"
-                  }`}
-              >
-                <ChevronLeft size={16} />
-                {t.library.back}
-              </button>
-              <button
-                onClick={() => currentPath && loadPath(currentPath)}
-                disabled={!currentPath || isLoading}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-700/50 text-sm text-slate-200 bg-slate-800 hover:bg-slate-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-              >
-                <RefreshCw
-                  size={16}
-                  className={isLoading ? "animate-spin" : ""}
-                />
-                {t.library.refresh}
-              </button>
-            </div>
-          </div>
 
-          {breadcrumbs.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2 text-sm text-slate-400">
-              {breadcrumbs.map((crumb, index) => (
-                <React.Fragment key={crumb.path}>
-                  {index > 0 && <span className="text-slate-600">/</span>}
-                  <button
-                    onClick={() => loadPath(crumb.path)}
-                    className={`hover:text-white transition-colors ${index === breadcrumbs.length - 1
-                      ? "text-white font-semibold cursor-default"
-                      : ""
-                      }`}
-                    disabled={index === breadcrumbs.length - 1}
-                  >
-                    {crumb.label}
-                  </button>
-                </React.Fragment>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {error && (
-          <div className="mb-4 flex items-center gap-3 text-rose-300 bg-rose-500/10 px-4 py-3 rounded-lg border border-rose-500/20">
-            <span className="text-sm">{error}</span>
-          </div>
-        )}
-
-        {isLoading && (
-          <div className="flex-1 flex items-center justify-center text-slate-400">
-            <RefreshCw className="animate-spin mr-2" size={20} />
-            {t.library.loading}
-          </div>
-        )}
-
-        {!isLoading && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5 pb-4">
-            {entries.map((entry) => (
-              <LibraryItem
-                key={entry.path}
-                entry={entry}
-                onNavigate={handleEntryClick}
-                onOpen={handleOpenFile}
-                folderLabel={t.library.folderLabel}
-                fileLabel={t.library.fileLabel}
-                sizeLabel={t.library.size}
-                modifiedLabel={t.library.modified}
-                openFolderLabel={t.library.openFolder}
-                openFileLabel={t.library.openFile}
-              />
-            ))}
-
-            {entries.length === 0 && (
-              <div className="col-span-full flex flex-col items-center justify-center py-16 text-slate-500">
-                <p>{t.library.emptyFolder}</p>
+            {breadcrumbs.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 text-sm text-slate-400">
+                {breadcrumbs.map((crumb, index) => (
+                  <React.Fragment key={crumb.path}>
+                    {index > 0 && <span className="text-slate-600">/</span>}
+                    <button
+                      onClick={() => loadPath(crumb.path)}
+                      className={`hover:text-white transition-colors ${index === breadcrumbs.length - 1
+                        ? "text-white font-semibold cursor-default"
+                        : ""
+                        }`}
+                      disabled={index === breadcrumbs.length - 1}
+                    >
+                      {crumb.label}
+                    </button>
+                  </React.Fragment>
+                ))}
               </div>
             )}
           </div>
-        )}
+
+          {error && (
+            <div className="mb-4 flex items-center gap-3 text-rose-300 bg-rose-500/10 px-4 py-3 rounded-lg border border-rose-500/20">
+              <span className="text-sm">{error}</span>
+            </div>
+          )}
+
+          {isLoading && (
+            <div className="flex-1 flex items-center justify-center text-slate-400">
+              <RefreshCw className="animate-spin mr-2" size={20} />
+              {t.library.loading}
+            </div>
+          )}
+
+          {!isLoading && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5 pb-4">
+              {entries.map((entry) => (
+                <LibraryItem
+                  key={entry.path}
+                  entry={entry}
+                  onNavigate={handleEntryClick}
+                  onOpen={handleOpenFile}
+                  folderLabel={t.library.folderLabel}
+                  fileLabel={t.library.fileLabel}
+                  sizeLabel={t.library.size}
+                  modifiedLabel={t.library.modified}
+                  openFolderLabel={t.library.openFolder}
+                  openFileLabel={t.library.openFile}
+                />
+              ))}
+
+              {entries.length === 0 && (
+                <div className="col-span-full flex flex-col items-center justify-center py-16 text-slate-500">
+                  <p>{t.library.emptyFolder}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
