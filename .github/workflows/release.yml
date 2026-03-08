@@ -118,8 +118,10 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Checkout
+      - name: Checkout mobile branch
         uses: actions/checkout@v4
+        with:
+          ref: mobile
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -133,54 +135,27 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-linux-android
-
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
-
-      - name: Install Android SDK components
-        shell: bash
-        run: |
-          set -euo pipefail
-          yes | sdkmanager --licenses
-          sdkmanager --install \
-            "platform-tools" \
-            "platforms;android-35" \
-            "build-tools;35.0.0" \
-            "ndk;27.0.12077973"
-
-      - name: Export Android environment
-        shell: bash
-        run: |
-          set -euo pipefail
-          SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
-          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
-          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
-          echo "ANDROID_NDK_HOME=$SDK_ROOT/ndk/27.0.12077973" >> "$GITHUB_ENV"
-          echo "NDK_HOME=$SDK_ROOT/ndk/27.0.12077973" >> "$GITHUB_ENV"
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Initialize Android project
-        run: npx tauri android init --ci --skip-targets-install
-
       - name: Build Android APK
-        run: npm run mobile:android -- --apk --target aarch64 --ci
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleRelease
 
       - name: Stage Android APK
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p final_assets
-          APK_PATH=$(find src-tauri -type f -path "*/outputs/apk/*release/*.apk" | head -n 1)
+          APK_PATH=$(find android/app/build/outputs/apk/release -type f -name "*.apk" | head -n 1)
 
           if [ -z "${APK_PATH:-}" ]; then
             echo "No release APK found" >&2
-            find src-tauri -type f -name "*.apk"
             exit 1
           fi
 
@@ -221,19 +196,9 @@ jobs:
         with:
           name: ${{ github.ref_name }}
           body: |
-            ## Notes de mise a jour
-            - Nouvelle application desktop basee sur Tauri 2.
-            - Navigation VK restructuree avec Browser, Downloads, Library et Settings.
-            - Amelioration du parsing VK, de la recherche et des breadcrumbs.
-            - Publication multi-plateforme avec Windows, macOS, Linux et Android.
-
-            ## Binaires
-            - Windows: vkomic-<version>-win-x64-setup.exe
-            - macOS Intel: vkomic-<version>-mac-x64.dmg
-            - macOS High Sierra: vkomic-<version>-mac-x64-highsierra.dmg
-            - macOS Silicon: vkomic-<version>-mac-arm64.dmg
-            - Linux: vkomic-<version>-linux-x64.AppImage
-            - Android: Vkomic.apk
+            Compatibilité macOS High Sierra : fix de l'affichage et du blur sur Safari 11.
+            Amelioration de l'affichage des titres alternatifs qui se dupliquaient ,et fix des breadcrumbs.
+            Ajout d'un bouton pour ouvrir la collection directement dans VK (merci @dragouf).
           files: final_assets/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
