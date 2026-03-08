@@ -176,9 +176,10 @@ const fetchNodesStructureBatch = async (token: string, nodes: VkNode[]): Promise
             }
 
             const text = items.map((it: any) => it.text || "").join("\n");
-            const children = parseTopicBody(text, node.vkTopicId);
+            const children = parseTopicBodyEnhanced(text, node.vkTopicId);
             return {
               ...node,
+              count: typeof resp.count === "number" ? resp.count : node.count,
               children,
               isLoaded: true,
               structureOnly: true,
@@ -245,7 +246,13 @@ export const searchVkBoard = async (
 // --- LOGIQUE DE PARSING ---
 
 const cleanTitle = (text: string) => {
-  return text
+  let cleaned = text || "";
+  const embeddedTitle = cleaned.match(/\[topic-\d+(?:_\d+)?\|([^\]]+)\]/i);
+  if (embeddedTitle) {
+    cleaned = embeddedTitle[1];
+  }
+
+  return cleaned
     .replace(/\s*[-–—=]+[>→»]\s*.*$/i, '') // Flèches et séparateurs
     .replace(/https?:\/\/.*$/i, '') // Supprime les liens restants à la fin
     .replace(/[:\->]+$/, '')
@@ -385,6 +392,219 @@ const parseTopicBody = (text: string, excludeTopicId?: string): VkNode[] => {
         });
       }
     }
+
+    // 3c. Documents in text
+    const docUrlRegex = /vk\.com\/doc(-?\d+)_(\d+)/g;
+    let docMatch;
+    while ((docMatch = docUrlRegex.exec(line)) !== null) {
+      const [, ownerId, docId] = docMatch;
+      const uniqueId = `doc_${ownerId}_${docId}`;
+      if (seenIds.has(uniqueId)) continue;
+
+      let title = "";
+      const beforeMatch = line.substring(0, docMatch.index);
+      if (beforeMatch.trim().length > 1) {
+        title = cleanTitle(beforeMatch);
+      } else if (i > 0) {
+        const prevLine = lines[i - 1].trim();
+        if (!prevLine.includes("vk.com") && prevLine.length > 2) {
+          title = cleanTitle(prevLine);
+        }
+      }
+
+      if (!title) title = `Document ${docId}`;
+      seenIds.add(uniqueId);
+      nodes.push({
+        id: uniqueId,
+        title,
+        type: "file",
+        url: `https://vk.com/doc${ownerId}_${docId}`,
+        vkOwnerId: ownerId,
+        vkDocId: docId,
+        isLoaded: true,
+      });
+    }
+  }
+
+  return nodes;
+};
+
+const upsertTopicNode = (nodes: VkNode[], nextNode: VkNode) => {
+  const existing = nodes.find((node) => node.id === nextNode.id);
+  if (existing) {
+    if (nextNode.title && !existing.title.includes(nextNode.title)) {
+      existing.title = `${existing.title} - ${nextNode.title}`;
+    }
+    return;
+  }
+
+  nodes.push(nextNode);
+};
+
+const parseTopicBodyEnhanced = (text: string, excludeTopicId?: string): VkNode[] => {
+  const nodes: VkNode[] = [];
+  const seenIds = new Set<string>();
+
+  const bbcodeRegex = /\[topic-(\d+)_(\d+)\|([^\]]+)\]/g;
+  let bbMatch;
+  while ((bbMatch = bbcodeRegex.exec(text)) !== null) {
+    const [, groupId, topicId, linkText] = bbMatch;
+    if (excludeTopicId && topicId === excludeTopicId) continue;
+
+    let title = cleanTitle(linkText);
+    if (!title || title.length < 2) title = `Topic ${topicId}`;
+
+    if (title.length < 200) {
+      upsertTopicNode(nodes, {
+        id: `topic_${topicId}`,
+        title,
+        type: "genre",
+        url: `https://vk.com/topic-${groupId}_${topicId}`,
+        vkGroupId: groupId,
+        vkTopicId: topicId,
+        children: [],
+        isLoaded: false,
+      });
+    }
+  }
+
+  const mentionRegex = /@topic-(\d+)_(\d+)(?:\?post=(\d+))?(?:\s*\(([^)]+)\))?/g;
+  let mentionMatch;
+  while ((mentionMatch = mentionRegex.exec(text)) !== null) {
+    const [, groupId, topicId, _postId, linkText] = mentionMatch;
+    if (excludeTopicId && topicId === excludeTopicId) continue;
+
+    let title = linkText ? cleanTitle(linkText) : `Topic ${topicId}`;
+    if (!title || title.length < 2) title = `Topic ${topicId}`;
+
+    if (title.length < 200) {
+      upsertTopicNode(nodes, {
+        id: `topic_${topicId}`,
+        title,
+        type: "genre",
+        url: `https://vk.com/topic-${groupId}_${topicId}`,
+        vkGroupId: groupId,
+        vkTopicId: topicId,
+        children: [],
+        isLoaded: false,
+      });
+    }
+  }
+
+  const lines = text.split("\n").map((line) => line.trim()).filter((line) => line.length > 0);
+  const invertedTopicUrlRegex =
+    /(?:https?:\/\/)?(?:[a-z0-9]+\.)?vk\.com\/topic-(\d+)_(\d+)\|([^\]]+)\]/gi;
+  const topicUrlRegex =
+    /(?:https?:\/\/)?(?:[a-z0-9]+\.)?vk\.com\/topic-(\d+)_(\d+)(?:\?post=(\d+))?/gi;
+  const docUrlRegex =
+    /(?:https?:\/\/)?(?:[a-z0-9]+\.)?vk\.com\/doc(-?\d+)_(\d+)/gi;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    let invertedMatch;
+    while ((invertedMatch = invertedTopicUrlRegex.exec(line)) !== null) {
+      const [, groupId, topicId, linkText] = invertedMatch;
+      if (excludeTopicId && topicId === excludeTopicId) continue;
+
+      let title = cleanTitle(linkText);
+      if (!title || title.length < 2) title = `Topic ${topicId}`;
+
+      if (title.length < 200) {
+        upsertTopicNode(nodes, {
+          id: `topic_${topicId}`,
+          title,
+          type: "genre",
+          url: `https://vk.com/topic-${groupId}_${topicId}`,
+          vkGroupId: groupId,
+          vkTopicId: topicId,
+          children: [],
+          isLoaded: false,
+        });
+      }
+    }
+
+    let topicMatch;
+    while ((topicMatch = topicUrlRegex.exec(line)) !== null) {
+      const [, groupId, topicId] = topicMatch;
+      if (excludeTopicId && topicId === excludeTopicId) continue;
+
+      const urlStart = topicMatch.index;
+      const urlEnd = urlStart + topicMatch[0].length;
+      let title = "";
+
+      const beforeText = line.substring(0, urlStart).trim();
+      if (beforeText.length > 1) {
+        title = cleanTitle(beforeText);
+      }
+
+      if ((!title || title.length < 2) && i > 0) {
+        const prevLine = lines[i - 1].trim();
+        if (!prevLine.includes("vk.com") && prevLine.length > 2) {
+          title = cleanTitle(prevLine);
+        }
+      }
+
+      if ((!title || title.length < 2) && urlEnd < line.length) {
+        const afterText = line.substring(urlEnd).trim();
+        if (afterText.length > 2 && !afterText.includes("vk.com")) {
+          title = cleanTitle(afterText);
+        }
+      }
+
+      if (!title || title.length < 2) title = `Topic ${topicId}`;
+
+      if (title.length < 200) {
+        upsertTopicNode(nodes, {
+          id: `topic_${topicId}`,
+          title,
+          type: "genre",
+          url: `https://vk.com/topic-${groupId}_${topicId}`,
+          vkGroupId: groupId,
+          vkTopicId: topicId,
+          children: [],
+          isLoaded: false,
+        });
+      }
+    }
+
+    let docMatch;
+    while ((docMatch = docUrlRegex.exec(line)) !== null) {
+      const [, ownerId, docId] = docMatch;
+      const uniqueId = `doc_${ownerId}_${docId}`;
+      if (seenIds.has(uniqueId)) continue;
+
+      let title = "";
+      const beforeText = line.substring(0, docMatch.index).trim();
+      if (beforeText.length > 1) {
+        title = cleanTitle(beforeText);
+      } else if (i > 0) {
+        const prevLine = lines[i - 1].trim();
+        if (!prevLine.includes("vk.com") && prevLine.length > 2) {
+          title = cleanTitle(prevLine);
+        }
+      }
+
+      const titleLower = title.toLowerCase();
+      if ((titleLower.includes("telecharger") || titleLower.includes("download")) && i > 0) {
+        const prevLine = lines[i - 1].trim();
+        if (!prevLine.includes("vk.com") && prevLine.length > 2) {
+          title = cleanTitle(prevLine);
+        }
+      }
+
+      if (!title) title = `Document ${docId}`;
+      seenIds.add(uniqueId);
+      nodes.push({
+        id: uniqueId,
+        title,
+        type: "file",
+        url: `https://vk.com/doc${ownerId}_${docId}`,
+        vkOwnerId: ownerId,
+        vkDocId: docId,
+        isLoaded: true,
+      });
+    }
   }
 
   return nodes;
@@ -412,6 +632,9 @@ const extractDocuments = (items: any[]): VkNode[] => {
         extension: doc.ext?.toUpperCase?.() || undefined,
         url,
         sizeBytes: typeof doc.size === "number" ? doc.size : undefined,
+        vkOwnerId: doc.owner_id ? doc.owner_id.toString() : undefined,
+        vkDocId: doc.id ? doc.id.toString() : undefined,
+        vkAccessKey: doc.access_key,
         isLoaded: true,
       });
     });
@@ -513,7 +736,7 @@ export const fetchRootIndex = async (
     }
 
     const fullText = items.map((i: any) => i.text).join("\n");
-    const nodes = parseTopicBody(fullText);
+    const nodes = parseTopicBodyEnhanced(fullText);
 
     if (nodes.length === 0) {
       return MOCK_ROOT_NODES;
@@ -543,7 +766,7 @@ export const fetchNodeContent = async (token: string, node: VkNode): Promise<VkN
     }
 
     const fullText = items.map((i: any) => i.text).join("\n");
-    const subTopics = parseTopicBody(fullText, node.vkTopicId);
+    const subTopics = parseTopicBodyEnhanced(fullText, node.vkTopicId);
 
     const documents = extractDocuments(items);
 
@@ -579,7 +802,7 @@ const fetchTopicStructure = async (
   const items = await fetchAllComments(token, groupId, topicId);
   if (!items || items.length === 0) return [];
   const fullText = items.map((i: any) => i.text).join("\n");
-  return parseTopicBody(fullText, topicId);
+  return parseTopicBodyEnhanced(fullText, topicId);
 };
 
 export const fetchFolderTreeUpToDepth = async (

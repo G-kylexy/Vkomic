@@ -950,6 +950,9 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
       size: node.sizeBytes ? formatBytes(node.sizeBytes) : undefined,
       totalBytes: node.sizeBytes,
       resumeData: null,
+      vkOwnerId: node.vkOwnerId,
+      vkDocId: node.vkDocId,
+      vkAccessKey: node.vkAccessKey,
     };
     setDownloads((prev) => [item, ...prev]);
     // Note: On ne notifie plus ici car le DownloadManager affiche sa propre notification avec barre de progression

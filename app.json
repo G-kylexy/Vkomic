@@ -3,7 +3,7 @@
     "name": "vkomic",
     "slug": "vkomic-mobile",
     "scheme": "vkomic",
-    "version": "1.0.0",
+    "version": "1.4.0",
     "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",

@@ -9,7 +9,10 @@ export interface VkNode {
   vkGroupId?: string; // Pour les appels API
   vkTopicId?: string; // Pour les appels API
   isLoaded?: boolean; // Si le contenu a deja ete fetch
-  structureOnly?: boolean; // Charge via sync structure (sans docs)
+  structureOnly?: boolean; // Charge via sync structure (preview/partiel)
+  vkOwnerId?: string;
+  vkDocId?: string;
+  vkAccessKey?: string;
   extension?: string; // PDF, CBR, CBZ, etc.
   sizeBytes?: number;
   count?: number; // Compat PC: compteur enfants
@@ -39,5 +42,8 @@ export interface DownloadItem {
   subFolder?: string; // Sous-dossier optionnel
   resumeData?: string | null; // Mobile: reprise pause/resume
   totalBytes?: number;
+  vkOwnerId?: string;
+  vkDocId?: string;
+  vkAccessKey?: string;
 }
 
