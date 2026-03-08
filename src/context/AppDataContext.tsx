@@ -741,8 +741,30 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
     if (!token) { setError(t.browser.errorNoToken); return; }
     if (isTokenInvalid) { setError("Token invalide - Veuillez le mettre à jour dans les paramètres"); return; }
     setError(null);
+
+    const resolvePath = (nodes: VkNode[] | null, targetId: string, currentPath: VkNode[] = []): VkNode[] | null => {
+      if (!nodes) return null;
+      for (const n of nodes) {
+        if (n.id === targetId) return [...currentPath, n];
+        if (n.children) {
+          const found = resolvePath(n.children, targetId, [...currentPath, n]);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+
+    let initialNewPath: VkNode[] | null = null;
+    const isSearching = searchQuery.trim().length > 0;
+
     // Clear search when opening a folder so we see its contents
-    setSearchQuery("");
+    if (isSearching) {
+      setSearchQuery("");
+      initialNewPath = resolvePath(syncedData, node.id);
+    } else {
+      setSearchQuery("");
+    }
+
     if (!node.isLoaded || node.structureOnly) {
       setIsLoadingNode(true);
       try {
@@ -755,7 +777,12 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
           });
           setSyncedData(updateTree(syncedData));
         }
-        setNavPath((prev) => [...prev, loaded]);
+
+        if (initialNewPath) {
+          setNavPath([...initialNewPath.slice(0, -1), loaded]);
+        } else {
+          setNavPath((prev) => [...prev, loaded]);
+        }
       } catch {
         setError(t.browser.errorLoad);
       } finally {
@@ -763,7 +790,12 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
       }
       return;
     }
-    setNavPath((prev) => [...prev, node]);
+
+    if (initialNewPath) {
+      setNavPath(initialNewPath);
+    } else {
+      setNavPath((prev) => [...prev, node]);
+    }
   };
 
   useEffect(() => {
