@@ -15,6 +15,43 @@ fn board_get_comments_call(group_id: &str, topic_id: &str, count: usize, offset:
     )
 }
 
+fn redact_access_tokens(value: &mut Value) {
+    match value {
+        Value::Object(map) => {
+            for (key, child) in map.iter_mut() {
+                if key == "access_token" {
+                    *child = Value::String("[redacted]".to_string());
+                    continue;
+                }
+
+                redact_access_tokens(child);
+            }
+
+            if map
+                .get("key")
+                .and_then(Value::as_str)
+                .is_some_and(|key| key == "access_token")
+            {
+                if let Some(token_value) = map.get_mut("value") {
+                    *token_value = Value::String("[redacted]".to_string());
+                }
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                redact_access_tokens(item);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn format_vk_error(err: &Value) -> String {
+    let mut redacted = err.clone();
+    redact_access_tokens(&mut redacted);
+    redacted.to_string()
+}
+
 pub struct VkApi {
     client: Client,
     token: String,
@@ -43,7 +80,7 @@ impl VkApi {
         let res = self.client.get(url).send().await?.json::<Value>().await?;
         
         if let Some(err) = res.get("error") {
-            return Err(anyhow::anyhow!("VK API error: {}", err));
+            return Err(anyhow::anyhow!("VK API error: {}", format_vk_error(err)));
         }
         
         Ok(start.elapsed().as_millis() as u64)
@@ -586,7 +623,7 @@ impl VkApi {
                 Ok(r) => match r.json::<Value>().await {
                     Ok(json) => {
                         if let Some(err) = json.get("error") {
-                            return Err(anyhow::anyhow!("VK API error: {}", err));
+                            return Err(anyhow::anyhow!("VK API error: {}", format_vk_error(err)));
                         }
                         return Ok(json);
                     },
