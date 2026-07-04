@@ -37,6 +37,8 @@ lazy_static! {
     static ref RE_MENTION: Regex = Regex::new(r"@topic-(\d+)_(\d+)(?:\?post=(\d+))?(?:\s*\(([^)]+)\))?").unwrap();
     // Support m.vk.com, w.vk.com, new.vk.com, etc. - Also capture post_id for mentions
     static ref RE_URL: Regex = Regex::new(r"https?://(?:[a-z0-9]+\.)?vk\.com/topic-(\d+)_(\d+)(?:\?post=(\d+))?").unwrap();
+    // Newer VK board links can point to topics through /boardGROUP?...topic...
+    static ref RE_BOARD_URL: Regex = Regex::new(r"https?://(?:[a-z0-9]+\.)?vk\.com/board(\d+)\?[^\s\]]*(?:topic-|topic_id=|tid=)(?:-?\d+_)?(\d+)").unwrap();
     // Inverted format: https://vk.com/topic-XXX|Titre] - BBCode malformed
     static ref RE_URL_INVERTED: Regex = Regex::new(r"https?://(?:[a-z0-9]+\.)?vk\.com/topic-(\d+)_(\d+)\|([^\]]+)\]").unwrap();
     // Support documents in text: https://vk.com/doc-123_456
@@ -216,12 +218,32 @@ pub fn parse_topic_body(text: &str, exclude_topic_id: Option<&str>) -> Vec<VkNod
             }
         }
 
-        // 3b. Standard URLs with improved title detection (mobile logic)
-        for caps in RE_URL.captures_iter(line) {
-            let group_id = &caps[1];
-            let topic_id = &caps[2];
-            let _post_id = caps.get(3).map(|m| m.as_str());
+        // 3b. Standard topic URLs with improved title detection (mobile logic)
+        let mut topic_links: Vec<(String, String, usize, usize, Option<String>)> = Vec::new();
 
+        for caps in RE_URL.captures_iter(line) {
+            let url_match = caps.get(0).unwrap();
+            topic_links.push((
+                caps[1].to_string(),
+                caps[2].to_string(),
+                url_match.start(),
+                url_match.end(),
+                caps.get(3).map(|m| m.as_str().to_string()),
+            ));
+        }
+
+        for caps in RE_BOARD_URL.captures_iter(line) {
+            let url_match = caps.get(0).unwrap();
+            topic_links.push((
+                caps[1].to_string(),
+                caps[2].to_string(),
+                url_match.start(),
+                url_match.end(),
+                None,
+            ));
+        }
+
+        for (group_id, topic_id, url_start, url_end, _post_id) in topic_links {
             // Skip if already processed via inverted format
             if let Some(ex) = exclude_topic_id {
                 if topic_id == ex {
@@ -235,11 +257,6 @@ pub fn parse_topic_body(text: &str, exclude_topic_id: Option<&str>) -> Vec<VkNod
             /*if seen_ids.contains(&unique_id) {
                 continue;
             }*/
-
-            // Find URL position in line for title extraction
-            let url_match = caps.get(0).unwrap();
-            let url_start = url_match.start();
-            let url_end = url_match.end();
 
             // Mobile title extraction priority:
             // 1. Text before URL on same line

@@ -64,7 +64,7 @@ export const fetchRootIndex = async (token: string, groupId?: string, topicId?: 
         return await tauriVk.fetchRootIndex(token, groupId?.trim() || VK_DEFAULTS.GROUP, topicId?.trim() || VK_DEFAULTS.TOPIC);
     } catch (error) {
         console.error("VK API Error (Root):", error);
-        return [];
+        throw error;
     }
 };
 
@@ -84,7 +84,7 @@ export const fetchFolderTreeUpToDepth = async (token: string, groupId?: string, 
         return await tauriVk.fetchFullIndex(token, groupId?.trim() || VK_DEFAULTS.GROUP, topicId?.trim() || VK_DEFAULTS.TOPIC);
     } catch (error) {
         console.error("VK API Error (Full Index):", error);
-        return [];
+        throw error;
     }
 };
 

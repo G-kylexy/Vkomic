@@ -4,6 +4,17 @@ use reqwest::Client;
 use anyhow::Result;
 use log::info;
 
+fn board_get_comments_call(group_id: &str, topic_id: &str, count: usize, offset: Option<usize>) -> String {
+    let offset_arg = offset
+        .map(|value| format!(", \"offset\":{}", value))
+        .unwrap_or_default();
+
+    format!(
+        "API.board.getComments({{\"group_id\":{}, \"topic_id\":{}, \"count\":{}, \"extended\":1{}}})",
+        group_id, topic_id, count, offset_arg
+    )
+}
+
 pub struct VkApi {
     client: Client,
     token: String,
@@ -260,8 +271,8 @@ impl VkApi {
                 let node = &nodes[idx];
                 let gid = node.vk_group_id.as_ref().unwrap().replace('-', "");
                 let tid = node.vk_topic_id.as_ref().unwrap();
-                // Just fetch the head (first 100) and the count
-                format!("API.board.getComments({{\"group_id\":{},\"topic_id\":{},\"count\":100,\"extended\":1}})", gid, tid)
+                // Fetch the head (first 100), including attachments.
+                board_get_comments_call(&gid, tid, 100, None)
             }).collect();
             
             let topic_ids: Vec<Option<String>> = chunk.iter()
@@ -432,7 +443,7 @@ impl VkApi {
             var i = 0;
             var items = [];
             while (i < {}) {{
-                var r = API.board.getComments({{"group_id":g, "topic_id":t, "count":100, "offset":off}});
+                var r = API.board.getComments({{"group_id":g, "topic_id":t, "count":100, "offset":off, "extended":1}});
                 if (r.items) {{
                     items = items + r.items;
                 }}
@@ -440,8 +451,13 @@ impl VkApi {
                 if (!r.items || r.items.length < 100) {{ i = 30; }}
                 i = i + 1;
             }}
-            return {{ "items": items, "next_offset": off, "total": API.board.getComments({{"group_id":g, "topic_id":t, "count":1}}).count }};
-        "#, gid, topic_id, batch_size);
+            return {{ "items": items, "next_offset": off, "total": {}.count }};
+        "#,
+            gid,
+            topic_id,
+            batch_size,
+            board_get_comments_call(&gid, topic_id, 1, None)
+        );
 
         let first_res = self.execute_with_retry(&first_code).await?;
         let response = first_res.get("response").ok_or_else(|| anyhow::anyhow!("No response body"))?;
@@ -485,7 +501,7 @@ impl VkApi {
                         var i = 0;
                         var items = [];
                         while (i < {}) {{
-                            var r = API.board.getComments({{"group_id":g, "topic_id":t, "count":100, "offset":off}});
+                            var r = API.board.getComments({{"group_id":g, "topic_id":t, "count":100, "offset":off, "extended":1}});
                             if (r.items) {{
                                 items = items + r.items;
                             }}
@@ -494,7 +510,12 @@ impl VkApi {
                             i = i + 1;
                         }}
                         return {{ "items": items, "next_offset": off, "count": items.length }};
-                    "#, g, t, batch_offset, 10usize);
+                    "#,
+                        g,
+                        t,
+                        batch_offset,
+                        10usize
+                    );
 
                     let url = "https://api.vk.com/method/execute";
                     let params = [
