@@ -25,7 +25,11 @@ const executeRequest = <T>(url: string): Promise<T> => {
   return new Promise((resolve, reject) => {
     const task = async () => {
       try {
-        const res = await fetch(url);
+        const res = await fetch(url, {
+          headers: {
+            "User-Agent": "KateMobileAndroid/110.1 lite-x86_64 (Android 11; SDK 30; x86_64; en)",
+          },
+        });
         const json = await res.json();
         resolve(json);
       } catch (err) {
