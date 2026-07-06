@@ -9,7 +9,7 @@ use tokio::sync::Mutex;
 
 const VK_API_MIN_INTERVAL: Duration = Duration::from_millis(500);
 const VK_API_RETRY_BACKOFF: Duration = Duration::from_millis(1_500);
-const VKOMIC_USER_AGENT: &str = "Vkomic/1.4.1 (+https://github.com/G-kylexy/vkomic)";
+const VKOMIC_USER_AGENT: &str = "KateMobileAndroid/110.1 lite-x86_64 (Android 11; SDK 30; x86_64; en)";
 
 static VK_API_LAST_REQUEST: OnceLock<Mutex<Option<Instant>>> = OnceLock::new();
 

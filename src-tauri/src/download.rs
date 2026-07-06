@@ -8,7 +8,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::sync::Mutex;
 
 const MAX_ACTIVE_DOWNLOADS: usize = 2;
-const VKOMIC_USER_AGENT: &str = "Vkomic/1.4.1 (+https://github.com/G-kylexy/vkomic)";
+const VKOMIC_USER_AGENT: &str = "KateMobileAndroid/110.1 lite-x86_64 (Android 11; SDK 30; x86_64; en)";
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DownloadTask {
