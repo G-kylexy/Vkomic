@@ -2,6 +2,7 @@ mod download;
 mod fs_ops;
 mod vk_api;
 mod vk_parser;
+mod settings;
 
 use crate::download::{DownloadManager, DownloadTask};
 use crate::fs_ops::{list_directory, open_path, reveal_path, DirList};
@@ -122,6 +123,16 @@ async fn fs_clear_download_queue(
     Ok(count)
 }
 
+#[tauri::command]
+async fn settings_load(app: AppHandle) -> Result<settings::AppSettings, String> {
+    Ok(settings::load_settings(&app))
+}
+
+#[tauri::command]
+async fn settings_save(app: AppHandle, settings: settings::AppSettings) -> Result<(), String> {
+    settings::save_settings(&app, &settings).map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -141,7 +152,9 @@ pub fn run() {
             fs_reveal_path,
             fs_queue_download,
             fs_cancel_download,
-            fs_clear_download_queue
+            fs_clear_download_queue,
+            settings_load,
+            settings_save
         ])
         .setup(|app| {
             // Plugin HTTP pour les requêtes sans CORS

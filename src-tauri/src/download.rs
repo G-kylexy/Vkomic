@@ -1,11 +1,14 @@
-use serde::{Deserialize, Serialize};
-use std::sync::Arc;
-use tokio::sync::Mutex;
-use std::collections::{VecDeque, HashMap};
-use tauri::{AppHandle, Emitter};
 use anyhow::Result;
 use futures_util::StreamExt;
+use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, VecDeque};
+use std::sync::Arc;
+use tauri::{AppHandle, Emitter};
 use tokio::io::AsyncWriteExt;
+use tokio::sync::Mutex;
+
+const MAX_ACTIVE_DOWNLOADS: usize = 2;
+const VKOMIC_USER_AGENT: &str = "Vkomic/1.4.1 (+https://github.com/G-kylexy/vkomic)";
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DownloadTask {
@@ -55,27 +58,30 @@ impl DownloadManager {
     pub async fn cancel_task(&self, app: AppHandle, task_id: String) -> bool {
         let mut cancel_tokens = self.cancel_tokens.lock().await;
         let mut active = self.active.lock().await;
-        
+
         if let Some(sender) = cancel_tokens.remove(&task_id) {
             let _ = sender.send(true);
-            
+
             if let Some(handle) = active.remove(&task_id) {
                 handle.abort();
             }
-            
-            let _ = app.emit("download-result", serde_json::json!({
-                "id": task_id,
-                "ok": false,
-                "status": "aborted"
-            }));
-            
+
+            let _ = app.emit(
+                "download-result",
+                serde_json::json!({
+                    "id": task_id,
+                    "ok": false,
+                    "status": "aborted"
+                }),
+            );
+
             drop(cancel_tokens);
             drop(active);
             self.schedule_next(app).await;
-            
+
             return true;
         }
-        
+
         false
     }
 
@@ -84,31 +90,34 @@ impl DownloadManager {
         let queue_count = queue.len();
         queue.clear();
         drop(queue);
-        
+
         let mut cancel_tokens = self.cancel_tokens.lock().await;
         let mut active = self.active.lock().await;
         let active_count = active.len();
-        
+
         for (id, sender) in cancel_tokens.drain() {
             let _ = sender.send(true);
             if let Some(handle) = active.remove(&id) {
                 handle.abort();
             }
-            
-            let _ = app.emit("download-result", serde_json::json!({
-                "id": id,
-                "ok": false,
-                "status": "aborted"
-            }));
+
+            let _ = app.emit(
+                "download-result",
+                serde_json::json!({
+                    "id": id,
+                    "ok": false,
+                    "status": "aborted"
+                }),
+            );
         }
-        
+
         drop(cancel_tokens);
         drop(active);
-        
+
         let total_cancelled = queue_count + active_count;
-        
+
         self.schedule_next(app).await;
-        
+
         total_cancelled
     }
 
@@ -124,15 +133,19 @@ impl DownloadManager {
         // This prevents "checking active < 3" then "finding queue empty" waste, or races where queue fills up after check.
         let mut queue = self.queue.lock().await;
         if queue.is_empty() {
-             println!("DEBUG: Queue empty, nothing to schedule.");
-             return; 
+            println!("DEBUG: Queue empty, nothing to schedule.");
+            return;
         }
 
         // Lock Active SECOND
         let mut active = self.active.lock().await;
-        if active.len() >= 3 {
-             println!("DEBUG: Active slots full ({}/3). Waiting.", active.len());
-             return; 
+        if active.len() >= MAX_ACTIVE_DOWNLOADS {
+            println!(
+                "DEBUG: Active slots full ({}/{}). Waiting.",
+                active.len(),
+                MAX_ACTIVE_DOWNLOADS
+            );
+            return;
         }
 
         // We have work AND space.
@@ -140,49 +153,52 @@ impl DownloadManager {
         if let Some(task) = queue.pop_front() {
             println!("DEBUG: Popped task {} from queue. Starting...", task.id);
             let id = task.id.clone();
-            
+
             let manager_clone = self.clone();
             let app_clone = app.clone();
             let id_for_closure = id.clone();
-            
+
             let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
-            
+
             let handle = tokio::spawn(async move {
                 println!("DEBUG: Worker started for task {}", id_for_closure);
                 let result = download_file_worker(app_clone.clone(), task, cancel_rx).await;
                 println!("DEBUG: Worker finished for task {}", id_for_closure);
-                
+
                 // Cleanup
                 let mut active = manager_clone.active.lock().await;
                 active.remove(&id_for_closure);
                 drop(active);
-                
+
                 let mut cancel_tokens = manager_clone.cancel_tokens.lock().await;
                 cancel_tokens.remove(&id_for_closure);
                 drop(cancel_tokens);
-                
+
                 if let Err(e) = result {
                     println!("DEBUG: Task {} failed: {}", id_for_closure, e);
-                    let _ = app_clone.emit("download-result", serde_json::json!({
-                        "id": id_for_closure,
-                        "ok": false,
-                        "error": e.to_string()
-                    }));
+                    let _ = app_clone.emit(
+                        "download-result",
+                        serde_json::json!({
+                            "id": id_for_closure,
+                            "ok": false,
+                            "error": e.to_string()
+                        }),
+                    );
                 } else {
-                     println!("DEBUG: Task {} success", id_for_closure);
+                    println!("DEBUG: Task {} success", id_for_closure);
                 }
-                
+
                 // Trigger next loop
                 manager_clone.trigger_next(app_clone);
             });
-            
+
             // Insert handle to active map
             active.insert(id.clone(), handle);
-            
+
             // Register cancel token
             let mut cancel_tokens = self.cancel_tokens.lock().await;
             cancel_tokens.insert(id, cancel_tx);
-            
+
             // Drop locks before triggering recursive scheduling to allow parallelism
             drop(active);
             drop(queue);
@@ -195,23 +211,25 @@ impl DownloadManager {
 }
 
 async fn download_file_worker(
-    app: AppHandle, 
+    app: AppHandle,
     task: DownloadTask,
-    cancel_rx: tokio::sync::watch::Receiver<bool>
+    cancel_rx: tokio::sync::watch::Receiver<bool>,
 ) -> Result<()> {
     println!("DEBUG: Worker processing URL: {}", task.url);
     let client = reqwest::Client::builder()
-        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
+        .user_agent(VKOMIC_USER_AGENT)
         .build()?;
 
     // Sanitization du nom de fichier pour Windows (remplace les caractères interdits par _)
-    let safe_file_name: String = task.file_name.chars()
+    let safe_file_name: String = task
+        .file_name
+        .chars()
         .map(|c| if "<>:\"/\\|?*".contains(c) { '_' } else { c })
         .collect();
 
     let path = std::path::Path::new(&task.directory).join(&safe_file_name);
     println!("DEBUG: Target file path: {:?}", path);
-    
+
     // Ensure directory exists
     if let Some(parent) = path.parent() {
         if !parent.exists() {
@@ -219,7 +237,7 @@ async fn download_file_worker(
             tokio::fs::create_dir_all(parent).await?;
         }
     }
-    
+
     let mut start_byte = 0;
     if path.exists() {
         start_byte = std::fs::metadata(&path)?.len();
@@ -231,13 +249,13 @@ async fn download_file_worker(
     }
 
     let response = request.send().await?;
-    
+
     if *cancel_rx.borrow() {
         return Err(anyhow::anyhow!("Download cancelled"));
     }
-    
+
     let total_size = response.content_length().map(|l| l + start_byte);
-    
+
     // Détermine le mode d'ouverture selon le code HTTP
     let mut file = if response.status() == 206 {
         // Contenu partiel (Resume) : On ouvre en append pour ne pas pèter le début
@@ -250,7 +268,10 @@ async fn download_file_worker(
     } else {
         // Contenu complet (200) : On écrase le fichier (Truncate)
         // C'est plus sûr que d'ouvrir en append puis set_len(0), ce qui peut causer Error 5
-        println!("DEBUG: Status {} - Overwriting/Creating file", response.status());
+        println!(
+            "DEBUG: Status {} - Overwriting/Creating file",
+            response.status()
+        );
         start_byte = 0; // On repart de zéro puisque le serveur renvoie tout
         tokio::fs::OpenOptions::new()
             .create(true)
@@ -269,42 +290,57 @@ async fn download_file_worker(
 
     while let Some(item) = stream.next().await {
         if *cancel_rx.borrow() {
-            let _ = app.emit("download-result", serde_json::json!({
-                "id": task.id.clone(),
-                "ok": false,
-                "status": "aborted"
-            }));
+            let _ = app.emit(
+                "download-result",
+                serde_json::json!({
+                    "id": task.id.clone(),
+                    "ok": false,
+                    "status": "aborted"
+                }),
+            );
             return Err(anyhow::anyhow!("Download cancelled"));
         }
-        
+
         let chunk = item?;
         file.write_all(&chunk).await?;
         downloaded += chunk.len() as u64;
 
         let total_downloaded = start_byte + downloaded;
-        
+
         // Throttle updates to avoid flooding frontend
         if last_emit.elapsed().as_millis() > 100 {
             let elapsed = start_time.elapsed().as_secs_f64();
-            let speed = if elapsed > 0.0 { downloaded as f64 / elapsed } else { 0.0 };
-            let progress = total_size.map(|total| (total_downloaded as f64 / total as f64) * 100.0).unwrap_or(0.0);
+            let speed = if elapsed > 0.0 {
+                downloaded as f64 / elapsed
+            } else {
+                0.0
+            };
+            let progress = total_size
+                .map(|total| (total_downloaded as f64 / total as f64) * 100.0)
+                .unwrap_or(0.0);
 
-            app.emit("download-progress", ProgressPayload {
-                id: task.id.clone(),
-                progress,
-                received_bytes: total_downloaded,
-                total_bytes: total_size,
-                speed_bytes: speed,
-            })?;
+            app.emit(
+                "download-progress",
+                ProgressPayload {
+                    id: task.id.clone(),
+                    progress,
+                    received_bytes: total_downloaded,
+                    total_bytes: total_size,
+                    speed_bytes: speed,
+                },
+            )?;
             last_emit = std::time::Instant::now();
         }
     }
 
-    app.emit("download-result", serde_json::json!({
-        "id": task.id,
-        "ok": true,
-        "path": path.to_string_lossy()
-    }))?;
+    app.emit(
+        "download-result",
+        serde_json::json!({
+            "id": task.id,
+            "ok": true,
+            "path": path.to_string_lossy()
+        }),
+    )?;
 
     Ok(())
 }

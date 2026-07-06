@@ -1,10 +1,38 @@
-use crate::vk_parser::{VkNode, parse_topic_body, extract_documents};
-use serde_json::Value;
-use reqwest::Client;
+use crate::vk_parser::{extract_documents, parse_topic_body, VkNode};
 use anyhow::Result;
 use log::info;
+use reqwest::Client;
+use serde_json::Value;
+use std::sync::OnceLock;
+use std::time::{Duration, Instant};
+use tokio::sync::Mutex;
 
-fn board_get_comments_call(group_id: &str, topic_id: &str, count: usize, offset: Option<usize>) -> String {
+const VK_API_MIN_INTERVAL: Duration = Duration::from_millis(500);
+const VK_API_RETRY_BACKOFF: Duration = Duration::from_millis(1_500);
+const VKOMIC_USER_AGENT: &str = "Vkomic/1.4.1 (+https://github.com/G-kylexy/vkomic)";
+
+static VK_API_LAST_REQUEST: OnceLock<Mutex<Option<Instant>>> = OnceLock::new();
+
+async fn wait_for_vk_api_slot() {
+    let limiter = VK_API_LAST_REQUEST.get_or_init(|| Mutex::new(None));
+    let mut last_request = limiter.lock().await;
+
+    if let Some(last) = *last_request {
+        let elapsed = last.elapsed();
+        if elapsed < VK_API_MIN_INTERVAL {
+            tokio::time::sleep(VK_API_MIN_INTERVAL - elapsed).await;
+        }
+    }
+
+    *last_request = Some(Instant::now());
+}
+
+fn board_get_comments_call(
+    group_id: &str,
+    topic_id: &str,
+    count: usize,
+    offset: Option<usize>,
+) -> String {
     let offset_arg = offset
         .map(|value| format!(", \"offset\":{}", value))
         .unwrap_or_default();
@@ -62,7 +90,7 @@ impl VkApi {
         let mut headers = reqwest::header::HeaderMap::new();
         headers.insert(
             reqwest::header::USER_AGENT,
-            reqwest::header::HeaderValue::from_static("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            reqwest::header::HeaderValue::from_static(VKOMIC_USER_AGENT),
         );
 
         Self {
@@ -76,26 +104,34 @@ impl VkApi {
 
     pub async fn ping(&self) -> Result<u64> {
         let start = std::time::Instant::now();
-        let url = format!("https://api.vk.ru/method/utils.getServerTime?access_token={}&v=5.199", self.token);
+        let url = format!(
+            "https://api.vk.ru/method/utils.getServerTime?access_token={}&v=5.199",
+            self.token
+        );
+        wait_for_vk_api_slot().await;
         let res = self.client.get(url).send().await?.json::<Value>().await?;
-        
+
         if let Some(err) = res.get("error") {
             return Err(anyhow::anyhow!("VK API error: {}", format_vk_error(err)));
         }
-        
+
         Ok(start.elapsed().as_millis() as u64)
     }
 
     pub async fn fetch_root_index(&self, group_id: &str, topic_id: &str) -> Result<Vec<VkNode>> {
-        info!("Fetching root index for group {} topic {}", group_id, topic_id);
+        info!(
+            "Fetching root index for group {} topic {}",
+            group_id, topic_id
+        );
         let items = self.fetch_all_comments(group_id, topic_id).await?;
         info!("Fetched {} comments", items.len());
-        
-        let full_text = items.iter()
+
+        let full_text = items
+            .iter()
             .filter_map(|i| i.get("text").and_then(|t| t.as_str()))
             .collect::<Vec<_>>()
             .join("\n");
-        
+
         if full_text.is_empty() {
             info!("Full text is empty!");
             return Ok(Vec::new());
@@ -105,33 +141,41 @@ impl VkApi {
         info!("Parsed {} nodes from topic body", nodes.len());
 
         // Filtrage heuristique comme dans la version classique pour éviter le bruit
-        let filtered: Vec<VkNode> = nodes.iter()
+        let filtered: Vec<VkNode> = nodes
+            .iter()
             .filter(|n| n.title.to_uppercase().contains("EN FRANCAIS"))
             .cloned()
             .collect();
 
         let final_nodes = if filtered.is_empty() { nodes } else { filtered };
-        
+
         for node in &final_nodes {
-            info!("Found node: {} (ID: {}, Type: {})", node.title, node.id, node.node_type);
+            info!(
+                "Found node: {} (ID: {}, Type: {})",
+                node.title, node.id, node.node_type
+            );
         }
-        
+
         Ok(final_nodes)
     }
 
     /// Fetch the full content of a VK topic node: sub-topics + attached documents
     pub async fn fetch_node_content(&self, group_id: &str, topic_id: &str) -> Result<VkNode> {
-        info!("Fetching node content for group {} topic {}", group_id, topic_id);
-        
+        info!(
+            "Fetching node content for group {} topic {}",
+            group_id, topic_id
+        );
+
         let items = self.fetch_all_comments(group_id, topic_id).await?;
         info!("Fetched {} comments for node content", items.len());
 
         // 1. Extract sub-topics from text
-        let full_text = items.iter()
+        let full_text = items
+            .iter()
             .filter_map(|i| i.get("text").and_then(|t| t.as_str()))
             .collect::<Vec<_>>()
             .join("\n");
-        
+
         let sub_topics = parse_topic_body(&full_text, Some(topic_id));
         info!("Found {} sub-topics", sub_topics.len());
 
@@ -171,9 +215,14 @@ impl VkApi {
 
     /// Fetch folder tree level-by-level (like the old app), not recursively per-node.
     /// This is MUCH faster because we batch all nodes at each depth.
-    pub async fn fetch_folder_tree_recursive(&self, group_id: &str, topic_id: &str, max_depth: u32) -> Result<Vec<VkNode>> {
+    pub async fn fetch_folder_tree_recursive(
+        &self,
+        group_id: &str,
+        topic_id: &str,
+        max_depth: u32,
+    ) -> Result<Vec<VkNode>> {
         info!("Starting level-by-level sync (max_depth={})", max_depth);
-        
+
         // Level 1: Root categories
         let mut root_nodes = self.fetch_root_index(group_id, topic_id).await?;
         if root_nodes.is_empty() || max_depth <= 1 {
@@ -181,9 +230,12 @@ impl VkApi {
         }
 
         // Level 2: Batch fetch all children of root nodes
-        info!("Level 2: Fetching children of {} root nodes...", root_nodes.len());
+        info!(
+            "Level 2: Fetching children of {} root nodes...",
+            root_nodes.len()
+        );
         self.batch_expand_nodes(&mut root_nodes).await?;
-        
+
         if max_depth <= 2 {
             return Ok(root_nodes);
         }
@@ -199,15 +251,19 @@ impl VkApi {
         }
 
         if !level2_refs.is_empty() {
-            info!("Level 3: Fetching children of {} level-2 nodes...", level2_refs.len());
-            
+            info!(
+                "Level 3: Fetching children of {} level-2 nodes...",
+                level2_refs.len()
+            );
+
             // Extract nodes to expand
-            let mut l2_nodes: Vec<VkNode> = level2_refs.iter()
+            let mut l2_nodes: Vec<VkNode> = level2_refs
+                .iter()
                 .filter_map(|&(ri, ci)| root_nodes.get(ri)?.children.as_ref()?.get(ci).cloned())
                 .collect();
-            
+
             self.batch_expand_nodes(&mut l2_nodes).await?;
-            
+
             // Put them back
             let mut l2_iter = l2_nodes.into_iter();
             for &(ri, ci) in &level2_refs {
@@ -253,7 +309,10 @@ impl VkApi {
         }
 
         if !level3_nodes.is_empty() {
-            info!("Level 4: Fetching {} items (Comics only)...", level3_nodes.len());
+            info!(
+                "Level 4: Fetching {} items (Comics only)...",
+                level3_nodes.len()
+            );
             self.batch_expand_nodes(&mut level3_nodes).await?;
 
             // Put them back into the tree
@@ -277,19 +336,17 @@ impl VkApi {
         Ok(root_nodes)
     }
 
-    /// Batch-expand a list of nodes by fetching their children 25 at a time using VK execute.
-    /// Runs up to 5 batches in parallel for speed.
-    /// Batch-expand a list of nodes by fetching their children.
-    /// IMPLEMENTATION "GRAIL" (Mobile Style):
-    /// 1. Fetch first 100 items for 25 topics at once (Head/Preview).
-    /// 2. If a topic has > 100 items, trigger a specific full fetch for it.
+    /// Batch-expand nodes with VK execute while keeping requests sequential per user token.
+    /// Each execute request can fetch the first 100 comments for up to 25 topics.
     async fn batch_expand_nodes(&self, nodes: &mut [VkNode]) -> Result<()> {
         // Filter to only expandable nodes
-        let target_indices: Vec<usize> = nodes.iter().enumerate()
+        let target_indices: Vec<usize> = nodes
+            .iter()
+            .enumerate()
             .filter(|(_, n)| {
-                (n.node_type == "genre" || n.node_type == "category") 
-                && n.vk_group_id.is_some() 
-                && n.vk_topic_id.is_some()
+                (n.node_type == "genre" || n.node_type == "category")
+                    && n.vk_group_id.is_some()
+                    && n.vk_topic_id.is_some()
             })
             .map(|(i, _)| i)
             .collect();
@@ -302,91 +359,89 @@ impl VkApi {
 
         // Chunk size 25 (VK API Limit for execute calls)
         let chunks: Vec<Vec<usize>> = target_indices.chunks(25).map(|c| c.to_vec()).collect();
-        
-        let batch_requests: Vec<(Vec<usize>, String, Vec<Option<String>>)> = chunks.iter().map(|chunk| {
-            let calls: Vec<String> = chunk.iter().map(|&idx| {
-                let node = &nodes[idx];
-                let gid = node.vk_group_id.as_ref().unwrap().replace('-', "");
-                let tid = node.vk_topic_id.as_ref().unwrap();
-                // Fetch the head (first 100), including attachments.
-                board_get_comments_call(&gid, tid, 100, None)
-            }).collect();
-            
-            let topic_ids: Vec<Option<String>> = chunk.iter()
-                .map(|&idx| nodes[idx].vk_topic_id.clone())
-                .collect();
-            
-            let code = format!("return [{}];", calls.join(","));
-            (chunk.clone(), code, topic_ids)
-        }).collect();
 
-        // Concurrency: Run up to 25 batches in parallel (Mobile uses high concurrency for structure batch)
-        let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(25));
-        let client = self.client.clone();
-        let token = self.token.clone();
+        let batch_requests: Vec<(Vec<usize>, String, Vec<Option<String>>)> = chunks
+            .iter()
+            .map(|chunk| {
+                let calls: Vec<String> = chunk
+                    .iter()
+                    .map(|&idx| {
+                        let node = &nodes[idx];
+                        let gid = node.vk_group_id.as_ref().unwrap().replace('-', "");
+                        let tid = node.vk_topic_id.as_ref().unwrap();
+                        // Fetch the head (first 100), including attachments.
+                        board_get_comments_call(&gid, tid, 100, None)
+                    })
+                    .collect();
 
-        let handles: Vec<_> = batch_requests.into_iter().map(|(chunk_indices, code, topic_ids)| {
-            let sem = semaphore.clone();
-            let cli = client.clone();
-            let tok = token.clone();
-            
-            tokio::spawn(async move {
-                let _permit = sem.acquire().await.unwrap();
-                let url = "https://api.vk.ru/method/execute";
-                let params = [
-                    ("access_token", tok),
-                    ("v", "5.199".to_string()),
-                    ("code", code),
-                ];
-                
-                let res = cli.post(url).form(&params).send().await.ok()?.json::<Value>().await.ok()?;
-                Some((chunk_indices, res, topic_ids))
+                let topic_ids: Vec<Option<String>> = chunk
+                    .iter()
+                    .map(|&idx| nodes[idx].vk_topic_id.clone())
+                    .collect();
+
+                let code = format!("return [{}];", calls.join(","));
+                (chunk.clone(), code, topic_ids)
             })
-        }).collect();
+            .collect();
 
-        let results = futures::future::join_all(handles).await;
+        let mut results = Vec::new();
+        for (chunk_indices, code, topic_ids) in batch_requests {
+            let res = self.execute_with_retry(&code).await?;
+            results.push((chunk_indices, res, topic_ids));
+        }
 
         // Process results
         let mut large_topics_to_fetch: Vec<(usize, String, String)> = Vec::new();
 
-        for result in results {
-            if let Ok(Some((chunk_indices, res_val, topic_ids))) = result {
-                let res_obj = res_val.as_object();
-                if let Some(res_map) = res_obj {
-                    if let Some(responses) = res_map.get("response").and_then(|r| r.as_array()) {
-                        for (i, &idx) in chunk_indices.iter().enumerate() {
-                            let node = &mut nodes[idx];
-                            let topic_id = topic_ids.get(i).cloned().flatten();
+        for (chunk_indices, res_val, topic_ids) in results {
+            let res_obj = res_val.as_object();
+            if let Some(res_map) = res_obj {
+                if let Some(responses) = res_map.get("response").and_then(|r| r.as_array()) {
+                    for (i, &idx) in chunk_indices.iter().enumerate() {
+                        let node = &mut nodes[idx];
+                        let topic_id = topic_ids.get(i).cloned().flatten();
 
-                            if let Some(resp) = responses.get(i) {
-                                let resp_obj = resp.as_object();
-                                if let Some(r_map) = resp_obj {
-                                    let count = r_map.get("count").and_then(|c: &serde_json::Value| c.as_u64()).unwrap_or(0);
-                                    node.count = Some(count as i32);
-                                    
-                                    if let Some(it_val) = r_map.get("items") {
-                                        if let Some(preview_items) = it_val.as_array() {
-                                            let mut full_text = String::new();
-                                            for item in preview_items {
-                                                if let Some(t) = item.get("text").and_then(|v: &serde_json::Value| v.as_str()) {
-                                                    full_text.push_str(t);
-                                                    full_text.push('\n');
-                                                }
+                        if let Some(resp) = responses.get(i) {
+                            let resp_obj = resp.as_object();
+                            if let Some(r_map) = resp_obj {
+                                let count = r_map
+                                    .get("count")
+                                    .and_then(|c: &serde_json::Value| c.as_u64())
+                                    .unwrap_or(0);
+                                node.count = Some(count as i32);
+
+                                if let Some(it_val) = r_map.get("items") {
+                                    if let Some(preview_items) = it_val.as_array() {
+                                        let mut full_text = String::new();
+                                        for item in preview_items {
+                                            if let Some(t) = item
+                                                .get("text")
+                                                .and_then(|v: &serde_json::Value| v.as_str())
+                                            {
+                                                full_text.push_str(t);
+                                                full_text.push('\n');
                                             }
+                                        }
 
-                                            let exclude_tid = topic_id.as_deref();
-                                            let mut children = parse_topic_body(&full_text, exclude_tid);
-                                            let docs = extract_documents(preview_items);
-                                            children.extend(docs);
+                                        let exclude_tid = topic_id.as_deref();
+                                        let mut children =
+                                            parse_topic_body(&full_text, exclude_tid);
+                                        let docs = extract_documents(preview_items);
+                                        children.extend(docs);
 
-                                            node.children = Some(children);
-                                            node.is_loaded = Some(true);
-                                            node.structure_only = Some(true);
+                                        node.children = Some(children);
+                                        node.is_loaded = Some(true);
+                                        node.structure_only = Some(true);
 
-                                            if count > 100 {
-                                                if let (Some(gid), Some(tid)) = (&node.vk_group_id, &node.vk_topic_id) {
-                                                    large_topics_to_fetch.push((idx, gid.clone(), tid.clone()));
-                                                }
+                                        if count > 100 {
+                                            if let (Some(gid), Some(tid)) =
+                                                (&node.vk_group_id, &node.vk_topic_id)
+                                            {
+                                                large_topics_to_fetch.push((
+                                                    idx,
+                                                    gid.clone(),
+                                                    tid.clone(),
+                                                ));
                                             }
                                         }
                                     }
@@ -398,68 +453,34 @@ impl VkApi {
             }
         }
 
-        // Parallel Fetch for Large Topics
+        // Fetch large topics sequentially so one user token never creates API bursts.
         if !large_topics_to_fetch.is_empty() {
-            info!("Triggering parallel full fetch for {} large topics...", large_topics_to_fetch.len());
-            
-            // Re-use semaphore or create a new one. Let's be aggressive but safe.
-            // 50 concurrent fetches is fine for `execute` calls usually.
-            let sem_large = std::sync::Arc::new(tokio::sync::Semaphore::new(50));
-            
-            let fetch_futures: Vec<_> = large_topics_to_fetch.into_iter().map(|(idx, gid, tid)| {
-                let sem = sem_large.clone();
-                // We need to clone self.client/token again, but we can't capture `self` in `spawn` easily if not static?
-                // `batch_expand_nodes` is async, so `self` is borrowed.
-                // We typically need to clone the client/token before spawning.
-                let client = self.client.clone();
-                let token = self.token.clone();
-                
-                tokio::spawn(async move {
-                    let _permit = sem.acquire().await.unwrap();
-                    // fetch_all_comments is on `self`. We can't call it easily without `self`.
-                    // We need to replicate the call or make `fetch_all_comments` static/method of a cloneable struct?
-                    // Actually, `fetch_all_comments` is just using client & token. 
-                    // Let's create a temporary VkApi or just call a static helper?
-                    // Easiest is to make a temporary clean instance or just verify logic.
-                    // `fetch_all_comments` logic is complex (the execute loop). 
-                    // Let's refactor `fetch_all_comments` to be callable or duplicate logic? 
-                    // Refactoring is cleaner. But for now, let's just Instantiate a new VkApi or make helper.
-                    let api = VkApi { client, token }; 
-                    let items = api.fetch_all_comments(&gid, &tid).await;
-                    (idx, items)
-                })
-            }).collect();
+            info!(
+                "Fetching {} large topics sequentially...",
+                large_topics_to_fetch.len()
+            );
 
-            let fetched_results = futures::future::join_all(fetch_futures).await;
+            for (idx, gid, tid) in large_topics_to_fetch {
+                let items = self.fetch_all_comments(&gid, &tid).await?;
+                let node = &mut nodes[idx];
 
-            for res in fetched_results {
-                match res {
-                    Ok((idx, Ok(items))) => {
-                        let node = &mut nodes[idx];
-                        
-                        // Re-parse with full items
-                        let full_text = items.iter()
-                            .filter_map(|item| item.get("text").and_then(|t| t.as_str()))
-                            .collect::<Vec<_>>()
-                            .join("\n");
-                        
-                        let exclude_tid = node.vk_topic_id.as_deref();
-                        let mut children = parse_topic_body(&full_text, exclude_tid);
-                        let docs = extract_documents(&items);
-                        children.extend(docs); // Merge docs
-                        
-                        // Update node
-                        node.children = Some(children);
-                        // node.count is already set
-                        info!("Expanded large topic {} with {} items", node.title, items.len());
-                    },
-                    Ok((idx, Err(e))) => {
-                        log::error!("Failed to expand large topic {}: {}", nodes[idx].title, e);
-                    },
-                    Err(e) => {
-                         log::error!("JoinError in parallel fetch: {}", e);
-                    }
-                }
+                let full_text = items
+                    .iter()
+                    .filter_map(|item| item.get("text").and_then(|t| t.as_str()))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+
+                let exclude_tid = node.vk_topic_id.as_deref();
+                let mut children = parse_topic_body(&full_text, exclude_tid);
+                let docs = extract_documents(&items);
+                children.extend(docs);
+
+                node.children = Some(children);
+                info!(
+                    "Expanded large topic {} with {} items",
+                    node.title,
+                    items.len()
+                );
             }
         }
 
@@ -473,7 +494,8 @@ impl VkApi {
         info!("Starting fetch_all_comments for topic {}", topic_id);
 
         // --- Step 1: First call to get total count + first 1000 items ---
-        let first_code = format!(r#"
+        let first_code = format!(
+            r#"
             var g = {};
             var t = {};
             var off = 0;
@@ -497,17 +519,28 @@ impl VkApi {
         );
 
         let first_res = self.execute_with_retry(&first_code).await?;
-        let response = first_res.get("response").ok_or_else(|| anyhow::anyhow!("No response body"))?;
+        let response = first_res
+            .get("response")
+            .ok_or_else(|| anyhow::anyhow!("No response body"))?;
 
-        let first_items = response.get("items").and_then(|i| i.as_array())
+        let first_items = response
+            .get("items")
+            .and_then(|i| i.as_array())
             .ok_or_else(|| anyhow::anyhow!("No items in first response"))?;
-        
+
         let mut all_items: Vec<Value> = first_items.iter().cloned().collect();
-        let total_count = response.get("total").and_then(|t| t.as_u64()).unwrap_or(all_items.len() as u64) as usize;
+        let total_count = response
+            .get("total")
+            .and_then(|t| t.as_u64())
+            .unwrap_or(all_items.len() as u64) as usize;
 
-        info!("First batch: {} items. Total: {}", all_items.len(), total_count);
+        info!(
+            "First batch: {} items. Total: {}",
+            all_items.len(),
+            total_count
+        );
 
-        // --- Step 2: If more items remain, fire ALL remaining batches in parallel ---
+        // --- Step 2: If more items remain, fetch remaining batches sequentially ---
         if all_items.len() < total_count {
             let items_per_batch = batch_size * 100; // 1000
             let mut remaining_offsets: Vec<usize> = Vec::new();
@@ -517,91 +550,40 @@ impl VkApi {
                 off += items_per_batch;
             }
 
-            info!("Firing {} parallel batches for remaining {} items", remaining_offsets.len(), total_count - all_items.len());
+            info!(
+                "Fetching {} remaining batches for {} items",
+                remaining_offsets.len(),
+                total_count - all_items.len()
+            );
 
-            let client = self.client.clone();
-            let token = self.token.clone();
-            let gid_owned = gid.clone();
-            let tid_owned = topic_id.to_string();
-
-            let handles: Vec<_> = remaining_offsets.into_iter().enumerate().map(|(batch_idx, batch_offset)| {
-                let cli = client.clone();
-                let tok = token.clone();
-                let g = gid_owned.clone();
-                let t = tid_owned.clone();
-
-                tokio::spawn(async move {
-                    let code = format!(r#"
-                        var g = {};
-                        var t = {};
-                        var off = {};
-                        var i = 0;
-                        var items = [];
-                        while (i < {}) {{
-                            var r = API.board.getComments({{"group_id":g, "topic_id":t, "count":100, "offset":off, "extended":1}});
-                            if (r.items) {{
-                                items = items + r.items;
-                            }}
-                            off = off + 100;
-                            if (!r.items || r.items.length < 100) {{ i = 30; }}
-                            i = i + 1;
+            for batch_offset in remaining_offsets {
+                let code = format!(
+                    r#"
+                    var g = {};
+                    var t = {};
+                    var off = {};
+                    var i = 0;
+                    var items = [];
+                    while (i < {}) {{
+                        var r = API.board.getComments({{"group_id":g, "topic_id":t, "count":100, "offset":off, "extended":1}});
+                        if (r.items) {{
+                            items = items + r.items;
                         }}
-                        return {{ "items": items, "next_offset": off, "count": items.length }};
-                    "#,
-                        g,
-                        t,
-                        batch_offset,
-                        10usize
-                    );
+                        off = off + 100;
+                        if (!r.items || r.items.length < 100) {{ i = 30; }}
+                        i = i + 1;
+                    }}
+                    return {{ "items": items, "next_offset": off, "count": items.length }};
+                "#,
+                    gid, topic_id, batch_offset, batch_size
+                );
 
-                    let url = "https://api.vk.ru/method/execute";
-                    let params = [
-                        ("access_token", tok),
-                        ("v", "5.199".to_string()),
-                        ("code", code),
-                    ];
-
-                    let mut attempts = 0;
-                    let res = loop {
-                        match cli.post(url).form(&params).send().await {
-                            Ok(r) => match r.json::<Value>().await {
-                                Ok(json) => break Ok(json),
-                                Err(e) => { if attempts >= 3 { break Err(anyhow::anyhow!("JSON err: {}", e)); } }
-                            },
-                            Err(e) => { if attempts >= 3 { break Err(anyhow::anyhow!("Net err: {}", e)); } }
-                        }
-                        attempts += 1;
-                        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                    };
-
-                    match res {
-                        Ok(val) => {
-                            if let Some(resp) = val.get("response") {
-                                if let Some(items) = resp.get("items").and_then(|i| i.as_array()) {
-                                    return Ok((batch_idx, items.clone()));
-                                }
-                            }
-                            Ok((batch_idx, Vec::new()))
-                        },
-                        Err(e) => Err(e)
+                let val = self.execute_with_retry(&code).await?;
+                if let Some(resp) = val.get("response") {
+                    if let Some(items) = resp.get("items").and_then(|i| i.as_array()) {
+                        all_items.extend(items.iter().cloned());
                     }
-                })
-            }).collect();
-
-            let results = futures::future::join_all(handles).await;
-
-            // Collect in order
-            let mut ordered: Vec<(usize, Vec<Value>)> = Vec::new();
-            for result in results {
-                match result {
-                    Ok(Ok((idx, items))) => ordered.push((idx, items)),
-                    Ok(Err(e)) => log::error!("Batch error: {}", e),
-                    Err(e) => log::error!("Join error: {}", e),
                 }
-            }
-            ordered.sort_by_key(|(idx, _)| *idx);
-            for (_, items) in ordered {
-                all_items.extend(items);
             }
         }
 
@@ -619,6 +601,7 @@ impl VkApi {
         ];
         let mut attempts = 0;
         loop {
+            wait_for_vk_api_slot().await;
             match self.client.post(url).form(&params).send().await {
                 Ok(r) => match r.json::<Value>().await {
                     Ok(json) => {
@@ -626,20 +609,34 @@ impl VkApi {
                             return Err(anyhow::anyhow!("VK API error: {}", format_vk_error(err)));
                         }
                         return Ok(json);
-                    },
-                    Err(e) => { if attempts >= 3 { return Err(anyhow::anyhow!("JSON parse error: {}", e)); } }
+                    }
+                    Err(e) => {
+                        if attempts >= 3 {
+                            return Err(anyhow::anyhow!("JSON parse error: {}", e));
+                        }
+                    }
                 },
-                Err(e) => { if attempts >= 3 { return Err(anyhow::anyhow!("Request error: {}", e)); } }
+                Err(e) => {
+                    if attempts >= 3 {
+                        return Err(anyhow::anyhow!("Request error: {}", e));
+                    }
+                }
             }
             attempts += 1;
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            tokio::time::sleep(VK_API_RETRY_BACKOFF).await;
         }
     }
 
     /// Passive sync helper: Get the total comment count for a list of topics
-    pub async fn get_topic_counts(&self, group_id: &str, topic_ids: Vec<String>) -> Result<std::collections::HashMap<String, i32>> {
+    pub async fn get_topic_counts(
+        &self,
+        group_id: &str,
+        topic_ids: Vec<String>,
+    ) -> Result<std::collections::HashMap<String, i32>> {
         let mut results = std::collections::HashMap::new();
-        if topic_ids.is_empty() { return Ok(results); }
+        if topic_ids.is_empty() {
+            return Ok(results);
+        }
 
         let chunks: Vec<&[String]> = topic_ids.chunks(25).collect();
         let gid = group_id.replace('-', "");
@@ -652,46 +649,20 @@ impl VkApi {
             (chunk.to_vec(), code)
         }).collect();
 
-        let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(10));
-        let mut handles = Vec::new();
-        
         for (chunk, code) in batch_requests {
-            let sem = semaphore.clone();
-            let client = self.client.clone();
-            let token = self.token.clone();
-            
-            handles.push(tokio::spawn(async move {
-                let _permit = sem.acquire().await.unwrap();
-                let params = [
-                    ("access_token", token.as_str()),
-                    ("v", "5.199"),
-                    ("code", code.as_str()),
-                ];
-                let mut attempts = 0;
-                loop {
-                    match client.post("https://api.vk.ru/method/execute").form(&params).send().await {
-                        Ok(r) => match r.json::<Value>().await {
-                            Ok(json) => break Some((chunk, json)),
-                            Err(_) => { if attempts >= 3 { break None; } }
-                        },
-                        Err(_) => { if attempts >= 3 { break None; } }
-                    }
-                    attempts += 1;
-                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                }
-            }));
-        }
-
-        let fetched = futures::future::join_all(handles).await;
-        for result in fetched {
-            if let Ok(Some((chunk, res_val))) = result {
-                if let Some(responses) = res_val.get("response").and_then(|r| r.as_array()) {
-                    for (i, tid) in chunk.iter().enumerate() {
-                        if let Some(count_val) = responses.get(i).and_then(|v| v.as_i64()) {
-                            results.insert(tid.clone(), count_val as i32);
-                        } else if let Some(count_val) = responses.get(i).and_then(|v| v.as_bool()).map(|b| if b { 1 } else { 0 }) {
-                             // Sometimes VK returns false/boolean if the topic is deleted/banned
-                             if count_val == 0 { results.insert(tid.clone(), 0); }
+            let res_val = self.execute_with_retry(&code).await?;
+            if let Some(responses) = res_val.get("response").and_then(|r| r.as_array()) {
+                for (i, tid) in chunk.iter().enumerate() {
+                    if let Some(count_val) = responses.get(i).and_then(|v| v.as_i64()) {
+                        results.insert(tid.clone(), count_val as i32);
+                    } else if let Some(count_val) = responses
+                        .get(i)
+                        .and_then(|v| v.as_bool())
+                        .map(|b| if b { 1 } else { 0 })
+                    {
+                        // Sometimes VK returns false/boolean if the topic is deleted/banned
+                        if count_val == 0 {
+                            results.insert(tid.clone(), 0);
                         }
                     }
                 }

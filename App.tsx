@@ -11,7 +11,7 @@ import { idbDel, idbGet, idbSet, migrateLocalStorageJsonToIdb } from "./utils/st
 import { useAppUpdate } from "./hooks/useAppUpdate";
 import { useDownloads } from "./hooks/useDownloads";
 import { useVkConnection } from "./hooks/useVkConnection";
-import { performPassiveSync } from "./lib/tauri";
+import { performPassiveSync, tauriSettings } from "./lib/tauri";
 
 const UpdateModal = React.lazy(() => import("./components/UpdateModal"));
 
@@ -30,11 +30,63 @@ const App: React.FC = () => {
   }, [searchQuery]);
 
   // Persisted Settings
-  const [vkToken, setVkToken] = useState(() => localStorage.getItem("vk_token") || "");
+  const [vkToken, setVkToken] = useState(() => (localStorage.getItem("vk_token") || "").trim());
   const [vkGroupId, setVkGroupId] = useState(() => localStorage.getItem("vk_group_id") || "203785966");
   const [vkTopicId, setVkTopicId] = useState(() => localStorage.getItem("vk_topic_id") || "47515406");
   const [downloadPath, setDownloadPath] = useState(() => localStorage.getItem("vk_download_path") || DEFAULT_DOWNLOAD_PATH);
   const [hasFullSynced, setHasFullSynced] = useState(() => localStorage.getItem("vk_has_full_synced") === "true");
+  const [isSettingsLoaded, setIsSettingsLoaded] = useState(false);
+
+  // Load settings from Tauri on mount
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const settings = await tauriSettings.load();
+        if (settings) {
+          if (settings.vk_token) {
+            const tokenTrimmed = settings.vk_token.trim();
+            setVkToken(tokenTrimmed);
+            localStorage.setItem("vk_token", tokenTrimmed);
+          }
+          if (settings.vk_group_id) {
+            setVkGroupId(settings.vk_group_id);
+            localStorage.setItem("vk_group_id", settings.vk_group_id);
+          }
+          if (settings.vk_topic_id) {
+            setVkTopicId(settings.vk_topic_id);
+            localStorage.setItem("vk_topic_id", settings.vk_topic_id);
+          }
+          if (settings.vk_download_path) {
+            setDownloadPath(settings.vk_download_path);
+            localStorage.setItem("vk_download_path", settings.vk_download_path);
+          }
+        }
+      } catch (e) {
+        console.error("Failed to load settings from Tauri:", e);
+      } finally {
+        setIsSettingsLoaded(true);
+      }
+    };
+    load();
+  }, []);
+
+  // Save settings to Tauri when they change
+  useEffect(() => {
+    if (!isSettingsLoaded) return;
+    const save = async () => {
+      try {
+        await tauriSettings.save({
+          vk_token: vkToken,
+          vk_group_id: vkGroupId,
+          vk_topic_id: vkTopicId,
+          vk_download_path: downloadPath,
+        });
+      } catch (e) {
+        console.error("Failed to save settings to Tauri:", e);
+      }
+    };
+    save();
+  }, [vkToken, vkGroupId, vkTopicId, downloadPath, isSettingsLoaded]);
 
   // Sync Logic
   const [syncedData, setSyncedData] = useState<VkNode[] | null>(null);
@@ -48,8 +100,9 @@ const App: React.FC = () => {
 
   // --- HANDLERS ---
   const handleSetVkToken = useCallback((token: string) => {
-    setVkToken(token);
-    localStorage.setItem("vk_token", token);
+    const trimmed = token.trim();
+    setVkToken(trimmed);
+    localStorage.setItem("vk_token", trimmed);
   }, []);
 
   const handleSetVkGroupId = useCallback((groupId: string) => {

@@ -29,6 +29,19 @@ export const tauriFs = {
     clearDownloadQueue: () => invoke<number>("fs_clear_download_queue"),
 };
 
+// --- Settings Commands ---
+export interface AppSettings {
+    vk_token: string;
+    vk_group_id: string;
+    vk_topic_id: string;
+    vk_download_path: string;
+}
+
+export const tauriSettings = {
+    load: () => invoke<AppSettings>("settings_load"),
+    save: (settings: AppSettings) => invoke<void>("settings_save", { settings }),
+};
+
 // --- Shell Commands ---
 export const tauriShell = {
     openExternal: (url: string) => openExternal(url),
