@@ -219,7 +219,7 @@ export const SettingsScreen: React.FC = () => {
               <Text style={[styles.label, { color: palette.text }]}>{t.settings.groupLabel}</Text>
               <TextInput
                 value={localGroupId}
-                onChangeText={(value) => setLocalGroupId(value.replace(/[^\d]/g, ""))}
+                onChangeText={(value: string) => setLocalGroupId(value.replace(/[^\d]/g, ""))}
                 placeholder="203785966"
                 placeholderTextColor={palette.subtle}
                 style={[styles.input, { backgroundColor: palette.surface, borderColor: `${palette.border}80`, color: palette.text }]}
@@ -230,7 +230,7 @@ export const SettingsScreen: React.FC = () => {
               <Text style={[styles.label, { color: palette.text }]}>{t.settings.topicLabel}</Text>
               <TextInput
                 value={localTopicId}
-                onChangeText={(value) => setLocalTopicId(value.replace(/[^\d]/g, ""))}
+                onChangeText={(value: string) => setLocalTopicId(value.replace(/[^\d]/g, ""))}
                 placeholder="47515406"
                 placeholderTextColor={palette.subtle}
                 style={[styles.input, { backgroundColor: palette.surface, borderColor: `${palette.border}80`, color: palette.text }]}
@@ -240,7 +240,7 @@ export const SettingsScreen: React.FC = () => {
           </View>
 
           <Pressable
-            style={({ pressed }) => [
+            style={({ pressed }: { pressed: boolean }) => [
               styles.resetDefaultsButton,
               pressed && { opacity: 0.7 }
             ]}
@@ -334,7 +334,7 @@ export const SettingsScreen: React.FC = () => {
       {hasChanges && (
         <View style={[styles.saveBarContainer, { backgroundColor: palette.background }]}>
           <Pressable
-            style={({ pressed }) => [
+            style={({ pressed }: { pressed: boolean }) => [
               styles.saveBar,
               {
                 backgroundColor: saved ? `${palette.success}20` : `${accent.accent}20`,
