@@ -1,0 +1,10 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "paths": {
+      "react-native-pdf-to-webp": ["../src/index"],
+      "react-native-pdf-to-webp/*": ["../src/*"]
+    }
+  }
+}

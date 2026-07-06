@@ -199,72 +199,171 @@ body {
 
 /* ── Liquid Glass Pill Button ── */
 
+/* Shimmer : balayage lumineux continu qui traverse le bouton */
+@keyframes glass-shimmer {
+  0% {
+    transform: translateX(-100%) skewX(-18deg);
+  }
+
+  100% {
+    transform: translateX(250%) skewX(-18deg);
+  }
+}
+
+/* Pulsation douce du halo extérieur */
+@keyframes glass-glow-pulse {
+
+  0%,
+  100% {
+    box-shadow:
+      0 16px 48px rgba(59, 130, 246, 0.20),
+      0 0 30px rgba(139, 92, 246, 0.08),
+      inset 0 1px 1px rgba(255, 255, 255, 0.25),
+      inset 0 -1px 2px rgba(0, 0, 0, 0.25);
+  }
+
+  50% {
+    box-shadow:
+      0 16px 48px rgba(59, 130, 246, 0.30),
+      0 0 50px rgba(139, 92, 246, 0.14),
+      inset 0 1px 1px rgba(255, 255, 255, 0.30),
+      inset 0 -1px 2px rgba(0, 0, 0, 0.20);
+  }
+}
+
 .liquid-glass-btn {
   position: relative;
   overflow: hidden;
 
-  /* Fond ultra transparent pour maximiser l'effet du blur (effet verre clair/sombre) */
-  background: rgba(255, 255, 255, 0.04);
-  backdrop-filter: blur(48px) saturate(220%) contrast(1.1);
-  -webkit-backdrop-filter: blur(48px) saturate(220%) contrast(1.1);
+  /* Variables pour le suivi de souris (reflet de lumière) */
+  --glass-x: 50%;
+  --glass-y: 50%;
 
-  /* Liserés de réfraction lumineux (effet 3D biseauté) */
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-top: 1px solid rgba(255, 255, 255, 0.25);
-  border-bottom: 1px solid rgba(0, 0, 0, 0.4);
+  /* Fond translucide pour maximiser la transparence du verre */
+  background: rgba(255, 255, 255, 0.08);
 
-  /* Ombre portée douce + reflet interne */
+  /* L'EFFET CLÉ : blur + saturation + luminosité pour le "Liquid" */
+  backdrop-filter: blur(20px) saturate(160%) brightness(110%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%) brightness(110%);
+
+  /* Arêtes de verre (réfraction lumineuse) */
+  border: 1px solid rgba(255, 255, 255, 0.20);
+  border-top: 1.5px solid rgba(255, 255, 255, 0.35);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.30);
+
+  /* Ombre portée pour décoller le bouton du fond */
   box-shadow:
-    0 16px 40px rgba(0, 0, 0, 0.4),
-    inset 0 1px 1px rgba(255, 255, 255, 0.2),
-    inset 0 -1px 2px rgba(0, 0, 0, 0.2);
+    0 8px 32px rgba(0, 0, 0, 0.30),
+    inset 0 1px 1px rgba(255, 255, 255, 0.18),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.15);
 
-  /* Forme de pastille (Pill) exactement comme Android */
+  /* Halo animé */
+  animation: glass-glow-pulse 4s ease-in-out infinite;
+
+  /* Forme de pastille (Pill) */
   border-radius: 9999px;
 
-  transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: all 0.3s ease;
 }
 
+/* Reflet radial qui suit la souris + Noise Texture (grain organique) */
 .liquid-glass-btn::before {
   content: '';
   position: absolute;
   inset: 0;
-  background: linear-gradient(135deg,
-      rgba(255, 255, 255, 0.15) 0%,
-      rgba(255, 255, 255, 0) 50%,
-      rgba(255, 255, 255, 0.02) 100%);
+  /* Couche 1 : reflet radial qui suit le curseur (simule la lumière dans le verre) */
+  /* Couche 2 : bruit SVG inline pour texture organique */
+  background:
+    radial-gradient(circle 120px at var(--glass-x) var(--glass-y),
+      rgba(255, 255, 255, 0.20) 0%,
+      rgba(255, 255, 255, 0.05) 40%,
+      transparent 70%),
+    url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+  background-size: 100% 100%, 128px 128px;
   border-radius: inherit;
   pointer-events: none;
+  opacity: 0.85;
+  transition: opacity 0.3s ease;
+}
+
+/* Shimmer animé : bande de lumière qui traverse le verre */
+.liquid-glass-btn::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 40%;
+  height: 100%;
+  background: linear-gradient(90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.12) 40%,
+      rgba(255, 255, 255, 0.20) 50%,
+      rgba(255, 255, 255, 0.12) 60%,
+      transparent 100%);
+  border-radius: inherit;
+  pointer-events: none;
+  animation: glass-shimmer 4s ease-in-out infinite;
 }
 
 .liquid-glass-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  border-top-color: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.10);
+  border-top-color: rgba(255, 255, 255, 0.45);
   box-shadow:
-    0 24px 50px rgba(0, 0, 0, 0.5),
+    0 12px 40px rgba(0, 0, 0, 0.40),
+    0 0 30px rgba(59, 130, 246, 0.12),
     inset 0 1px 2px rgba(255, 255, 255, 0.35);
-  transform: translateY(-4px) scale(1.03);
+  transform: translateY(-3px) scale(1.03);
+  animation: none;
 }
 
 .liquid-glass-btn:active {
-  transform: translateY(2px) scale(0.96);
-  background: rgba(255, 255, 255, 0.02);
+  transform: translateY(1px) scale(0.97);
+  background: rgba(255, 255, 255, 0.03);
   box-shadow:
-    0 8px 20px rgba(0, 0, 0, 0.3),
-    inset 0 2px 5px rgba(0, 0, 0, 0.3);
+    0 4px 16px rgba(0, 0, 0, 0.30),
+    inset 0 2px 5px rgba(0, 0, 0, 0.30);
+  animation: none;
 }
 
 /* ── État sauvegardé (Vert Émeraude liquide) ── */
 
+@keyframes glass-glow-pulse-saved {
+
+  0%,
+  100% {
+    box-shadow:
+      0 16px 48px rgba(16, 185, 129, 0.22),
+      0 0 30px rgba(52, 211, 153, 0.10),
+      inset 0 1px 1px rgba(110, 231, 183, 0.35),
+      inset 0 -1px 2px rgba(0, 0, 0, 0.15);
+  }
+
+  50% {
+    box-shadow:
+      0 16px 48px rgba(16, 185, 129, 0.35),
+      0 0 55px rgba(52, 211, 153, 0.18),
+      inset 0 1px 1px rgba(110, 231, 183, 0.50),
+      inset 0 -1px 2px rgba(0, 0, 0, 0.10);
+  }
+}
+
 .liquid-glass-btn-saved {
-  background: rgba(16, 185, 129, 0.12);
-  border-color: rgba(16, 185, 129, 0.2);
+  background: rgba(16, 185, 129, 0.10);
+  border-color: rgba(16, 185, 129, 0.25);
   border-top-color: rgba(52, 211, 153, 0.45);
-  box-shadow:
-    0 16px 40px rgba(16, 185, 129, 0.25),
-    inset 0 1px 1px rgba(110, 231, 183, 0.4);
+  animation: glass-glow-pulse-saved 3s ease-in-out infinite;
+}
+
+.liquid-glass-btn-saved::after {
+  background: linear-gradient(90deg,
+      transparent 0%,
+      rgba(110, 231, 183, 0.15) 40%,
+      rgba(110, 231, 183, 0.25) 50%,
+      rgba(110, 231, 183, 0.15) 60%,
+      transparent 100%);
 }
 
 .liquid-glass-btn-saved:hover {
-  background: rgba(16, 185, 129, 0.2);
+  background: rgba(16, 185, 129, 0.18);
+  animation: none;
 }

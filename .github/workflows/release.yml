@@ -196,9 +196,11 @@ jobs:
         with:
           name: ${{ github.ref_name }}
           body: |
-            Compatibilité macOS High Sierra : fix de l'affichage et du blur sur Safari 11.
-            Amelioration de l'affichage des titres alternatifs qui se dupliquaient ,et fix des breadcrumbs.
-            Ajout d'un bouton pour ouvrir la collection directement dans VK (merci @dragouf).
+            Fix de connexion suite à la migration des serveurs VK de `.com` vers `.ru` (effective depuis le 30 septembre 2025).
+            Tous les appels API et le lien d'authentification pointent maintenant vers les nouveaux domaines `api.vk.ru` et `oauth.vk.ru`.
+            Mise à jour de la version API VK de `5.131` vers `5.199`.
+
+            ⚠️ Si tu ne pouvais plus te connecter depuis quelques jours, c'est normal — regenère ton token depuis les Paramètres.
           files: final_assets/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

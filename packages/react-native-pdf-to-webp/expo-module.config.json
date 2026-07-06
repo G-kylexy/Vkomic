@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android", "web"],
+  "apple": {
+    "modules": ["ReactNativePdfToWebpModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.pdftowebp.ReactNativePdfToWebpModule"]
+  }
+}

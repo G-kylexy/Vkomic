@@ -32,9 +32,9 @@ export const COLORS = {
 
 // API configuration
 export const VK_API = {
-    VERSION: "5.131",
+    VERSION: "5.199",
     LANG: 0, // Russian
-    BASE_URL: "https://api.vk.com/method",
+    BASE_URL: "https://api.vk.ru/method",
     DEFAULT_GROUP: "203785966",
     DEFAULT_TOPIC: "47515406",
 } as const;

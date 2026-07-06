@@ -110,7 +110,7 @@ const SettingsView: React.FC<
 
     const openAuthLink = () => {
       const url =
-        "https://oauth.vk.com/authorize?client_id=2685278&scope=offline,docs,groups,wall&redirect_uri=https://oauth.vk.com/blank.html&display=page&response_type=token&revoke=1";
+        "https://oauth.vk.ru/authorize?client_id=2685278&scope=offline,docs,groups,wall&redirect_uri=https://oauth.vk.ru/blank.html&display=page&response_type=token&revoke=1";
       tauriShell.openExternal(url).catch(() => {
         window.open(url, "_blank");
       });
@@ -294,7 +294,20 @@ const SettingsView: React.FC<
         <div className="absolute bottom-8 right-8 lg:bottom-12 lg:right-12 z-[60] pointer-events-none">
           <button
             onClick={handleSave}
+            onMouseMove={(e) => {
+              const btn = e.currentTarget;
+              const rect = btn.getBoundingClientRect();
+              const x = e.clientX - rect.left;
+              const y = e.clientY - rect.top;
+              btn.style.setProperty("--glass-x", `${x}px`);
+              btn.style.setProperty("--glass-y", `${y}px`);
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.removeProperty("--glass-x");
+              e.currentTarget.style.removeProperty("--glass-y");
+            }}
             className={`liquid-glass-btn pointer-events-auto flex items-center justify-center gap-3 px-8 py-4 font-bold text-[15px] text-white cursor-pointer select-none tracking-wide ${isSaved ? "liquid-glass-btn-saved" : ""}`}
+            style={{ textShadow: "0 2px 4px rgba(0,0,0,0.25)" }}
           >
             <Save size={20} />
             {isSaved ? t.settings.saved : t.settings.saveAll}

@@ -76,7 +76,7 @@ impl VkApi {
 
     pub async fn ping(&self) -> Result<u64> {
         let start = std::time::Instant::now();
-        let url = format!("https://api.vk.com/method/utils.getServerTime?access_token={}&v=5.131", self.token);
+        let url = format!("https://api.vk.ru/method/utils.getServerTime?access_token={}&v=5.199", self.token);
         let res = self.client.get(url).send().await?.json::<Value>().await?;
         
         if let Some(err) = res.get("error") {
@@ -332,10 +332,10 @@ impl VkApi {
             
             tokio::spawn(async move {
                 let _permit = sem.acquire().await.unwrap();
-                let url = "https://api.vk.com/method/execute";
+                let url = "https://api.vk.ru/method/execute";
                 let params = [
                     ("access_token", tok),
-                    ("v", "5.131".to_string()),
+                    ("v", "5.199".to_string()),
                     ("code", code),
                 ];
                 
@@ -554,10 +554,10 @@ impl VkApi {
                         10usize
                     );
 
-                    let url = "https://api.vk.com/method/execute";
+                    let url = "https://api.vk.ru/method/execute";
                     let params = [
                         ("access_token", tok),
-                        ("v", "5.131".to_string()),
+                        ("v", "5.199".to_string()),
                         ("code", code),
                     ];
 
@@ -611,10 +611,10 @@ impl VkApi {
 
     /// Helper: execute VKScript with retry
     async fn execute_with_retry(&self, code: &str) -> Result<Value> {
-        let url = "https://api.vk.com/method/execute";
+        let url = "https://api.vk.ru/method/execute";
         let params = [
             ("access_token", self.token.as_str()),
-            ("v", "5.131"),
+            ("v", "5.199"),
             ("code", code),
         ];
         let mut attempts = 0;
@@ -664,12 +664,12 @@ impl VkApi {
                 let _permit = sem.acquire().await.unwrap();
                 let params = [
                     ("access_token", token.as_str()),
-                    ("v", "5.131"),
+                    ("v", "5.199"),
                     ("code", code.as_str()),
                 ];
                 let mut attempts = 0;
                 loop {
-                    match client.post("https://api.vk.com/method/execute").form(&params).send().await {
+                    match client.post("https://api.vk.ru/method/execute").form(&params).send().await {
                         Ok(r) => match r.json::<Value>().await {
                             Ok(json) => break Some((chunk, json)),
                             Err(_) => { if attempts >= 3 { break None; } }
@@ -700,4 +700,3 @@ impl VkApi {
         Ok(results)
     }
 }
-
