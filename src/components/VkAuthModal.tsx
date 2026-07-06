@@ -7,7 +7,7 @@ import { palette, radius, spacing } from "../theme";
 
 // Kate Mobile App ID (Public)
 const VK_APP_ID = "2685278";
-const VK_REDIRECT_URI = "https://oauth.vk.com/blank.html";
+const VK_REDIRECT_URI = "https://oauth.vk.ru/blank.html";
 const VK_SCOPE = "docs,groups,wall,offline";
 
 interface VkAuthModalProps {
@@ -20,7 +20,7 @@ export const VkAuthModal: React.FC<VkAuthModalProps> = ({ visible, onClose, onSu
     const [pastedUrl, setPastedUrl] = useState("");
     const [step, setStep] = useState<"intro" | "paste">("intro");
 
-    const authUrl = `https://oauth.vk.com/authorize?client_id=${VK_APP_ID}&scope=${VK_SCOPE}&redirect_uri=${VK_REDIRECT_URI}&response_type=token&v=5.131&revoke=1`;
+    const authUrl = `https://oauth.vk.ru/authorize?client_id=${VK_APP_ID}&scope=${VK_SCOPE}&redirect_uri=${VK_REDIRECT_URI}&response_type=token&v=5.199&revoke=1`;
 
     const openBrowser = async () => {
         await WebBrowser.openBrowserAsync(authUrl);

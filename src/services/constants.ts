@@ -1,6 +1,6 @@
 import { VkNode } from '../types';
 export const VK_API = {
-    VERSION: '5.131',
+    VERSION: '5.199',
 };
 
 export const MOCK_ROOT_NODES: VkNode[] = [

@@ -1,0 +1,4 @@
+<resources>
+  <string name="app_name">react-native-pdf-to-webp-example</string>
+  <string name="expo_splash_screen_resize_mode" translatable="false">contain</string>
+</resources>

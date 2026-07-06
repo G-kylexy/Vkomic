@@ -9,7 +9,7 @@ import * as FolderService from "../services/FolderService";
 
 // VK OAuth Configuration
 const VK_APP_ID = "2685278"; // VK Android app ID (public)
-const VK_REDIRECT_URI = "https://oauth.vk.com/blank.html";
+const VK_REDIRECT_URI = "https://oauth.vk.ru/blank.html";
 const VK_SCOPE = "docs,groups,wall,offline";
 
 // Contexte global des réglages VK côté mobile.
@@ -79,7 +79,7 @@ export const VkProvider: React.FC<{ children: React.ReactNode }> = ({
     // Parse token from VK OAuth URL
     const parseTokenFromUrl = useCallback((url: string): string | null => {
         try {
-            // URL format: https://oauth.vk.com/blank.html#access_token=...&expires_in=...&user_id=...
+            // URL format: https://oauth.vk.ru/blank.html#access_token=...&expires_in=...&user_id=...
             const hashIndex = url.indexOf('#');
             if (hashIndex === -1) return null;
 

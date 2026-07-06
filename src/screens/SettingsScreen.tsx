@@ -108,7 +108,7 @@ export const SettingsScreen: React.FC = () => {
   };
 
   const openAuth = async () => {
-    const url = "https://oauth.vk.com/authorize?client_id=2685278&scope=offline,docs,groups,wall&redirect_uri=https://oauth.vk.com/blank.html&display=page&response_type=token&revoke=1";
+    const url = "https://oauth.vk.ru/authorize?client_id=2685278&scope=offline,docs,groups,wall&redirect_uri=https://oauth.vk.ru/blank.html&display=page&response_type=token&revoke=1";
     await WebBrowser.openBrowserAsync(url);
   };
 

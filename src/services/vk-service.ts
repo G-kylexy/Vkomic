@@ -67,7 +67,7 @@ export const fetchVkTopic = async (
   topicId: string
 ): Promise<any> => {
   if (!token || token.length < 10) throw new Error("Invalid Token");
-  const url = `https://api.vk.com/method/board.getComments?access_token=${token}&group_id=${groupId}&topic_id=${topicId}&count=100&extended=1&v=${API_VERSION}`;
+  const url = `https://api.vk.ru/method/board.getComments?access_token=${token}&group_id=${groupId}&topic_id=${topicId}&count=100&extended=1&v=${API_VERSION}`;
   return executeRequest(url);
 };
 
@@ -96,7 +96,7 @@ const fetchVkTopicBatch = async (
     }
     return res;
   `;
-  const url = `https://api.vk.com/method/execute?access_token=${token}&v=${API_VERSION}&code=${encodeURIComponent(code)}`;
+  const url = `https://api.vk.ru/method/execute?access_token=${token}&v=${API_VERSION}&code=${encodeURIComponent(code)}`;
   const data = await executeRequest<any>(url);
   if (data.error) {
     throw new Error(`VK execute error: ${JSON.stringify(data.error)}`);
@@ -124,7 +124,7 @@ const fetchMultipleTopics = async (
     .join(",");
 
   const code = `return [${calls}];`;
-  const url = `https://api.vk.com/method/execute?access_token=${token}&v=${API_VERSION}&code=${encodeURIComponent(code)}`;
+  const url = `https://api.vk.ru/method/execute?access_token=${token}&v=${API_VERSION}&code=${encodeURIComponent(code)}`;
 
   const data = await executeRequest<any>(url);
   if (data.error) {
@@ -215,7 +215,7 @@ export const searchVkBoard = async (
   const effectiveGroupId =
     groupId && groupId.trim().length > 0 ? groupId.trim() : "203785966";
 
-  const url = `https://api.vk.com/method/board.getTopics?access_token=${token}&group_id=${effectiveGroupId}&count=100&order=1&preview=1&v=${API_VERSION}`;
+  const url = `https://api.vk.ru/method/board.getTopics?access_token=${token}&group_id=${effectiveGroupId}&count=100&order=1&preview=1&v=${API_VERSION}`;
 
   try {
     const data = await executeRequest<any>(url);
