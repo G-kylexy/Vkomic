@@ -89,18 +89,50 @@ jobs:
         with:
           args: --target ${{ matrix.target }}
 
-      - name: Verify macOS app signature
+      - name: Re-sign and verify macOS DMG
         if: contains(matrix.target, 'apple-darwin')
         shell: bash
         run: |
           set -euo pipefail
-          APP=$(find "src-tauri/target/${{ matrix.target }}/release/bundle" -maxdepth 2 -type d -name "*.app" | head -n 1)
+          BUNDLE_ROOT="src-tauri/target/${{ matrix.target }}/release/bundle"
+          APP=$(find "$BUNDLE_ROOT" -type d -name "*.app" -prune -print | head -n 1)
           if [ -z "${APP:-}" ]; then
             echo "No macOS app bundle found" >&2
             exit 1
           fi
-          test -f "$APP/Contents/_CodeSignature/CodeResources"
+
+          # Tauri can leave a stale ad-hoc signature when resources are changed
+          # during bundling. Re-sign the final .app, then rebuild the DMG from
+          # that exact signed bundle so the shipped artifact is what we verify.
+          codesign --force --deep --sign - --timestamp=none "$APP"
           codesign --verify --deep --strict --verbose=4 "$APP"
+
+          DMG=$(find "$BUNDLE_ROOT/dmg" -maxdepth 1 -type f -name "*.dmg" | head -n 1)
+          if [ -z "${DMG:-}" ]; then
+            echo "No macOS DMG found" >&2
+            exit 1
+          fi
+
+          REPACKED_DMG="$RUNNER_TEMP/vkomic-repacked-${{ matrix.target }}.dmg"
+          STAGING_DIR=$(mktemp -d)
+          cp -R "$APP" "$STAGING_DIR/"
+          hdiutil create -volname "$(basename "$APP" .app)" \
+            -srcfolder "$STAGING_DIR" -format UDZO -ov "$REPACKED_DMG"
+          mv -f "$REPACKED_DMG" "$DMG"
+
+          MOUNT_POINT=$(mktemp -d)
+          cleanup() {
+            hdiutil detach "$MOUNT_POINT" >/dev/null 2>&1 || true
+            rmdir "$MOUNT_POINT" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          hdiutil attach "$DMG" -nobrowse -readonly -mountpoint "$MOUNT_POINT" >/dev/null
+          SHIPPED_APP=$(find "$MOUNT_POINT" -maxdepth 1 -type d -name "*.app" -print -quit)
+          if [ -z "${SHIPPED_APP:-}" ]; then
+            echo "Repacked DMG does not contain an app bundle" >&2
+            exit 1
+          fi
+          codesign --verify --deep --strict --verbose=4 "$SHIPPED_APP"
 
       - name: Stage desktop asset
         shell: bash
