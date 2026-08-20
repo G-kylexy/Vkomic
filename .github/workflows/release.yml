@@ -5,6 +5,11 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      mobile_ref:
+        description: "Mobile branch, tag, or commit to build"
+        required: false
+        default: "mobile"
 
 permissions:
   contents: write
@@ -84,6 +89,19 @@ jobs:
         with:
           args: --target ${{ matrix.target }}
 
+      - name: Verify macOS app signature
+        if: contains(matrix.target, 'apple-darwin')
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP=$(find "src-tauri/target/${{ matrix.target }}/release/bundle" -maxdepth 2 -type d -name "*.app" | head -n 1)
+          if [ -z "${APP:-}" ]; then
+            echo "No macOS app bundle found" >&2
+            exit 1
+          fi
+          test -f "$APP/Contents/_CodeSignature/CodeResources"
+          codesign --verify --deep --strict --verbose=4 "$APP"
+
       - name: Stage desktop asset
         shell: bash
         run: |
@@ -116,12 +134,31 @@ jobs:
   build-android:
     name: Build android-apk
     runs-on: ubuntu-22.04
+    environment: android-release
 
     steps:
-      - name: Checkout mobile branch
+      # Tagged releases require a matching immutable mobile tag. Example:
+      # main tag v1.4.2 -> mobile tag mobile-v1.4.2.
+      - name: Checkout pinned mobile source
         uses: actions/checkout@v4
         with:
-          ref: mobile
+          ref: ${{ startsWith(github.ref, 'refs/tags/') && format('mobile-{0}', github.ref_name) || inputs.mobile_ref }}
+
+      - name: Reject committed private signing keys
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TRACKED_KEY_FILES="$(git ls-files | grep -Ei '\.(keystore|jks|p12|pfx|key)$' || true)"
+          PRIVATE_KEY_MARKERS="$(git grep -IlE -- '-----BEGIN ([A-Z0-9]+ )*PRIVATE KEY-----' || true)"
+          COMPROMISED_KEY_BLOB="$(git ls-files --stage | awk '$2 == "364e105ed39fbfd62001429a68140672b06ec0de" { print $4 }')"
+
+          if [ -n "$TRACKED_KEY_FILES" ] || [ -n "$PRIVATE_KEY_MARKERS" ] || [ -n "$COMPROMISED_KEY_BLOB" ]; then
+            echo "Private signing material must not be committed to the mobile source:" >&2
+            printf '%s\n' "$TRACKED_KEY_FILES" "$PRIVATE_KEY_MARKERS" "$COMPROMISED_KEY_BLOB" |
+              sed '/^$/d' | sort -u >&2
+            exit 1
+          fi
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -141,11 +178,97 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Configure Android release signing
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_CERT_SHA256: ${{ secrets.ANDROID_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD ANDROID_CERT_SHA256; do
+            if [ -z "${!name:-}" ]; then
+              echo "Missing required Android release secret: $name" >&2
+              exit 1
+            fi
+          done
+
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/vkomic-release.keystore"
+
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          APP_VERSION="$(node -p "require('./app.json').expo.version")"
+          if [ "$PACKAGE_VERSION" != "$APP_VERSION" ]; then
+            echo "package.json and app.json versions do not match" >&2
+            exit 1
+          fi
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION_NAME="${GITHUB_REF_NAME#v}"
+            if [ "$PACKAGE_VERSION" != "$VERSION_NAME" ]; then
+              echo "Mobile source version $PACKAGE_VERSION does not match release tag $VERSION_NAME" >&2
+              exit 1
+            fi
+          else
+            VERSION_NAME="$PACKAGE_VERSION"
+          fi
+
+          echo "ANDROID_KEYSTORE_FILE=$RUNNER_TEMP/vkomic-release.keystore" >> "$GITHUB_ENV"
+          echo "VKOMIC_VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
+          echo "VKOMIC_VERSION_CODE=$GITHUB_RUN_NUMBER" >> "$GITHUB_ENV"
+
       - name: Build Android APK
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           cd android
           chmod +x gradlew
           ./gradlew assembleRelease
+
+      - name: Verify Android APK signature and version
+        shell: bash
+        env:
+          EXPECTED_CERT_SHA256: ${{ secrets.ANDROID_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          APK_PATH=$(find android/app/build/outputs/apk/release -type f -name "*.apk" | head -n 1)
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -maxdepth 2 -type f -name apksigner | sort -V | tail -n 1)
+          test -n "${APK_PATH:-}"
+          test -x "${APKSIGNER:-}"
+
+          "$APKSIGNER" verify --verbose --print-certs "$APK_PATH"
+          ACTUAL_CERT=$(
+            "$APKSIGNER" verify --print-certs "$APK_PATH" |
+              awk -F': ' '/certificate SHA-256 digest/ { print $2; exit }' |
+              tr -d ':' |
+              tr '[:upper:]' '[:lower:]'
+          )
+          EXPECTED_CERT=$(printf '%s' "$EXPECTED_CERT_SHA256" | tr -d '[:space:]:' | tr '[:upper:]' '[:lower:]')
+          DEBUG_CERT="fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c"
+
+          if [[ ! "$ACTUAL_CERT" =~ ^[0-9a-f]{64}$ || ! "$EXPECTED_CERT" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "Invalid Android certificate SHA-256 fingerprint" >&2
+            exit 1
+          fi
+          if [ "$ACTUAL_CERT" = "$DEBUG_CERT" ]; then
+            echo "Refusing APK signed with the compromised public debug key" >&2
+            exit 1
+          fi
+          if [ "$ACTUAL_CERT" != "$EXPECTED_CERT" ]; then
+            echo "APK certificate does not match ANDROID_CERT_SHA256" >&2
+            exit 1
+          fi
+
+          AAPT=$(find "$ANDROID_HOME/build-tools" -maxdepth 2 -type f -name aapt | sort -V | tail -n 1)
+          test -x "${AAPT:-}"
+          "$AAPT" dump badging "$APK_PATH" | head -n 1 | grep -F "versionName='$VKOMIC_VERSION_NAME'"
+
+      - name: Remove decoded Android keystore
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/vkomic-release.keystore"
 
       - name: Stage Android APK
         shell: bash
@@ -159,7 +282,7 @@ jobs:
             exit 1
           fi
 
-          cp "$APK_PATH" "final_assets/Vkomic.apk"
+          cp "$APK_PATH" "final_assets/vkomic-${VKOMIC_VERSION_NAME}-android-arm64.apk"
 
       - name: Upload Android APK
         uses: actions/upload-artifact@v4
