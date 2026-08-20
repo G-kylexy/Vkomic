@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import Constants from "expo-constants";
 import * as WebBrowser from "expo-web-browser";
 import {
   ScrollView,
@@ -327,7 +328,7 @@ export const SettingsScreen: React.FC = () => {
           </Pressable>
         </Section>
 
-        <Text style={styles.versionText}>vkomic v1.0.0</Text>
+        <Text style={styles.versionText}>vkomic v{Constants.expoConfig?.version ?? "inconnue"}</Text>
       </ScrollView>
 
       {/* Bouton Sauvegarder global */}

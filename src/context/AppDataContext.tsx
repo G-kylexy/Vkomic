@@ -4,7 +4,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as FileSystem from "expo-file-system/legacy";
 import ReactNativeBlobUtil from "react-native-blob-util";
 
-import { expandNodesStructure, fetchNodeContent, fetchRootIndex, fetchFolderTreeUpToDepth } from "../services/vk-service";
+import { expandNodesStructure, fetchNodeContent, fetchRootIndex, fetchFolderTreeUpToDepth, getDocumentDownloadUrl } from "../services/vk-service";
 import * as FolderService from "../services/FolderService";
 import * as NativeNotification from "../services/NativeNotification";
 import { nativeDownload } from "../services/NativeDownload";
@@ -74,6 +74,77 @@ const STORAGE_KEYS = {
 };
 
 const DOWNLOAD_DIR_NAME = "vkomic-downloads";
+const VK_DOWNLOAD_HEADERS = {
+  "User-Agent": "KateMobileAndroid/110.1 lite-x86_64 (Android 11; SDK 30; x86_64; en)",
+  Accept: "*/*",
+  "Accept-Encoding": "identity",
+};
+
+const getResponseHeader = (headers: Record<string, string> | undefined, name: string) => {
+  if (!headers) return "";
+  const matchingKey = Object.keys(headers).find((key) => key.toLowerCase() === name.toLowerCase());
+  return matchingKey ? headers[matchingKey] : "";
+};
+
+const looksLikeHtmlText = (value: string) => {
+  const sample = value.replace(/^\uFEFF/, "").trimStart().toLowerCase();
+  return sample.startsWith("<!doctype html") ||
+    sample.startsWith("<html") ||
+    sample.startsWith("<head") ||
+    sample.startsWith("<body");
+};
+
+const validateIosDownload = async (result: any, item: DownloadItem) => {
+  const status = Number(result?.status ?? 0);
+  const contentType = String(
+    result?.mimeType || getResponseHeader(result?.headers, "content-type") || ""
+  ).toLowerCase();
+  const contentRange = getResponseHeader(result?.headers, "content-range");
+  const rangeTotal = contentRange.match(/\/(\d+)\s*$/)?.[1];
+  const contentLength = Number(getResponseHeader(result?.headers, "content-length"));
+
+  const removeInvalidFile = async () => {
+    if (result?.uri) {
+      await FileSystem.deleteAsync(result.uri, { idempotent: true }).catch(() => undefined);
+    }
+  };
+
+  if (status < 200 || status >= 300) {
+    await removeInvalidFile();
+    throw new Error(`HTTP Error: ${status || "unknown"}`);
+  }
+  if (contentType.includes("text/html") || contentType.includes("application/xhtml")) {
+    await removeInvalidFile();
+    throw new Error("VK returned an HTML page instead of the requested file");
+  }
+
+  const info = await FileSystem.getInfoAsync(result.uri);
+  if (!info.exists || info.isDirectory || !info.size) {
+    await removeInvalidFile();
+    throw new Error("The downloaded file is empty");
+  }
+  const expectedBytes = item.totalBytes || Number(rangeTotal) ||
+    (status === 200 && Number.isFinite(contentLength) && contentLength > 0 ? contentLength : 0);
+  if (expectedBytes > 0 && info.size !== expectedBytes) {
+    await removeInvalidFile();
+    throw new Error(`Incomplete download: received ${info.size} of ${expectedBytes} bytes`);
+  }
+
+  try {
+    const prefix = await FileSystem.readAsStringAsync(result.uri, {
+      encoding: FileSystem.EncodingType.UTF8,
+      position: 0,
+      length: 512,
+    });
+    if (looksLikeHtmlText(prefix)) {
+      await removeInvalidFile();
+      throw new Error("VK returned an HTML page instead of the requested file");
+    }
+  } catch (error) {
+    // Binary files may not decode as UTF-8. Only propagate our explicit HTML error.
+    if (error instanceof Error && error.message.includes("HTML page")) throw error;
+  }
+};
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -384,16 +455,71 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
     return dir;
   };
 
+  // Les liens "nus" https://vk.com/doc{owner}_{id} (sans hash/dl) font renvoyer à VK
+  // la page HTML du document (~quelques Ko) au lieu du fichier. On les résout via
+  // docs.getById pour obtenir une URL signée valide (avec hash/dl).
+  const resolveDownloadUrl = async (item: DownloadItem): Promise<string> => {
+    const vkDocumentMatch = item.url.match(
+      /^https?:\/\/(?:[a-z0-9-]+\.)?vk\.(?:com|ru)\/doc(-?\d+)_(\d+)(?:[/?#].*)?$/i
+    );
+    const hasSignedParameters = /[?&](?:hash|dl)=[^&#]+/i.test(item.url);
+    const ownerId = item.vkOwnerId || vkDocumentMatch?.[1];
+    const docId = item.vkDocId || vkDocumentMatch?.[2];
+
+    if (ownerId && docId && token) {
+      const resolved = await getDocumentDownloadUrl(token, ownerId, docId, item.vkAccessKey);
+      if (resolved) {
+        console.log(`[Download] Refreshed document URL for ${item.title}`);
+        return resolved;
+      }
+    }
+
+    if (vkDocumentMatch && !hasSignedParameters) {
+      throw new Error("Impossible d'obtenir une URL de téléchargement directe depuis VK");
+    }
+    return item.url;
+  };
+
+  const completeIosDownload = async (item: DownloadItem, result: any) => {
+    await validateIosDownload(result, item);
+    pendingProgressRef.current.delete(item.id);
+    const updated = upsertDownload(item.id, {
+      status: "completed",
+      progress: 100,
+      speed: "",
+      resumeData: null,
+      path: result.uri,
+    });
+    saveDownloadsToStorage(updated);
+    resumablesRef.current.delete(item.id);
+    startingRef.current.delete(item.id);
+    clearRetryCount(item.id);
+    clearSpeed(speedRef, item.id);
+    NativeNotification.cancelNotification(item.id);
+    NativeNotification.showCompletedNotification(item.id, item.title);
+  };
+
   const runAndroidDownload = async (item: DownloadItem) => {
     const dir = getDownloadDirUri();
     const isSaf = dir && isSafUri(dir);
 
-    const ext = item.extension ? `.${item.extension}` : '';
+    const downloadUrl = await resolveDownloadUrl(item);
+
+    const normalizedExtension = item.extension?.replace(/^\./, "").toLowerCase() ||
+      item.title.match(/\.([a-z0-9]{2,5})$/i)?.[1]?.toLowerCase() ||
+      "pdf";
+    const ext = `.${normalizedExtension}`;
     let fileName = safeFilename(item.title);
     if (!fileName.toLowerCase().endsWith(ext.toLowerCase())) {
       fileName = `${fileName}${ext}`;
     }
-    const mimeType = item.extension === "pdf" ? "application/pdf" : "*/*";
+    const mimeTypes: Record<string, string> = {
+      pdf: "application/pdf",
+      cbz: "application/vnd.comicbook+zip",
+      cbr: "application/vnd.comicbook-rar",
+      zip: "application/zip",
+    };
+    const mimeType = mimeTypes[normalizedExtension] || "application/octet-stream";
 
     const commonCallbacks = {
       onProgress: (event: any) => {
@@ -401,7 +527,12 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
         const speed = event.speed > 0 ? `${formatBytes(event.speed)}/s` : "";
         const size = event.totalBytes > 0 ? formatBytes(event.totalBytes) : item.size;
 
-        const patch: Partial<DownloadItem> = { progress: pct, speed, size };
+        const patch: Partial<DownloadItem> = {
+          progress: pct,
+          speed,
+          size,
+          totalBytes: event.totalBytes > 0 ? event.totalBytes : item.totalBytes,
+        };
         if (event.path) patch.path = event.path;
         queueProgressUpdate(item.id, patch);
 
@@ -459,7 +590,7 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
         if (isSaf && nativeDownload.isAvailable()) {
           console.log(`[NativeDownload] Starting direct SAF download for ${item.title} -> ${dir}`);
           const existingSafUri = (item.path && item.path.startsWith("content://")) ? item.path : undefined;
-          await nativeDownload.startDownloadToSaf(item.id, item.url, dir, fileName, mimeType, callbacks, existingSafUri);
+          await nativeDownload.startDownloadToSaf(item.id, downloadUrl, dir, fileName, mimeType, callbacks, existingSafUri);
         } else {
           const tempPath = getTempFilePath(item.id, item.extension);
           console.log(`[NativeDownload] Starting local download for ${item.title} -> ${tempPath}`);
@@ -505,7 +636,7 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
             }
           };
 
-          await nativeDownload.startDownload(item.id, item.url, tempPath, localCallbacks);
+          await nativeDownload.startDownload(item.id, downloadUrl, tempPath, localCallbacks);
         }
       } catch (err) {
         reject(err);
@@ -576,48 +707,43 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
     }
 
     // iOS: Use expo-file-system DownloadResumable
-    const resumable = FileSystem.createDownloadResumable(
-      item.url,
-      tempPath,
-      {},
-      (progress: any) => {
-        const total = progress.totalBytesExpectedToWrite || 0;
-        const written = progress.totalBytesWritten || 0;
-        const pct = total > 0 ? Math.round((written / total) * 100) : 0;
-        const now = Date.now();
-        const prev = speedRef.current.get(item.id);
-        let speed = "";
-        if (prev) {
-          const dt = Math.max(1, now - prev.at);
-          const db = Math.max(0, written - prev.bytes);
-          const bps = (db * 1000) / dt;
-          speed = `${formatBytes(bps)}/s`;
-        }
-        speedRef.current.set(item.id, { bytes: written, at: now });
-        if (pct < 100) {
-          queueProgressUpdate(item.id, {
-            progress: pct,
-            speed,
-            size: total > 0 ? formatBytes(total) : item.size,
-          });
-        }
-      },
-      item.resumeData ?? undefined,
-    );
-
-    resumablesRef.current.set(item.id, resumable);
-
     try {
+      const downloadUrl = await resolveDownloadUrl(item);
+      const resumable = FileSystem.createDownloadResumable(
+        downloadUrl,
+        tempPath,
+        { headers: VK_DOWNLOAD_HEADERS },
+        (progress: any) => {
+          const total = progress.totalBytesExpectedToWrite || 0;
+          const written = progress.totalBytesWritten || 0;
+          const pct = total > 0 ? Math.round((written / total) * 100) : 0;
+          const now = Date.now();
+          const prev = speedRef.current.get(item.id);
+          let speed = "";
+          if (prev) {
+            const dt = Math.max(1, now - prev.at);
+            const db = Math.max(0, written - prev.bytes);
+            const bps = (db * 1000) / dt;
+            speed = `${formatBytes(bps)}/s`;
+          }
+          speedRef.current.set(item.id, { bytes: written, at: now });
+          if (pct < 100) {
+            queueProgressUpdate(item.id, {
+              progress: pct,
+              speed,
+              size: total > 0 ? formatBytes(total) : item.size,
+              totalBytes: total > 0 ? total : item.totalBytes,
+            });
+          }
+        },
+        item.resumeData ?? undefined,
+      );
+
+      resumablesRef.current.set(item.id, resumable);
       const result = await resumable.downloadAsync();
 
       if (result) {
-        pendingProgressRef.current.delete(item.id);
-        upsertDownload(item.id, { status: "completed", progress: 100, speed: "", resumeData: null, path: result.uri });
-        resumablesRef.current.delete(item.id);
-        startingRef.current.delete(item.id);
-        clearRetryCount(item.id);
-        clearSpeed(speedRef, item.id);
-        NativeNotification.showCompletedNotification(item.id, item.title);
+        await completeIosDownload(item, result);
       }
     } catch (err: any) {
       console.warn("Download error:", err);
@@ -1035,57 +1161,39 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({
     if (resumable && current.resumeData) {
       console.log("Resuming with existing resumable and resumeData");
       setDownloads(prev => prev.map(d => d.id === id ? { ...d, status: 'downloading', speed: "" } : d));
+      startingRef.current.add(id);
       clearSpeed(speedRef, id);
       try {
-        await resumable.resumeAsync();
+        const result = await resumable.resumeAsync();
+        if (result) {
+          await completeIosDownload(current, result);
+        }
         return;
       } catch (e) {
         console.warn("Resume failed, will restart:", e);
         resumablesRef.current.delete(id);
+        startingRef.current.delete(id);
       }
     }
 
-    // iOS: If we have resumeData but no resumable, create a new one
+    // Les données de reprise iOS persistées contiennent l'ancienne URL signée VK.
+    // Après un redémarrage elle peut être expirée et réinjecter une requête sans nos
+    // en-têtes. Un redémarrage propre est plus sûr qu'une reprise corrompue.
     if (current.resumeData && current.path) {
-      console.log("Creating new resumable from saved resumeData");
-      const newResumable = FileSystem.createDownloadResumable(
-        current.url,
-        current.path,
-        {},
-        (progress: any) => {
-          const total = progress.totalBytesExpectedToWrite || 0;
-          const written = progress.totalBytesWritten || 0;
-          const pct = total > 0 ? Math.round((written / total) * 100) : 0;
-          const now = Date.now();
-          const prev = speedRef.current.get(id);
-          let speed = "";
-          if (prev) {
-            const dt = Math.max(1, now - prev.at);
-            const db = Math.max(0, written - prev.bytes);
-            const bps = (db * 1000) / dt;
-            speed = `${formatBytes(bps)}/s`;
-          }
-          speedRef.current.set(id, { bytes: written, at: now });
-          queueProgressUpdate(id, { progress: Math.min(Math.max(pct, 0), 100), speed, size: total > 0 ? formatBytes(total) : current.size });
-        },
-        current.resumeData
-      );
-      resumablesRef.current.set(id, newResumable);
-      setDownloads(prev => prev.map(d => d.id === id ? { ...d, status: 'downloading', speed: "" } : d));
+      console.log("Discarding stale persisted iOS resume data and restarting safely");
+      await FileSystem.deleteAsync(current.path, { idempotent: true }).catch(() => undefined);
+      resumablesRef.current.delete(id);
+      startingRef.current.delete(id);
       clearSpeed(speedRef, id);
-      try {
-        const result = await newResumable.resumeAsync();
-        if (result) {
-          upsertDownload(id, { status: "completed", progress: 100, speed: "", resumeData: null, path: result.uri });
-          resumablesRef.current.delete(id);
-          clearSpeed(speedRef, id);
-          NativeNotification.showCompletedNotification(id, current.title);
-        }
-        return;
-      } catch (e) {
-        console.warn("Resume with new resumable failed:", e);
-        resumablesRef.current.delete(id);
-      }
+      setDownloads(prev => prev.map(d => d.id === id ? {
+        ...d,
+        status: 'pending',
+        progress: 0,
+        speed: "",
+        resumeData: null,
+        path: undefined,
+      } : d));
+      return;
     }
 
     // Android: Resume using Surgical Method

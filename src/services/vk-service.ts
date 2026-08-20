@@ -1,11 +1,12 @@
 import { VkNode } from "../types";
-import { VK_API, MOCK_ROOT_NODES } from "./constants";
+import { VK_API } from "./constants";
 import { logSync, logWarn, logError } from "./logger";
 
 const API_VERSION = VK_API.VERSION;
 
 // --- LIMITEUR DE REQUÊTES ---
 const RATE_LIMIT_DELAY_MS = 350; // ~3 req/s
+const REQUEST_TIMEOUT_MS = 20_000;
 const requestQueue: Array<() => Promise<void>> = [];
 let processingQueue = false;
 
@@ -24,16 +25,25 @@ const processQueue = async () => {
 const executeRequest = <T>(url: string): Promise<T> => {
   return new Promise((resolve, reject) => {
     const task = async () => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
       try {
         const res = await fetch(url, {
           headers: {
             "User-Agent": "KateMobileAndroid/110.1 lite-x86_64 (Android 11; SDK 30; x86_64; en)",
+            Accept: "application/json",
           },
+          signal: controller.signal,
         });
+        if (!res.ok) {
+          throw new Error(`VK API HTTP error: ${res.status}`);
+        }
         const json = await res.json();
         resolve(json);
       } catch (err) {
         reject(err);
+      } finally {
+        clearTimeout(timeoutId);
       }
     };
     requestQueue.push(task);
@@ -132,10 +142,15 @@ const fetchMultipleTopics = async (
 
   const data = await executeRequest<any>(url);
   if (data.error) {
-    logError("VK execute error:", data.error);
-    return topics.map(() => null);
+    throw new Error(`VK execute error: ${JSON.stringify(data.error)}`);
   }
-  return data.response || [];
+  if (!Array.isArray(data.response) || data.response.length !== topics.length) {
+    throw new Error("VK returned an incomplete multi-topic response");
+  }
+  if (data.response.some((response: any) => !response || !Array.isArray(response.items))) {
+    throw new Error("VK returned an invalid multi-topic response");
+  }
+  return data.response;
 };
 
 /**
@@ -155,11 +170,10 @@ const fetchNodesStructureBatch = async (token: string, nodes: VkNode[]): Promise
       topicId: n.vkTopicId as string,
     }));
 
-    try {
-      const responses = await fetchMultipleTopics(token, topicsToFetch);
+    const responses = await fetchMultipleTopics(token, topicsToFetch);
 
-      const processedNodes = await Promise.all(
-        batch.map(async (node, index) => {
+    const processedNodes = await Promise.all(
+      batch.map(async (node, index) => {
           const resp = responses[index];
           if (resp && resp.items) {
             let items = resp.items;
@@ -175,12 +189,32 @@ const fetchNodesStructureBatch = async (token: string, nodes: VkNode[]): Promise
                   items = allItems;
                 }
               } catch (err) {
-                logWarn(`Failed to fetch full content for ${node.title}, using partial data.`);
+                logWarn(`Failed to fetch full content for ${node.title}.`);
+                throw err;
               }
             }
 
             const text = items.map((it: any) => it.text || "").join("\n");
-            const children = parseTopicBodyEnhanced(text, node.vkTopicId);
+            let children = parseTopicBodyEnhanced(text, node.vkTopicId);
+            const documents = extractDocuments(items);
+            if (documents.length > 0) {
+              // Les liens "nus" vk.com/doc... (sans hash/dl) font renvoyer la page HTML.
+              // On les remplace par les URLs signées des pièces jointes quand elles existent.
+              const attachmentMap = new Map<string, VkNode>();
+              for (const d of documents) {
+                if (d.vkOwnerId && d.vkDocId) {
+                  attachmentMap.set(`${d.vkOwnerId}_${d.vkDocId}`, d);
+                }
+              }
+              children = children
+                .filter((c: VkNode) => {
+                  if (c.type !== "file" || !c.vkOwnerId || !c.vkDocId) return true;
+                  return !attachmentMap.has(`${c.vkOwnerId}_${c.vkDocId}`);
+                })
+                .concat(documents);
+            } else {
+              children = children.concat(documents);
+            }
             return {
               ...node,
               count: typeof resp.count === "number" ? resp.count : node.count,
@@ -189,15 +223,11 @@ const fetchNodesStructureBatch = async (token: string, nodes: VkNode[]): Promise
               structureOnly: true,
             };
           }
-          return { ...node, children: [], isLoaded: true, structureOnly: true };
+          return node;
         })
-      );
+    );
 
-      return processedNodes;
-    } catch (e) {
-      logError("Batch fetch error:", e);
-      return batch.map((n) => ({ ...n, children: [], isLoaded: true, structureOnly: true }));
-    }
+    return processedNodes;
   });
 
   return results.flat();
@@ -398,7 +428,7 @@ const parseTopicBody = (text: string, excludeTopicId?: string): VkNode[] => {
     }
 
     // 3c. Documents in text
-    const docUrlRegex = /vk\.com\/doc(-?\d+)_(\d+)/g;
+    const docUrlRegex = /vk\.(?:com|ru)\/doc(-?\d+)_(\d+)/g;
     let docMatch;
     while ((docMatch = docUrlRegex.exec(line)) !== null) {
       const [, ownerId, docId] = docMatch;
@@ -501,7 +531,7 @@ const parseTopicBodyEnhanced = (text: string, excludeTopicId?: string): VkNode[]
   const topicUrlRegex =
     /(?:https?:\/\/)?(?:[a-z0-9]+\.)?vk\.com\/topic-(\d+)_(\d+)(?:\?post=(\d+))?/gi;
   const docUrlRegex =
-    /(?:https?:\/\/)?(?:[a-z0-9]+\.)?vk\.com\/doc(-?\d+)_(\d+)/gi;
+    /(?:https?:\/\/)?(?:[a-z0-9]+\.)?vk\.(?:com|ru)\/doc(-?\d+)_(\d+)/gi;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -616,7 +646,7 @@ const parseTopicBodyEnhanced = (text: string, excludeTopicId?: string): VkNode[]
 
 const extractDocuments = (items: any[]): VkNode[] => {
   const nodes: VkNode[] = [];
-  const seenUrls = new Set<string>();
+  const seenDocuments = new Set<string>();
 
   items.forEach((item: any) => {
     if (!item.attachments) return;
@@ -625,19 +655,27 @@ const extractDocuments = (items: any[]): VkNode[] => {
       if (att.type !== "doc") return;
 
       const doc = att.doc;
-      const url = doc.url;
-      if (seenUrls.has(url)) return;
-      seenUrls.add(url);
+      if (!doc || doc.owner_id === undefined || doc.id === undefined) return;
+
+      const ownerId = String(doc.owner_id);
+      const docId = String(doc.id);
+      const documentKey = `${ownerId}_${docId}`;
+      if (seenDocuments.has(documentKey)) return;
+      seenDocuments.add(documentKey);
+
+      const url = typeof doc.url === "string" && doc.url.length > 0
+        ? doc.url
+        : `https://vk.com/doc${ownerId}_${docId}`;
 
       nodes.push({
-        id: `doc_${doc.id}`,
+        id: `doc_${documentKey}`,
         title: doc.title,
         type: "file",
-        extension: doc.ext?.toUpperCase?.() || undefined,
+        extension: doc.ext?.toLowerCase?.() || undefined,
         url,
         sizeBytes: typeof doc.size === "number" ? doc.size : undefined,
-        vkOwnerId: doc.owner_id ? doc.owner_id.toString() : undefined,
-        vkDocId: doc.id ? doc.id.toString() : undefined,
+        vkOwnerId: ownerId,
+        vkDocId: docId,
         vkAccessKey: doc.access_key,
         isLoaded: true,
       });
@@ -661,8 +699,11 @@ const fetchAllComments = async (
   let offset = 0;
   const count = 100;
   const BATCH_SIZE = 10;
+  const MAX_BATCHES = 100;
+  let batchNumber = 0;
 
-  while (true) {
+  while (batchNumber < MAX_BATCHES) {
+    batchNumber++;
     const offsets: number[] = [];
     for (let i = 0; i < BATCH_SIZE; i++) {
       offsets.push(offset + i * count);
@@ -670,23 +711,17 @@ const fetchAllComments = async (
 
     let responses: any[] = [];
     let retries = 0;
+    let lastError: unknown = null;
 
     while (retries < maxRetries) {
       try {
         responses = await fetchVkTopicBatch(token, groupId, topicId, offsets);
-        const hasError = responses.some((r) => r?.error);
-        if (hasError) {
-          logWarn(
-            `VK execute error for topic ${topicId} (attempt ${retries + 1}/${maxRetries})`
-          );
-          retries++;
-          if (retries < maxRetries) {
-            await sleep(1000 * retries);
-            continue;
-          }
+        if (responses.length !== offsets.length || responses.some((r) => !r || !Array.isArray(r.items))) {
+          throw new Error(`VK returned an incomplete batch for topic ${topicId}`);
         }
         break;
       } catch (error) {
+        lastError = error;
         logWarn(
           `Network/execute error for topic ${topicId} (attempt ${retries + 1}/${maxRetries}):`,
           error
@@ -696,14 +731,18 @@ const fetchAllComments = async (
           await sleep(1000 * retries);
           continue;
         }
-        break;
       }
+    }
+
+    if (responses.length !== offsets.length || responses.some((r) => !r || !Array.isArray(r.items))) {
+      throw lastError instanceof Error
+        ? lastError
+        : new Error(`Unable to fetch comments for topic ${topicId}`);
     }
 
     let reachedEnd = false;
     for (let idx = 0; idx < responses.length; idx++) {
       const resp = responses[idx];
-      if (!resp || !resp.items) continue;
       const items = resp.items;
       allItems.push(...items);
       if (items.length < count) {
@@ -713,12 +752,12 @@ const fetchAllComments = async (
     }
 
     offset += count * BATCH_SIZE;
-    if (reachedEnd) break;
+    if (reachedEnd) return allItems;
 
     await sleep(200);
   }
 
-  return allItems;
+  throw new Error(`Safety limit reached while fetching topic ${topicId}`);
 };
 
 // Sync simple (root)
@@ -736,14 +775,14 @@ export const fetchRootIndex = async (
     const items = await fetchAllComments(token, effectiveGroupId, effectiveTopicId);
 
     if (!items || items.length === 0) {
-      return MOCK_ROOT_NODES;
+      return [];
     }
 
     const fullText = items.map((i: any) => i.text).join("\n");
     const nodes = parseTopicBodyEnhanced(fullText);
 
     if (nodes.length === 0) {
-      return MOCK_ROOT_NODES;
+      return [];
     }
 
     const filteredNodes = nodes.filter((n) => n.title.toUpperCase().includes("EN FRANCAIS"));
@@ -752,7 +791,7 @@ export const fetchRootIndex = async (
     return finalNodes.map((n) => ({ ...n, type: "category" as const }));
   } catch (error) {
     logError("VK API Error (Root):", error);
-    return MOCK_ROOT_NODES;
+    throw error;
   }
 };
 
@@ -774,7 +813,24 @@ export const fetchNodeContent = async (token: string, node: VkNode): Promise<VkN
 
     const documents = extractDocuments(items);
 
-    const allChildren = [...subTopics, ...documents];
+    // Remplacer les liens nus vk.com/doc... par les URLs signées des pièces jointes
+    let allChildren: VkNode[];
+    if (documents.length > 0) {
+      const attachmentMap = new Map<string, VkNode>();
+      for (const d of documents) {
+        if (d.vkOwnerId && d.vkDocId) {
+          attachmentMap.set(`${d.vkOwnerId}_${d.vkDocId}`, d);
+        }
+      }
+      allChildren = subTopics
+        .filter((c: VkNode) => {
+          if (c.type !== "file" || !c.vkOwnerId || !c.vkDocId) return true;
+          return !attachmentMap.has(`${c.vkOwnerId}_${c.vkDocId}`);
+        })
+        .concat(documents);
+    } else {
+      allChildren = [...subTopics, ...documents];
+    }
 
     if (allChildren.length > 0) {
       return {
@@ -788,25 +844,8 @@ export const fetchNodeContent = async (token: string, node: VkNode): Promise<VkN
     return { ...node, isLoaded: true, children: [] };
   } catch (error) {
     logError("VK API Error (Node):", error);
-    return {
-      ...node,
-      isLoaded: true,
-      children: [{ id: "err1", title: "Erreur (API)", type: "category", isLoaded: true }],
-    };
+    throw error;
   }
-};
-
-// --- Helpers pour la synchro profonde ---
-
-const fetchTopicStructure = async (
-  token: string,
-  groupId: string,
-  topicId: string
-): Promise<VkNode[]> => {
-  const items = await fetchAllComments(token, groupId, topicId);
-  if (!items || items.length === 0) return [];
-  const fullText = items.map((i: any) => i.text).join("\n");
-  return parseTopicBodyEnhanced(fullText, topicId);
 };
 
 export const fetchFolderTreeUpToDepth = async (
@@ -888,4 +927,33 @@ export const fetchFolderTreeUpToDepth = async (
 
   logSync("fetchFolderTreeUpToDepth (mobile) done.");
   return level1Expanded;
+};
+
+/**
+ * Résout une URL de téléchargement fraîche pour un document VK.
+ * Les liens "nus" (https://vk.com/doc{owner}_{id}) ne servent PAS le fichier :
+ * VK renvoie la page HTML du document (quelques Ko). docs.getById renvoie
+ * l'URL signée (avec hash/dl) qui pointe directement vers le fichier.
+ */
+export const getDocumentDownloadUrl = async (
+  token: string,
+  ownerId: string,
+  docId: string,
+  accessKey?: string
+): Promise<string | null> => {
+  const docsParam = accessKey ? `${ownerId}_${docId}_${accessKey}` : `${ownerId}_${docId}`;
+  const url = `https://api.vk.ru/method/docs.getById?access_token=${token}&docs=${encodeURIComponent(
+    docsParam
+  )}&v=${API_VERSION}`;
+
+  try {
+    const data = await executeRequest<any>(url);
+    const doc = data?.response?.[0];
+    if (doc?.url) return doc.url;
+    logWarn(`docs.getById returned no URL for ${docsParam}`, data?.error || "");
+    return null;
+  } catch (e) {
+    logError("docs.getById error", e);
+    return null;
+  }
 };

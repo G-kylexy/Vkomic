@@ -2,7 +2,38 @@ apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
 
+import groovy.json.JsonSlurper
+
 def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
+def packageJson = new JsonSlurper().parse(file("$projectDir/../../package.json"))
+def appJson = new JsonSlurper().parse(file("$projectDir/../../app.json"))
+def vkomicVersionName = System.getenv("VKOMIC_VERSION_NAME") ?: packageJson.version.toString()
+def vkomicVersionCode = (System.getenv("VKOMIC_VERSION_CODE")
+    ?: appJson.expo.android.versionCode.toString()).toInteger()
+
+def releaseKeystorePath = System.getenv("ANDROID_KEYSTORE_FILE")
+def releaseStorePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+def releaseKeyAlias = System.getenv("ANDROID_KEY_ALIAS")
+def releaseKeyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+def releaseSigningConfigured = [
+    releaseKeystorePath,
+    releaseStorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword,
+].every { it != null && !it.trim().isEmpty() }
+def releaseBuildRequested = gradle.startParameter.taskNames.any {
+    it.toLowerCase().contains("release")
+}
+
+if (releaseBuildRequested && !releaseSigningConfigured) {
+    throw new GradleException(
+        "Release signing is not configured. Set ANDROID_KEYSTORE_FILE, " +
+        "ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD."
+    )
+}
+if (releaseBuildRequested && !file(releaseKeystorePath).exists()) {
+    throw new GradleException("Release keystore not found: ${releaseKeystorePath}")
+}
 
 /**
  * This is the configuration block to customize your React Native Android app.
@@ -92,36 +123,25 @@ android {
         applicationId 'com.anonymous.vkomicmobile'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0.0"
+        versionCode vkomicVersionCode
+        versionName vkomicVersionName
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }
     signingConfigs {
-        debug {
-            storeFile file('debug.keystore')
-            storePassword 'android'
-            keyAlias 'androiddebugkey'
-            keyPassword 'android'
-        }
         release {
-            storeFile file('vkomic-release.keystore')
-            storePassword 'vkomic2024'
-            keyAlias 'vkomic'
-            keyPassword 'vkomic2024'
+            if (releaseSigningConfigured) {
+                storeFile file(releaseKeystorePath)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
         }
     }
     buildTypes {
-        debug {
-            signingConfig signingConfigs.debug
-        }
         release {
-            // Fallback to debug signing if release keystore is missing
-            if (signingConfigs.release.storeFile.exists()) {
+            if (releaseSigningConfigured) {
                 signingConfig signingConfigs.release
-            } else {
-                println "Release keystore not found at ${signingConfigs.release.storeFile}. Falling back to debug signing."
-                signingConfig signingConfigs.debug
             }
             
             def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'

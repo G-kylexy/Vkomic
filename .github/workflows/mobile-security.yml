@@ -1,0 +1,40 @@
+name: Mobile security
+
+on:
+  push:
+    branches:
+      - mobile
+  pull_request:
+    branches:
+      - mobile
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reject-private-keys:
+    name: Reject committed private keys
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Scan tracked files
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TRACKED_KEY_FILES="$(git ls-files | grep -Ei '\.(keystore|jks|p12|pfx|key)$' || true)"
+          PRIVATE_KEY_MARKERS="$(git grep -IlE -- '-----BEGIN ([A-Z0-9]+ )*PRIVATE KEY-----' || true)"
+          COMPROMISED_KEY_BLOB="$(git ls-files --stage | awk '$2 == "364e105ed39fbfd62001429a68140672b06ec0de" { print $4 }')"
+
+          if [ -n "$TRACKED_KEY_FILES" ] || [ -n "$PRIVATE_KEY_MARKERS" ] || [ -n "$COMPROMISED_KEY_BLOB" ]; then
+            echo "Private signing material must not be committed:" >&2
+            printf '%s\n' "$TRACKED_KEY_FILES" "$PRIVATE_KEY_MARKERS" "$COMPROMISED_KEY_BLOB" |
+              sed '/^$/d' | sort -u >&2
+            exit 1
+          fi
+
+          echo "No tracked private signing material detected."

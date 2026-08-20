@@ -1,4 +1,4 @@
-import { Platform, PermissionsAndroid, Alert } from "react-native";
+import { Platform, Alert } from "react-native";
 import * as Notifications from "expo-notifications";
 
 /**
@@ -24,33 +24,11 @@ export const requestNotificationPermission = async (): Promise<boolean> => {
 };
 
 /**
- * Request storage permissions (Android < 13)
- * Note: For Android 13+, use SAF (Storage Access Framework) instead
+ * Storage uses the app sandbox or the Storage Access Framework. Neither path
+ * requires the deprecated broad READ/WRITE_EXTERNAL_STORAGE permissions.
  */
 export const requestStoragePermission = async (): Promise<boolean> => {
-    if (Platform.OS !== "android") {
-        return true;
-    }
-
-    // Android 13+ uses SAF, no need for legacy permissions
-    if (Platform.Version >= 33) {
-        return true;
-    }
-
-    try {
-        const granted = await PermissionsAndroid.requestMultiple([
-            PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE,
-            PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE,
-        ]);
-
-        const readGranted = granted[PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE] === PermissionsAndroid.RESULTS.GRANTED;
-        const writeGranted = granted[PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE] === PermissionsAndroid.RESULTS.GRANTED;
-
-        return readGranted && writeGranted;
-    } catch (error) {
-        console.error("Error requesting storage permission:", error);
-        return false;
-    }
+    return true;
 };
 
 /**

@@ -11,6 +11,7 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
+import java.io.InputStream
 import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.URL
@@ -24,6 +25,108 @@ class NativeDownloadModule(private val reactContext: ReactApplicationContext) : 
         private const val EVENT_PROGRESS = "NativeDownloadProgress"
         private const val EVENT_COMPLETE = "NativeDownloadComplete"
         private const val EVENT_ERROR = "NativeDownloadError"
+        // VK sert la page HTML du document (et non le fichier) aux clients non reconnus.
+        // On imite le client Kate Mobile comme dans le backend desktop (download.rs).
+        private const val VKOMIC_USER_AGENT =
+            "KateMobileAndroid/110.1 lite-x86_64 (Android 11; SDK 30; x86_64; en)"
+        private const val RESPONSE_SNIFF_BYTES = 512
+        private const val HTTP_RANGE_NOT_SATISFIABLE = 416
+    }
+
+    private fun looksLikeHtml(buffer: ByteArray, byteCount: Int): Boolean {
+        if (byteCount <= 0) return false
+        val sample = String(buffer, 0, byteCount, Charsets.UTF_8)
+            .trimStart('\uFEFF', ' ', '\t', '\r', '\n')
+            .lowercase()
+        return sample.startsWith("<!doctype html") ||
+            sample.startsWith("<html") ||
+            sample.startsWith("<head") ||
+            sample.startsWith("<body")
+    }
+
+    private fun streamStartsWithHtml(input: InputStream?): Boolean {
+        if (input == null) return false
+        return input.use {
+            val prefix = ByteArray(RESPONSE_SNIFF_BYTES)
+            val count = it.read(prefix)
+            looksLikeHtml(prefix, count)
+        }
+    }
+
+    private fun openValidatedInputStream(connection: HttpURLConnection): BufferedInputStream {
+        val contentType = connection.contentType?.lowercase().orEmpty()
+        if (contentType.contains("text/html") || contentType.contains("application/xhtml")) {
+            throw IOException("VK returned an HTML page instead of the requested file")
+        }
+
+        val input = BufferedInputStream(connection.inputStream, 64 * 1024)
+        input.mark(RESPONSE_SNIFF_BYTES + 1)
+        val prefix = ByteArray(RESPONSE_SNIFF_BYTES)
+        val count = input.read(prefix)
+        input.reset()
+
+        if (count <= 0) {
+            input.close()
+            throw IOException("The download response is empty")
+        }
+        if (looksLikeHtml(prefix, count)) {
+            input.close()
+            throw IOException("VK returned an HTML page instead of the requested file")
+        }
+        return input
+    }
+
+    private fun openDownloadConnection(url: String, startByte: Long): HttpURLConnection {
+        return (URL(url).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 15000
+            readTimeout = 30000
+            requestMethod = "GET"
+            instanceFollowRedirects = true
+            setRequestProperty("User-Agent", VKOMIC_USER_AGENT)
+            setRequestProperty("Accept", "*/*")
+            // Keep Content-Length and byte ranges consistent for resume validation.
+            setRequestProperty("Accept-Encoding", "identity")
+            if (startByte > 0) {
+                setRequestProperty("Range", "bytes=$startByte-")
+            }
+            connect()
+        }
+    }
+
+    private fun rangeTotal(connection: HttpURLConnection): Long? {
+        val contentRange = connection.getHeaderField("Content-Range") ?: return null
+        return Regex("bytes\\s+\\*/(\\d+)", RegexOption.IGNORE_CASE)
+            .find(contentRange)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.toLongOrNull()
+    }
+
+    private fun validatePartialResponse(connection: HttpURLConnection, expectedStart: Long): Long? {
+        if (connection.responseCode != HttpURLConnection.HTTP_PARTIAL) return null
+        val contentRange = connection.getHeaderField("Content-Range")
+            ?: throw IOException("Missing Content-Range on resumed download")
+        val rangeMatch = Regex(
+            "bytes\\s+(\\d+)-(\\d+)/(\\d+)",
+            RegexOption.IGNORE_CASE
+        ).find(contentRange) ?: throw IOException("Invalid Content-Range on partial download")
+        val actualStart = rangeMatch.groupValues[1].toLongOrNull()
+            ?: throw IOException("Invalid start byte in Content-Range")
+        val actualEnd = rangeMatch.groupValues[2].toLongOrNull()
+            ?: throw IOException("Invalid end byte in Content-Range")
+        val total = rangeMatch.groupValues[3].toLongOrNull()
+            ?: throw IOException("Invalid total size in Content-Range")
+        if (actualStart != expectedStart) {
+            throw IOException("Invalid Content-Range for resumed download")
+        }
+        if (actualEnd < actualStart || actualEnd >= total) {
+            throw IOException("Invalid byte bounds in Content-Range")
+        }
+        val rangeLength = actualEnd - actualStart + 1
+        if (connection.contentLengthLong > 0 && connection.contentLengthLong != rangeLength) {
+            throw IOException("Content-Length does not match Content-Range")
+        }
+        return total
     }
 
     private fun prepareSafFileName(fileName: String, mimeType: String): String {
@@ -357,64 +460,67 @@ class NativeDownloadModule(private val reactContext: ReactApplicationContext) : 
                     parentDir.mkdirs()
                 }
 
-                // Vérifier si un fichier partiel existe
+                // Vérifier si un fichier partiel existe. Une ancienne réponse HTML ne doit
+                // jamais être reprise comme si elle faisait partie du document.
                 var startByte: Long = 0
                 if (file.exists()) {
-                    startByte = file.length()
+                    if (streamStartsWithHtml(FileInputStream(file))) {
+                        file.delete()
+                    } else {
+                        startByte = file.length()
+                    }
                 }
 
-                // Ouvrir la connexion HTTP
-                val urlObj = URL(url)
-                connection = urlObj.openConnection() as HttpURLConnection
-                connection.connectTimeout = 15000
-                connection.readTimeout = 30000
-                connection.requestMethod = "GET"
-
-                // Ajouter le header Range si reprise
-                if (startByte > 0) {
-                    connection.setRequestProperty("Range", "bytes=$startByte-")
-                }
-
-                connection.connect()
-
-                val responseCode = connection.responseCode
+                connection = openDownloadConnection(url, startByte)
+                var responseCode = connection.responseCode
 
                 // Gérer les différents codes de réponse
-                when (responseCode) {
-                    416 -> {
-                        // Range Not Satisfiable - fichier déjà complet
+                if (responseCode == HTTP_RANGE_NOT_SATISFIABLE) {
+                    val remoteTotal = rangeTotal(connection)
+                    if (startByte > 0 && remoteTotal == startByte) {
                         val params = Arguments.createMap().apply {
                             putString("id", id)
                             putDouble("receivedBytes", startByte.toDouble())
                             putDouble("totalBytes", startByte.toDouble())
                             putInt("progress", 100)
+                            putString("path", filePath)
                         }
                         sendEvent(EVENT_COMPLETE, params)
                         return
                     }
-                    200 -> {
-                        // Serveur ne supporte pas Range, recommencer depuis le début
-                        startByte = 0
-                    }
-                    206 -> {
-                        // Partial Content - reprise supportée
-                    }
-                    else -> {
-                        if (responseCode >= 400) {
-                            throw IOException("HTTP Error: $responseCode")
-                        }
-                    }
+
+                    // Le fichier partiel ne correspond pas à la ressource distante : repartir
+                    // de zéro plutôt que de déclarer un fichier potentiellement corrompu fini.
+                    connection.disconnect()
+                    file.delete()
+                    startByte = 0
+                    connection = openDownloadConnection(url, 0)
+                    responseCode = connection.responseCode
                 }
 
+                if (responseCode != HttpURLConnection.HTTP_OK &&
+                    responseCode != HttpURLConnection.HTTP_PARTIAL
+                ) {
+                    throw IOException("HTTP Error: $responseCode")
+                }
+                if (responseCode == HttpURLConnection.HTTP_OK) {
+                    // Serveur ne supporte pas Range, recommencer depuis le début.
+                    startByte = 0
+                }
+
+                val activeConnection = connection
+                val partialTotal = validatePartialResponse(activeConnection, startByte)
+
                 // Calculer la taille totale
-                val contentLength = connection.contentLengthLong
-                val totalBytes = if (contentLength > 0) startByte + contentLength else -1L
+                val contentLength = activeConnection.contentLengthLong
+                val totalBytes = partialTotal
+                    ?: if (contentLength > 0) startByte + contentLength else -1L
 
                 // Ouvrir le fichier en mode append si on reprend, sinon en mode write
                 val append = startByte > 0 && responseCode == 206
                 outputStream = FileOutputStream(file, append)
 
-                val inputStream = connection.inputStream
+                val inputStream = openValidatedInputStream(activeConnection)
                 val buffer = ByteArray(8192)
                 var receivedBytes = startByte
                 var bytesRead = 0
@@ -470,9 +576,18 @@ class NativeDownloadModule(private val reactContext: ReactApplicationContext) : 
                     }
                 }
 
+                inputStream.close()
                 outputStream.flush()
+                outputStream.close()
+                outputStream = null
 
                 if (!isCancelled) {
+                    if (totalBytes > 0 && receivedBytes != totalBytes) {
+                        throw IOException("Incomplete download: received $receivedBytes of $totalBytes bytes")
+                    }
+                    if (file.length() != receivedBytes) {
+                        throw IOException("Downloaded file size does not match received bytes")
+                    }
                     // Téléchargement terminé
                     val params = Arguments.createMap().apply {
                         putString("id", id)
@@ -543,6 +658,9 @@ class NativeDownloadModule(private val reactContext: ReactApplicationContext) : 
                                 startByte = cursor.getLong(0)
                             }
                         }
+                        if (startByte > 0 && streamStartsWithHtml(resolver.openInputStream(createdUri))) {
+                            startByte = 0
+                        }
                     } catch (e: Exception) {
                         // Si l'URI n'existe plus ou erreur, repartir de zéro
                         val treeUri = Uri.parse(safFolderUri)
@@ -554,51 +672,52 @@ class NativeDownloadModule(private val reactContext: ReactApplicationContext) : 
                     }
                 }
 
-                // Ouvrir la connexion HTTP
-                val urlObj = URL(url)
-                connection = urlObj.openConnection() as HttpURLConnection
-                connection.connectTimeout = 15000
-                connection.readTimeout = 30000
-                connection.requestMethod = "GET"
-                
-                if (startByte > 0) {
-                    connection.setRequestProperty("Range", "bytes=$startByte-")
-                }
-                
-                connection.connect()
+                connection = openDownloadConnection(url, startByte)
+                var responseCode = connection.responseCode
 
-                val responseCode = connection.responseCode
-                
-                // Gérer reprise (206) ou restart (200)
-                val effectiveStartByte = if (responseCode == 206) startByte else 0L
-                
-                if (responseCode >= 400 && responseCode != 416) {
+                if (responseCode == HTTP_RANGE_NOT_SATISFIABLE) {
+                    val remoteTotal = rangeTotal(connection)
+                    if (startByte > 0 && remoteTotal == startByte) {
+                        val params = Arguments.createMap().apply {
+                            putString("id", id)
+                            putDouble("receivedBytes", startByte.toDouble())
+                            putDouble("totalBytes", startByte.toDouble())
+                            putInt("progress", 100)
+                            putString("path", createdUri!!.toString())
+                        }
+                        sendEvent(EVENT_COMPLETE, params)
+                        return
+                    }
+
+                    connection.disconnect()
+                    startByte = 0
+                    connection = openDownloadConnection(url, 0)
+                    responseCode = connection.responseCode
+                }
+
+                if (responseCode != HttpURLConnection.HTTP_OK &&
+                    responseCode != HttpURLConnection.HTTP_PARTIAL
+                ) {
                     throw IOException("HTTP Error: $responseCode")
                 }
-                
-                if (responseCode == 416) {
-                    // Déjà fini
-                    val params = Arguments.createMap().apply {
-                        putString("id", id)
-                        putDouble("receivedBytes", startByte.toDouble())
-                        putDouble("totalBytes", startByte.toDouble())
-                        putInt("progress", 100)
-                        putString("path", createdUri!!.toString())
-                    }
-                    sendEvent(EVENT_COMPLETE, params)
-                    return
-                }
 
-                val contentLength = connection.contentLengthLong
-                val totalBytes = if (contentLength > 0) effectiveStartByte + contentLength else -1L
+                val effectiveStartByte = if (responseCode == HttpURLConnection.HTTP_PARTIAL) startByte else 0L
+                val activeConnection = connection
+                val partialTotal = validatePartialResponse(activeConnection, effectiveStartByte)
+
+                val contentLength = activeConnection.contentLengthLong
+                val totalBytes = partialTotal
+                    ?: if (contentLength > 0) effectiveStartByte + contentLength else -1L
 
                 // Ouvrir directement le stream SAF (mode "wa" pour write-append si reprise)
-                val openMode = if (effectiveStartByte > 0) "wa" else "w"
+                // "rwt" forces truncation. Some SAF providers do not reliably truncate
+                // an existing document when opened with the looser "w" mode.
+                val openMode = if (effectiveStartByte > 0) "wa" else "rwt"
                 val rawStream = resolver.openOutputStream(createdUri!!, openMode)
                     ?: throw IOException("Failed to open SAF output stream")
                 outputStream = BufferedOutputStream(rawStream, 256 * 1024)
 
-                val inputStream = connection.inputStream
+                val inputStream = openValidatedInputStream(activeConnection)
                 val buffer = ByteArray(16384) // 16KB buffer
                 var receivedBytes = effectiveStartByte
                 var bytesRead = 0
@@ -644,9 +763,27 @@ class NativeDownloadModule(private val reactContext: ReactApplicationContext) : 
                     }
                 }
 
+                inputStream.close()
                 outputStream.flush()
+                outputStream.close()
+                outputStream = null
 
                 if (!isCancelled) {
+                    if (totalBytes > 0 && receivedBytes != totalBytes) {
+                        throw IOException("Incomplete download: received $receivedBytes of $totalBytes bytes")
+                    }
+                    val storedSize = resolver.query(
+                        createdUri,
+                        arrayOf(DocumentsContract.Document.COLUMN_SIZE),
+                        null,
+                        null,
+                        null
+                    )?.use { cursor ->
+                        if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getLong(0) else null
+                    }
+                    if (storedSize != null && storedSize != receivedBytes) {
+                        throw IOException("Downloaded SAF file size does not match received bytes")
+                    }
                     val params = Arguments.createMap().apply {
                         putString("id", id)
                         putDouble("receivedBytes", receivedBytes.toDouble())

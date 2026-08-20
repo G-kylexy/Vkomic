@@ -109,7 +109,7 @@ export const VkAuthModal: React.FC<VkAuthModalProps> = ({ visible, onClose, onSu
                             </Text>
                             <TextInput
                                 style={styles.input}
-                                placeholder="https://oauth.vk.com/blank.html#access_token=..."
+                                placeholder="https://oauth.vk.ru/blank.html#access_token=..."
                                 placeholderTextColor={palette.muted}
                                 value={pastedUrl}
                                 onChangeText={setPastedUrl}

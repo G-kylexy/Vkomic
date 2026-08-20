@@ -22,7 +22,18 @@ desktop.ini
 .expo/
 android/.gradle/
 android/app/build/
+android/app/.cxx/
 ios/build/
+android/app/src/main/assets/*.bundle
+
+# Private signing material (including nested example projects)
+*.keystore
+*.jks
+*.p12
+*.pfx
+*.key
+*.compromised-do-not-use
+*.stale-do-not-use
 
 # Local env
 .env*.local

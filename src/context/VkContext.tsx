@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 import { Platform, Linking } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Network from "expo-network";
+import * as SecureStore from "expo-secure-store";
 import { Language } from "../i18n";
 import { VkConnectionStatus } from "../types";
 import { palette } from "../theme";
@@ -11,6 +12,37 @@ import * as FolderService from "../services/FolderService";
 const VK_APP_ID = "2685278"; // VK Android app ID (public)
 const VK_REDIRECT_URI = "https://oauth.vk.ru/blank.html";
 const VK_SCOPE = "docs,groups,wall,offline";
+const VK_TOKEN_STORAGE_KEY = "vk_token";
+
+const readStoredToken = async (): Promise<string | null> => {
+    if (Platform.OS === "web") {
+        return AsyncStorage.getItem(VK_TOKEN_STORAGE_KEY);
+    }
+
+    const secureToken = await SecureStore.getItemAsync(VK_TOKEN_STORAGE_KEY);
+    if (secureToken) return secureToken;
+
+    // One-time migration from versions that stored the token in AsyncStorage.
+    const legacyToken = await AsyncStorage.getItem(VK_TOKEN_STORAGE_KEY);
+    if (legacyToken) {
+        await SecureStore.setItemAsync(VK_TOKEN_STORAGE_KEY, legacyToken);
+        await AsyncStorage.removeItem(VK_TOKEN_STORAGE_KEY);
+    }
+    return legacyToken;
+};
+
+const persistToken = async (value: string): Promise<void> => {
+    if (Platform.OS === "web") {
+        if (value) await AsyncStorage.setItem(VK_TOKEN_STORAGE_KEY, value);
+        else await AsyncStorage.removeItem(VK_TOKEN_STORAGE_KEY);
+        return;
+    }
+
+    if (value) await SecureStore.setItemAsync(VK_TOKEN_STORAGE_KEY, value);
+    else await SecureStore.deleteItemAsync(VK_TOKEN_STORAGE_KEY);
+    // Ensure a successfully migrated/saved native token is no longer left in plaintext.
+    await AsyncStorage.removeItem(VK_TOKEN_STORAGE_KEY);
+};
 
 // Contexte global des réglages VK côté mobile.
 // Objectif: reproduire la persistance du desktop (localStorage/IDB) avec AsyncStorage (mobile).
@@ -105,7 +137,7 @@ export const VkProvider: React.FC<{ children: React.ReactNode }> = ({
                 setTokenState(extractedToken);
                 setStatus((prev) => ({ ...prev, connected: true }));
                 try {
-                    await AsyncStorage.setItem("vk_token", extractedToken);
+                    await persistToken(extractedToken);
                 } catch (e) {
                     console.error("Failed to save token from URL", e);
                 }
@@ -153,7 +185,7 @@ export const VkProvider: React.FC<{ children: React.ReactNode }> = ({
                     savedLanguage,
                     savedAutoSync,
                 ] = await Promise.all([
-                    AsyncStorage.getItem("vk_token"),
+                    readStoredToken(),
                     AsyncStorage.getItem("vk_download_path"),
                     AsyncStorage.getItem("vk_group_id"),
                     AsyncStorage.getItem("vk_topic_id"),
@@ -207,15 +239,15 @@ export const VkProvider: React.FC<{ children: React.ReactNode }> = ({
         return () => { isMounted = false; clearTimeout(safetyTimeout); };
     }, []);
 
-    // Sauvegarde immédiate du token dans AsyncStorage (comme le desktop via localStorage).
+    // Sauvegarde native chiffrée (Keychain iOS / Keystore Android).
     const setToken = async (newToken: string) => {
         setTokenState(newToken);
         try {
             if (newToken) {
-                await AsyncStorage.setItem("vk_token", newToken);
+                await persistToken(newToken);
                 setStatus((prev) => ({ ...prev, connected: true }));
             } else {
-                await AsyncStorage.removeItem("vk_token");
+                await persistToken("");
                 setStatus((prev) => ({ ...prev, connected: false }));
             }
         } catch (e) {
