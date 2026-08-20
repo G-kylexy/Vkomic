@@ -273,7 +273,7 @@ jobs:
           "$APKSIGNER" verify --verbose --print-certs "$APK_PATH"
           ACTUAL_CERT=$(
             "$APKSIGNER" verify --print-certs "$APK_PATH" |
-              awk -F': ' '/certificate SHA-256 digest/ { print $2; exit }' |
+              awk -F': ' '/certificate SHA-256 digest:/ { print $NF; exit }' |
               tr -d ':' |
               tr '[:upper:]' '[:lower:]'
           )
