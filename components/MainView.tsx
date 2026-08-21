@@ -17,6 +17,8 @@ interface MainViewProps {
   setVkGroupId: (groupId: string) => void;
   vkTopicId: string;
   setVkTopicId: (topicId: string) => void;
+  vkAppId: string;
+  setVkAppId: (appId: string) => void;
   syncedData: VkNode[] | null;
   setSyncedData: (data: VkNode[] | null) => void;
   hasFullSynced: boolean;
@@ -46,6 +48,8 @@ const MainView: React.FC<MainViewProps> = ({
   setVkGroupId,
   vkTopicId,
   setVkTopicId,
+  vkAppId,
+  setVkAppId,
   syncedData,
   setSyncedData,
   hasFullSynced,
@@ -87,6 +91,8 @@ const MainView: React.FC<MainViewProps> = ({
                   setVkGroupId={setVkGroupId}
                   vkTopicId={vkTopicId}
                   setVkTopicId={setVkTopicId}
+                  vkAppId={vkAppId}
+                  setVkAppId={setVkAppId}
                   downloadPath={downloadPath}
                   setDownloadPath={setDownloadPath}
                   onResetDatabase={() => {

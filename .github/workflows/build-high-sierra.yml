@@ -50,6 +50,18 @@ jobs:
             -C link-arg=-Wl,-weak_framework,Security
         run: npm run tauri:build -- --target x86_64-apple-darwin
 
+      - name: Verify macOS app signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP=$(find "src-tauri/target/x86_64-apple-darwin/release/bundle" -maxdepth 2 -type d -name "*.app" | head -n 1)
+          if [ -z "${APP:-}" ]; then
+            echo "No macOS app bundle found" >&2
+            exit 1
+          fi
+          test -f "$APP/Contents/_CodeSignature/CodeResources"
+          codesign --verify --deep --strict --verbose=4 "$APP"
+
       - name: Verify Symbols
         shell: bash
         run: |

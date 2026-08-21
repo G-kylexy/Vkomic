@@ -16,6 +16,8 @@ const SettingsView: React.FC<
     setVkGroupId: (groupId: string) => void;
     vkTopicId: string;
     setVkTopicId: (topicId: string) => void;
+    vkAppId: string;
+    setVkAppId: (appId: string) => void;
     onResetDatabase: () => void;
   }
 > = ({
@@ -27,6 +29,8 @@ const SettingsView: React.FC<
   setVkGroupId,
   vkTopicId,
   setVkTopicId,
+  vkAppId,
+  setVkAppId,
   onResetDatabase,
 }) => {
     const { t, language, setLanguage } = useTranslation();
@@ -34,6 +38,7 @@ const SettingsView: React.FC<
     const [localToken, setLocalToken] = useState(vkToken);
     const [localGroupId, setLocalGroupId] = useState(vkGroupId);
     const [localTopicId, setLocalTopicId] = useState(vkTopicId);
+    const [localAppId, setLocalAppId] = useState(vkAppId);
     const [localDownloadPath, setLocalDownloadPath] = useState(downloadPath);
     const [isSaved, setIsSaved] = useState(false);
     const [showResetConfirm, setShowResetConfirm] = useState(false);
@@ -54,10 +59,15 @@ const SettingsView: React.FC<
       setLocalTopicId(vkTopicId);
     }, [vkTopicId]);
 
+    useEffect(() => {
+      setLocalAppId(vkAppId);
+    }, [vkAppId]);
+
     const handleSave = () => {
       setVkToken(localToken);
       setVkGroupId(localGroupId.trim());
       setVkTopicId(localTopicId.trim());
+      setVkAppId(localAppId.trim());
       setDownloadPath(localDownloadPath);
       setIsSaved(true);
       setTimeout(() => setIsSaved(false), 2000);
@@ -75,6 +85,11 @@ const SettingsView: React.FC<
 
     const handleTopicIdChange = (value: string) => {
       setLocalTopicId(value);
+      setIsSaved(false);
+    };
+
+    const handleAppIdChange = (value: string) => {
+      setLocalAppId(value.replace(/[^\d]/g, ""));
       setIsSaved(false);
     };
 
@@ -109,8 +124,22 @@ const SettingsView: React.FC<
     };
 
     const openAuthLink = () => {
-      const url =
-        "https://oauth.vk.ru/authorize?client_id=2685278&scope=offline,docs,groups,wall&redirect_uri=https://oauth.vk.ru/blank.html&display=page&response_type=token&revoke=1";
+      const appId = localAppId.trim();
+      if (!appId) {
+        window.alert(t.settings.missingAppIdWarning);
+        return;
+      }
+
+      const params = new URLSearchParams({
+        client_id: appId,
+        scope: "docs",
+        redirect_uri: "https://oauth.vk.com/blank.html",
+        display: "page",
+        response_type: "token",
+        revoke: "1",
+        v: "5.199",
+      });
+      const url = `https://oauth.vk.com/authorize?${params.toString()}`;
       tauriShell.openExternal(url).catch(() => {
         window.open(url, "_blank");
       });
@@ -141,6 +170,18 @@ const SettingsView: React.FC<
               <div className="space-y-8">
                 {/* Champ Token */}
                 <div>
+                  <label className="block text-sm font-medium text-slate-400 mb-2.5">
+                    {t.settings.appId}
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={localAppId}
+                    onChange={(e) => handleAppIdChange(e.target.value)}
+                    placeholder={t.settings.appIdPlaceholder}
+                    className="w-full bg-[#161f32] text-slate-200 text-sm rounded-lg px-4 py-3 focus:outline-none focus:ring-1 focus:ring-blue-500 border border-slate-700/50 placeholder-slate-600 font-mono transition-all mb-5"
+                  />
+
                   <label className="block text-sm font-medium text-slate-400 mb-2.5">
                     {t.settings.accessToken}
                   </label>

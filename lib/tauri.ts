@@ -34,6 +34,7 @@ export interface AppSettings {
     vk_token: string;
     vk_group_id: string;
     vk_topic_id: string;
+    vk_app_id: string;
     vk_download_path: string;
 }
 
