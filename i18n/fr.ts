@@ -29,11 +29,15 @@ export const fr = {
 
     // VK Connection
     vkConnection: "Connexion VK",
+    appId: "VK App ID",
+    appIdPlaceholder: "ID de votre application VK",
     accessToken: "Access Token",
-    tokenHelper: "Pour obtenir un token VK (Kate Mobile),",
+    tokenHelper: "Pour obtenir un token VK avec votre application VK,",
     clickHere: "cliquez ici",
     tokenInstructions: ", vous devez copier le texte entre",
     and: "et",
+    missingAppIdWarning:
+      "Renseignez d'abord le VK App ID d'une application VK que vous contrôlez. N'utilisez pas l'App ID d'une application tierce.",
     groupId: "ID du groupe",
     topicId: "ID du topic",
     resetGroupDefaults: "Par défaut",

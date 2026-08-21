@@ -97,6 +97,19 @@ jobs:
           MACOSX_DEPLOYMENT_TARGET: ${{ matrix.target == 'x86_64-apple-darwin' && '10.13' || '' }}
         run: npm run tauri:build -- --target ${{ matrix.target }}
 
+      - name: Verify macOS app signature
+        if: steps.check.outputs.should_run == 'true' && contains(matrix.target, 'apple-darwin')
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP=$(find "src-tauri/target/${{ matrix.target }}/release/bundle" -maxdepth 2 -type d -name "*.app" | head -n 1)
+          if [ -z "${APP:-}" ]; then
+            echo "No macOS app bundle found" >&2
+            exit 1
+          fi
+          test -f "$APP/Contents/_CodeSignature/CodeResources"
+          codesign --verify --deep --strict --verbose=4 "$APP"
+
       - name: Rename and Stage artifacts
         if: steps.check.outputs.should_run == 'true' && steps.tauri.conclusion == 'success'
         shell: bash

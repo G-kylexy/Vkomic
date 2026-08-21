@@ -11,6 +11,8 @@ pub struct AppSettings {
     #[serde(default)]
     pub vk_topic_id: String,
     #[serde(default)]
+    pub vk_app_id: String,
+    #[serde(default)]
     pub vk_download_path: String,
 }
 

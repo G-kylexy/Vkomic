@@ -31,11 +31,15 @@ export const en: Translations = {
 
     // VK Connection
     vkConnection: "VK Connection",
+    appId: "VK App ID",
+    appIdPlaceholder: "Your VK application ID",
     accessToken: "Access Token",
-    tokenHelper: "To get a VK token (Kate Mobile),",
+    tokenHelper: "To get a VK token with your own VK application,",
     clickHere: "click here",
     tokenInstructions: ", you must copy the text between",
     and: "and",
+    missingAppIdWarning:
+      "Enter the VK App ID of an application you control first. Do not use a third-party application's App ID.",
     groupId: "Group ID",
     topicId: "Topic ID",
     resetGroupDefaults: "Reset",

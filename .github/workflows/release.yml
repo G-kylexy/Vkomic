@@ -351,11 +351,17 @@ jobs:
         with:
           name: ${{ github.ref_name }}
           body: |
-            Fix de connexion suite à la migration des serveurs VK de `.com` vers `.ru` (effective depuis le 30 septembre 2025).
-            Tous les appels API et le lien d'authentification pointent maintenant vers les nouveaux domaines `api.vk.ru` et `oauth.vk.ru`.
-            Mise à jour de la version API VK de `5.131` vers `5.199`.
+            Corrections et durcissement de la version 1.4.2.
 
-            ⚠️ Si tu ne pouvais plus te connecter depuis quelques jours, c'est normal — regenère ton token depuis les Paramètres.
+            - Correction du packaging macOS : l'application est re-signée avant la reconstruction du DMG, puis le DMG final est vérifié. Le build Apple Silicon ne déclenche plus l'erreur « app endommagée » de Gatekeeper.
+            - Correction des téléchargements mobiles VK : User-Agent compatible, résolution des liens `vk.com/doc...` et synchronisation des documents joints avec les URLs signées.
+            - Nouvelle signature Android de release, sans clé de debug exposée, avec vérification automatique du certificat et de la version.
+            - L'authentification PC utilise désormais l'App ID VK renseigné par l'utilisateur au lieu d'un App ID tiers intégré.
+            - Les appels API utilisent les domaines `api.vk.ru` et `oauth.vk.ru` ainsi que la version API VK `5.199`.
+
+            ⚠️ Android : la clé de signature a été renouvelée pour des raisons de sécurité. Une désinstallation puis réinstallation peut être nécessaire depuis une ancienne version.
+
+            Fixes #40
           files: final_assets/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

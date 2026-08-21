@@ -33,6 +33,7 @@ const App: React.FC = () => {
   const [vkToken, setVkToken] = useState(() => (localStorage.getItem("vk_token") || "").trim());
   const [vkGroupId, setVkGroupId] = useState(() => localStorage.getItem("vk_group_id") || "203785966");
   const [vkTopicId, setVkTopicId] = useState(() => localStorage.getItem("vk_topic_id") || "47515406");
+  const [vkAppId, setVkAppId] = useState(() => localStorage.getItem("vk_app_id") || import.meta.env.VITE_VK_APP_ID || "");
   const [downloadPath, setDownloadPath] = useState(() => localStorage.getItem("vk_download_path") || DEFAULT_DOWNLOAD_PATH);
   const [hasFullSynced, setHasFullSynced] = useState(() => localStorage.getItem("vk_has_full_synced") === "true");
   const [isSettingsLoaded, setIsSettingsLoaded] = useState(false);
@@ -55,6 +56,10 @@ const App: React.FC = () => {
           if (settings.vk_topic_id) {
             setVkTopicId(settings.vk_topic_id);
             localStorage.setItem("vk_topic_id", settings.vk_topic_id);
+          }
+          if (settings.vk_app_id) {
+            setVkAppId(settings.vk_app_id);
+            localStorage.setItem("vk_app_id", settings.vk_app_id);
           }
           if (settings.vk_download_path) {
             setDownloadPath(settings.vk_download_path);
@@ -79,6 +84,7 @@ const App: React.FC = () => {
           vk_token: vkToken,
           vk_group_id: vkGroupId,
           vk_topic_id: vkTopicId,
+          vk_app_id: vkAppId,
           vk_download_path: downloadPath,
         });
       } catch (e) {
@@ -86,7 +92,7 @@ const App: React.FC = () => {
       }
     };
     save();
-  }, [vkToken, vkGroupId, vkTopicId, downloadPath, isSettingsLoaded]);
+  }, [vkToken, vkGroupId, vkTopicId, vkAppId, downloadPath, isSettingsLoaded]);
 
   // Sync Logic
   const [syncedData, setSyncedData] = useState<VkNode[] | null>(null);
@@ -113,6 +119,12 @@ const App: React.FC = () => {
   const handleSetVkTopicId = useCallback((topicId: string) => {
     setVkTopicId(topicId);
     localStorage.setItem("vk_topic_id", topicId);
+  }, []);
+
+  const handleSetVkAppId = useCallback((appId: string) => {
+    const normalized = appId.trim();
+    setVkAppId(normalized);
+    localStorage.setItem("vk_app_id", normalized);
   }, []);
 
   const handleSetDownloadPath = useCallback((path: string) => {
@@ -232,6 +244,8 @@ const App: React.FC = () => {
               setVkGroupId={handleSetVkGroupId}
               vkTopicId={vkTopicId}
               setVkTopicId={handleSetVkTopicId}
+              vkAppId={vkAppId}
+              setVkAppId={handleSetVkAppId}
               syncedData={syncedData}
               setSyncedData={setSyncedData}
               hasFullSynced={hasFullSynced}
