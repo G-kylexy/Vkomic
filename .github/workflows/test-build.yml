@@ -49,11 +49,16 @@ jobs:
         id: check
         shell: bash
         run: |
-          if [[ "${{ github.event.inputs.platform }}" == "all" ]] || [[ "${{ github.event.inputs.platform }}" == "${{ matrix.name }}" ]]; then
-            echo "should_run=true" >> $GITHUB_OUTPUT
-          else
-            echo "should_run=false" >> $GITHUB_OUTPUT
-          fi
+          PLATFORM="${{ github.event.inputs.platform }}"
+          MATCHED=false
+          case "$PLATFORM" in
+            all) MATCHED=true ;;
+            windows) [[ "${{ matrix.name }}" == win-* ]] && MATCHED=true ;;
+            macos-intel) [[ "${{ matrix.name }}" == "mac-x64" ]] && MATCHED=true ;;
+            macos-apple-silicon) [[ "${{ matrix.name }}" == "mac-arm64" ]] && MATCHED=true ;;
+            linux) [[ "${{ matrix.name }}" == linux-* ]] && MATCHED=true ;;
+          esac
+          echo "should_run=$MATCHED" >> $GITHUB_OUTPUT
 
       - name: Checkout
         if: steps.check.outputs.should_run == 'true'
