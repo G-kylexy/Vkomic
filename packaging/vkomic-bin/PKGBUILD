@@ -1,0 +1,25 @@
+# Maintainer: G-kylexy
+# AUR : vkomic-bin — binaire natif Arch (évite le conflit EGL de l'AppImage, issue #43).
+# Utilise le .deb de la release GitHub et le WebKit système.
+pkgname=vkomic-bin
+_pkgver=1.4.2
+pkgver=${_pkgver}
+pkgrel=1
+pkgdesc="Lecteur et téléchargeur de comics VK (Tauri)"
+arch=('x86_64')
+url="https://github.com/G-kylexy/vkomic"
+license=('custom')
+depends=('webkit2gtk-4.1' 'gtk3' 'libappindicator-gtk3' 'librsvg' 'mesa' 'libglvnd')
+optdepends=('libayatana-appindicator: tray')
+provides=('vkomic')
+conflicts=('vkomic')
+source=("vkomic-${_pkgver}-linux-x64.deb::https://github.com/G-kylexy/vkomic/releases/download/v${_pkgver}/vkomic-${_pkgver}-linux-x64.deb")
+sha256sums=('SKIP')
+
+package() {
+  # Le .deb Tauri contient usr/bin/vkomic + usr/share/{applications,icons,doc}
+  bsdtar -xf "${srcdir}/vkomic-${_pkgver}-linux-x64.deb" -C "${srcdir}"
+  bsdtar -xf "${srcdir}/data.tar."* -C "${pkgdir}"
+  # Licence si embarquée dans la doc AppImage
+  install -Dm644 /dev/null "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE" || true
+}

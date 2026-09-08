@@ -9,7 +9,7 @@ Une application **Rust + Tauri** qui se branche sur https://vk.com/board20378596
 - Windows installeur : `.exe`
 - Windows portable : archive `.zip`
 - macOS : `.dmg` (installation) ou `.zip` (auto-update)
-- Linux : binaire `.AppImage` (ou archive `.tar.gz` selon la release)
+- Linux : `.deb` (Debian/Ubuntu, recommandé), `.rpm` (Fedora), `.AppImage` (universel, voir `docs/linux-graphics.md` sur Wayland/Mesa), ou AUR `packaging/vkomic-bin/PKGBUILD` sur Arch.
 - Android : `.apk` (installation manuelle)
 
 Rendez-vous sur la dernière release : https://github.com/G-kylexy/vkomic/releases/latest
@@ -18,7 +18,7 @@ Rendez-vous sur la dernière release : https://github.com/G-kylexy/vkomic/releas
 
 - Windows : téléchargez l'`.exe` ou décompressez le `.zip` et lancez Vkomic.
 - macOS : ouvrez le `.dmg` puis glissez `Vkomic.app` dans `Applications` (ou utilisez le `.zip`).
-- Linux (AppImage) : `chmod +x Vkomic-*.AppImage && ./Vkomic-*.AppImage`.
+- Linux (AppImage) : `chmod +x Vkomic-*.AppImage && ./Vkomic-*.AppImage`. Sur Arch/Hyprland + Mesa récent, préférez le build source ou le `.deb`/AUR (cf. `docs/linux-graphics.md`, issue #43).
 - Android : téléchargez le `.apk`, ouvrez-le et autorisez l'installation depuis les sources inconnues.
 
 

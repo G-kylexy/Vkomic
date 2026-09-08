@@ -97,6 +97,16 @@ jobs:
           MACOSX_DEPLOYMENT_TARGET: ${{ matrix.target == 'x86_64-apple-darwin' && '10.13' || '' }}
         run: npm run tauri:build -- --target ${{ matrix.target }}
 
+      - name: Patch AppImage (Wayland/Mesa compat, issue #43)
+        if: steps.check.outputs.should_run == 'true' && matrix.os == 'ubuntu-22.04' && steps.tauri.conclusion == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+          bash src-tauri/scripts/patch-appimage-wayland.sh \
+            "src-tauri/target/${{ matrix.target }}/release/bundle" \
+            "$VERSION" || echo "::warning::AppImage patch skipped, shipping unpatched AppImage"
+
       - name: Verify macOS app signature
         if: steps.check.outputs.should_run == 'true' && contains(matrix.target, 'apple-darwin')
         shell: bash

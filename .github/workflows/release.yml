@@ -89,6 +89,16 @@ jobs:
         with:
           args: --target ${{ matrix.target }}
 
+      - name: Patch AppImage (Wayland/Mesa compat, issue #43)
+        if: matrix.os == 'ubuntu-22.04'
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+          bash src-tauri/scripts/patch-appimage-wayland.sh \
+            "src-tauri/target/${{ matrix.target }}/release/bundle" \
+            "$VERSION" || echo "::warning::AppImage patch skipped, shipping unpatched AppImage"
+
       - name: Re-sign and verify macOS DMG
         if: contains(matrix.target, 'apple-darwin')
         shell: bash
@@ -143,18 +153,33 @@ jobs:
 
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
             FILEPATH=$(find "src-tauri/target/${{ matrix.target }}/release/bundle/nsis" -maxdepth 1 -type f -name "*.exe" | head -n 1)
+            if [ -z "${FILEPATH:-}" ]; then
+              echo "No asset found for ${{ matrix.name }}" >&2
+              exit 1
+            fi
+            cp "$FILEPATH" "final_assets/vkomic-${VERSION}-${{ matrix.name }}.${{ matrix.asset_ext }}"
           elif [ "${{ matrix.os }}" = "ubuntu-22.04" ]; then
-            FILEPATH=$(find "src-tauri/target/${{ matrix.target }}/release/bundle/appimage" -maxdepth 1 -type f -name "*.AppImage" | head -n 1)
+            # Linux : on publie AppImage (patché) + .deb + .rpm s'ils existent.
+            # Le .deb/.rpm utilise le WebKit système -> pas de conflit EGL (issue #43).
+            BUNDLE_DIR="src-tauri/target/${{ matrix.target }}/release/bundle"
+            APPIMAGE=$(find "$BUNDLE_DIR/appimage" -maxdepth 1 -type f -name "*.AppImage" | head -n 1 || true)
+            DEB=$(find "$BUNDLE_DIR/deb" -maxdepth 1 -type f -name "*.deb" | head -n 1 || true)
+            RPM=$(find "$BUNDLE_DIR/rpm" -maxdepth 1 -type f -name "*.rpm" | head -n 1 || true)
+            if [ -z "${APPIMAGE:-}" ]; then
+              echo "No AppImage found for ${{ matrix.name }}" >&2
+              exit 1
+            fi
+            cp "$APPIMAGE" "final_assets/vkomic-${VERSION}-${{ matrix.name }}.AppImage"
+            [ -n "${DEB:-}" ] && cp "$DEB" "final_assets/vkomic-${VERSION}-${{ matrix.name }}.deb" || echo "::warning::no .deb staged"
+            [ -n "${RPM:-}" ] && cp "$RPM" "final_assets/vkomic-${VERSION}-${{ matrix.name }}.rpm" || echo "::warning::no .rpm staged"
           else
             FILEPATH=$(find "src-tauri/target/${{ matrix.target }}/release/bundle/dmg" -maxdepth 1 -type f -name "*.dmg" | head -n 1)
+            if [ -z "${FILEPATH:-}" ]; then
+              echo "No asset found for ${{ matrix.name }}" >&2
+              exit 1
+            fi
+            cp "$FILEPATH" "final_assets/vkomic-${VERSION}-${{ matrix.name }}.${{ matrix.asset_ext }}"
           fi
-
-          if [ -z "${FILEPATH:-}" ]; then
-            echo "No asset found for ${{ matrix.name }}" >&2
-            exit 1
-          fi
-
-          cp "$FILEPATH" "final_assets/vkomic-${VERSION}-${{ matrix.name }}.${{ matrix.asset_ext }}"
 
       - name: Upload desktop asset
         uses: actions/upload-artifact@v4

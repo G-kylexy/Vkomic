@@ -135,6 +135,14 @@ async fn settings_save(app: AppHandle, settings: settings::AppSettings) -> Resul
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Workaround WebKitGTK DMABUF vs Mesa/NVIDIA (fenêtre blanche, Error 71).
+    // Cf. https://v2.tauri.app/develop/debug/linux-graphics/ et issue vkomic #43.
+    // Activé par défaut seulement si l'utilisateur n'a rien exporté (override possible).
+    #[cfg(target_os = "linux")]
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
+
     tauri::Builder::default()
         .manage(AppState {
             download_manager: DownloadManager::new(),
