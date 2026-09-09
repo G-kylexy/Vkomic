@@ -1,10 +1,10 @@
 mod download;
 mod fs_ops;
+mod settings;
 mod vk_api;
 mod vk_parser;
-mod settings;
 
-use crate::download::{DownloadManager, DownloadTask};
+use crate::download::{reset_partial_download, DownloadManager, DownloadTask};
 use crate::fs_ops::{list_directory, open_path, reveal_path, DirList};
 use crate::vk_api::VkApi;
 use crate::vk_parser::VkNode;
@@ -91,6 +91,7 @@ async fn fs_queue_download(
     url: String,
     directory: String,
     file_name: String,
+    expected_size: Option<u64>,
     token: Option<String>,
 ) -> Result<(), String> {
     let task = DownloadTask {
@@ -98,6 +99,7 @@ async fn fs_queue_download(
         url,
         directory,
         file_name,
+        expected_size,
         token,
     };
     state.download_manager.add_task(app, task).await;
@@ -112,6 +114,22 @@ async fn fs_cancel_download(
 ) -> Result<bool, String> {
     let cancelled = state.download_manager.cancel_task(app, id).await;
     Ok(cancelled)
+}
+
+#[tauri::command]
+async fn fs_reset_download(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+    directory: String,
+    file_name: String,
+) -> Result<(), String> {
+    // Stop a pending/active task first, then preserve its partial file under a
+    // unique backup name. The frontend can enqueue the same document afresh.
+    state.download_manager.reset_task(app, id).await;
+    reset_partial_download(&directory, &file_name)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -160,6 +178,7 @@ pub fn run() {
             fs_reveal_path,
             fs_queue_download,
             fs_cancel_download,
+            fs_reset_download,
             fs_clear_download_queue,
             settings_load,
             settings_save

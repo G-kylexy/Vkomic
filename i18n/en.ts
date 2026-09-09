@@ -132,6 +132,7 @@ export const en: Translations = {
     resume: "Resume",
     pause: "Pause",
     cancel: "Cancel",
+    resetDownload: "Reset download",
     openFolder: "Open folder",
   },
 

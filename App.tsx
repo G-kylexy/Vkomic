@@ -259,6 +259,7 @@ const App: React.FC = () => {
               resumeDownload={downloads.resumeDownload}
               cancelDownload={downloads.cancelDownload}
               retryDownload={downloads.retryDownload}
+              resetDownload={downloads.resetDownload}
               clearDownloads={downloads.clearDownloads}
             />
           </div>

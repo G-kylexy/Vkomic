@@ -23,9 +23,11 @@ export const tauriFs = {
     listDirectory: (path: string) => invoke<any>("fs_list_directory", { path }),
     openPath: (path: string) => invoke<void>("fs_open_path", { path }),
     revealPath: (path: string) => invoke<void>("fs_reveal_path", { path }),
-    queueDownload: (id: string, url: string, directory: string, fileName: string, token?: string) =>
-        invoke<void>("fs_queue_download", { id, url, directory, fileName, token }),
+    queueDownload: (id: string, url: string, directory: string, fileName: string, expectedSize?: number, token?: string) =>
+        invoke<void>("fs_queue_download", { id, url, directory, fileName, expectedSize, token }),
     cancelDownload: (id: string) => invoke<boolean>("fs_cancel_download", { id }),
+    resetDownload: (id: string, directory: string, fileName: string) =>
+        invoke<void>("fs_reset_download", { id, directory, fileName }),
     clearDownloadQueue: () => invoke<number>("fs_clear_download_queue"),
 };
 

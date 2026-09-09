@@ -59,6 +59,7 @@ export interface DownloadItem {
   | "error";
   createdAt?: string; // ISO date de la dernre tentative
   size?: string;
+  totalBytes?: number;
   speed?: string;
   url?: string;
   vkOwnerId?: string;

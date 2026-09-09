@@ -32,6 +32,7 @@ interface MainViewProps {
   resumeDownload: (id: string) => void;
   cancelDownload: (id: string) => void;
   retryDownload: (id: string) => void;
+  resetDownload: (id: string) => void;
   clearDownloads: () => void;
 }
 
@@ -63,6 +64,7 @@ const MainView: React.FC<MainViewProps> = ({
   resumeDownload,
   cancelDownload,
   retryDownload,
+  resetDownload,
   clearDownloads,
 }) => {
   const [navPath, setNavPath] = useState<VkNode[]>([]);
@@ -110,6 +112,7 @@ const MainView: React.FC<MainViewProps> = ({
                   resumeDownload={resumeDownload}
                   cancelDownload={cancelDownload}
                   retryDownload={retryDownload}
+                  resetDownload={resetDownload}
                   downloadPath={downloadPath}
                   clearDownloads={clearDownloads}
                   syncedData={syncedData}

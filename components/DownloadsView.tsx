@@ -22,6 +22,7 @@ interface DownloadsViewProps {
   resumeDownload: (id: string) => void;
   cancelDownload: (id: string) => void;
   retryDownload: (id: string) => void;
+  resetDownload: (id: string) => void;
   syncedData: VkNode[] | null;
   downloadPath?: string;
   clearDownloads: () => void;
@@ -37,6 +38,7 @@ interface RowProps {
   resumeDownload: (id: string) => void;
   cancelDownload: (id: string) => void;
   retryDownload: (id: string) => void;
+  resetDownload: (id: string) => void;
   openFolder: (path?: string) => void;
 }
 
@@ -47,6 +49,7 @@ const DownloadRow = React.memo(({
   resumeDownload,
   cancelDownload,
   retryDownload,
+  resetDownload,
   openFolder
 }: RowProps) => {
   const isCompleted = d.status === "completed";
@@ -130,6 +133,9 @@ const DownloadRow = React.memo(({
                   <Pause size={16} />
                 </button>
               )}
+              <button onClick={() => resetDownload(d.id)} className="p-1.5 hover:bg-slate-700 rounded text-slate-300" title={t.tooltips.resetDownload}>
+                <RefreshCw size={16} />
+              </button>
               <button onClick={() => cancelDownload(d.id)} className="p-1.5 hover:bg-rose-900/30 rounded text-rose-400" title={t.tooltips.cancel}>
                 <X size={16} />
               </button>
@@ -152,6 +158,7 @@ const DownloadCard = React.memo(({
   resumeDownload,
   cancelDownload,
   retryDownload,
+  resetDownload,
   openFolder
 }: RowProps) => {
   const isCompleted = d.status === "completed";
@@ -221,6 +228,10 @@ const DownloadCard = React.memo(({
               {isPaused ? <Play size={14} /> : <Pause size={14} />}
               <span>{isPaused ? t.tooltips.resume : t.tooltips.pause}</span>
             </button>
+            <button onClick={() => resetDownload(d.id)} className="flex-1 min-w-[100px] px-3 py-2 rounded-lg bg-slate-800 text-slate-200 border border-slate-700/50 text-sm font-semibold flex items-center justify-center gap-2" title={t.tooltips.resetDownload}>
+              <RefreshCw size={14} />
+              <span>{t.tooltips.resetDownload}</span>
+            </button>
             <button onClick={() => cancelDownload(d.id)} className="flex-1 min-w-[100px] px-3 py-2 rounded-lg bg-rose-900/40 text-rose-300 border border-rose-900/60 text-sm font-semibold flex items-center justify-center gap-2">
               <X size={14} />
               <span>{t.tooltips.cancel}</span>
@@ -243,6 +254,7 @@ const DownloadsView: React.FC<DownloadsViewProps> = ({
   resumeDownload,
   cancelDownload,
   retryDownload,
+  resetDownload,
   syncedData,
   downloadPath,
   clearDownloads,
@@ -451,6 +463,7 @@ const DownloadsView: React.FC<DownloadsViewProps> = ({
                           resumeDownload={resumeDownload}
                           cancelDownload={cancelDownload}
                           retryDownload={retryDownload}
+                          resetDownload={resetDownload}
                           openFolder={openFolder}
                         />
                       ))}
@@ -469,6 +482,7 @@ const DownloadsView: React.FC<DownloadsViewProps> = ({
                       resumeDownload={resumeDownload}
                       cancelDownload={cancelDownload}
                       retryDownload={retryDownload}
+                      resetDownload={resetDownload}
                       openFolder={openFolder}
                     />
                   ))}
