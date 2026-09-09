@@ -5,22 +5,21 @@ import * as Clipboard from "expo-clipboard";
 import { Ionicons } from "@expo/vector-icons";
 import { palette, radius, spacing } from "../theme";
 
-// Kate Mobile App ID (Public)
-const VK_APP_ID = "2685278";
 const VK_REDIRECT_URI = "https://oauth.vk.ru/blank.html";
-const VK_SCOPE = "docs,groups,wall,offline";
+const VK_SCOPE = "docs";
 
 interface VkAuthModalProps {
+    appId: string;
     visible: boolean;
     onClose: () => void;
     onSuccess: (token: string) => void;
 }
 
-export const VkAuthModal: React.FC<VkAuthModalProps> = ({ visible, onClose, onSuccess }) => {
+export const VkAuthModal: React.FC<VkAuthModalProps> = ({ appId, visible, onClose, onSuccess }) => {
     const [pastedUrl, setPastedUrl] = useState("");
     const [step, setStep] = useState<"intro" | "paste">("intro");
 
-    const authUrl = `https://oauth.vk.ru/authorize?client_id=${VK_APP_ID}&scope=${VK_SCOPE}&redirect_uri=${VK_REDIRECT_URI}&response_type=token&v=5.199&revoke=1`;
+    const authUrl = `https://oauth.vk.ru/authorize?client_id=${encodeURIComponent(appId)}&scope=${VK_SCOPE}&redirect_uri=${encodeURIComponent(VK_REDIRECT_URI)}&display=page&response_type=token&v=5.199&revoke=1`;
 
     const openBrowser = async () => {
         await WebBrowser.openBrowserAsync(authUrl);

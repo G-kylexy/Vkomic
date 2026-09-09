@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import Constants from "expo-constants";
-import * as WebBrowser from "expo-web-browser";
 import {
   ScrollView,
   StyleSheet,
@@ -28,6 +27,8 @@ export const SettingsScreen: React.FC = () => {
   const {
     token,
     setToken,
+    appId,
+    setAppId,
     groupId,
     setGroupId,
     topicId,
@@ -52,6 +53,7 @@ export const SettingsScreen: React.FC = () => {
 
   // États locaux pour tous les paramètres modifiables
   const [localToken, setLocalToken] = useState(token);
+  const [localAppId, setLocalAppId] = useState(appId);
   const [localGroupId, setLocalGroupId] = useState(groupId);
   const [localTopicId, setLocalTopicId] = useState(topicId);
   const [saved, setSaved] = useState(false);
@@ -65,12 +67,16 @@ export const SettingsScreen: React.FC = () => {
   const [resetDialog, setResetDialog] = useState(false);
 
   // Vérifier si quelque chose a changé
-  const hasChanges = localToken !== token || localGroupId !== groupId || localTopicId !== topicId;
+  const hasChanges = localToken !== token || localAppId !== appId || localGroupId !== groupId || localTopicId !== topicId;
 
   // Sync localToken when context token changes (e.g. via deep link or auth modal)
   React.useEffect(() => {
     setLocalToken(token);
   }, [token]);
+
+  React.useEffect(() => {
+    setLocalAppId(appId);
+  }, [appId]);
 
   const handleTokenChange = (text: string) => {
     // Check if pasted text is a VK OAuth URL
@@ -90,6 +96,7 @@ export const SettingsScreen: React.FC = () => {
 
   const handleSaveAll = async () => {
     if (localToken !== token) void setToken(localToken);
+    if (localAppId !== appId) void setAppId(localAppId);
     if (localGroupId !== groupId) {
       void setGroupId(localGroupId);
       void clearCache();
@@ -108,9 +115,16 @@ export const SettingsScreen: React.FC = () => {
     setLocalTopicId("47515406");
   };
 
-  const openAuth = async () => {
-    const url = "https://oauth.vk.ru/authorize?client_id=2685278&scope=offline,docs,groups,wall&redirect_uri=https://oauth.vk.ru/blank.html&display=page&response_type=token&revoke=1";
-    await WebBrowser.openBrowserAsync(url);
+  const openAuth = () => {
+    if (!localAppId.trim()) {
+      Alert.alert(
+        "VK App ID requis",
+        "Créez votre propre application VK, puis saisissez son identifiant ici. Vkomic n'utilise plus l'identité d'une application tierce."
+      );
+      return;
+    }
+    void setAppId(localAppId);
+    setShowAuthModal(true);
   };
 
 
@@ -181,7 +195,7 @@ export const SettingsScreen: React.FC = () => {
           {!token ? (
             <Pressable
               style={[styles.vkLoginBtn, { backgroundColor: "#4C75A3" }]}
-              onPress={() => setShowAuthModal(true)}
+              onPress={openAuth}
             >
               <Ionicons name="logo-vk" size={24} color="#fff" />
               <Text style={styles.vkLoginText}>Se connecter avec VK</Text>
@@ -199,6 +213,19 @@ export const SettingsScreen: React.FC = () => {
               </Pressable>
             </View>
           )}
+
+          <View style={[styles.cardItem, { marginTop: spacing.md }]}>
+            <Text style={[styles.label, { color: palette.muted }]}>VK App ID (votre application)</Text>
+            <TextInput
+              value={localAppId}
+              onChangeText={(value: string) => setLocalAppId(value.replace(/[^\d]/g, ""))}
+              placeholder="ID de votre application VK"
+              placeholderTextColor={palette.subtle}
+              style={[styles.input, { backgroundColor: palette.surface, borderColor: `${palette.border}80`, color: palette.text, marginTop: spacing.xs }]}
+              keyboardType="number-pad"
+            />
+            <Text style={{ color: palette.muted, fontSize: 12, marginTop: spacing.xs }}>N'utilisez pas l'App ID de Kate Mobile ou d'une autre application tierce.</Text>
+          </View>
 
           {/* Manual token input (advanced) */}
           <View style={[styles.cardItem, { marginTop: spacing.md }]}>
@@ -391,6 +418,7 @@ export const SettingsScreen: React.FC = () => {
 
       {/* Login VK Modal */}
       <VkAuthModal
+        appId={localAppId}
         visible={showAuthModal}
         onClose={() => setShowAuthModal(false)}
         onSuccess={handleAuthSuccess}

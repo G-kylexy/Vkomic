@@ -30,7 +30,7 @@ const executeRequest = <T>(url: string): Promise<T> => {
       try {
         const res = await fetch(url, {
           headers: {
-            "User-Agent": "KateMobileAndroid/110.1 lite-x86_64 (Android 11; SDK 30; x86_64; en)",
+            "User-Agent": "Vkomic/1.4.2 (+https://github.com/G-kylexy/vkomic)",
             Accept: "application/json",
           },
           signal: controller.signal,
@@ -78,47 +78,12 @@ const runParallel = async <T, R>(
 export const fetchVkTopic = async (
   token: string,
   groupId: string,
-  topicId: string
+  topicId: string,
+  offset: number = 0
 ): Promise<any> => {
   if (!token || token.length < 10) throw new Error("Invalid Token");
-  const url = `https://api.vk.ru/method/board.getComments?access_token=${token}&group_id=${groupId}&topic_id=${topicId}&count=100&extended=1&v=${API_VERSION}`;
+  const url = `https://api.vk.ru/method/board.getComments?access_token=${token}&group_id=${groupId}&topic_id=${topicId}&count=100&offset=${offset}&extended=1&v=${API_VERSION}`;
   return executeRequest(url);
-};
-
-// Version batch via VK execute pour plusieurs offsets
-const fetchVkTopicBatch = async (
-  token: string,
-  groupId: string,
-  topicId: string,
-  offsets: number[]
-): Promise<any[]> => {
-  if (!token || token.length < 10) throw new Error("Invalid Token");
-  const offsetsLiteral = offsets.join(",");
-  const code = `
-    var offsets = [${offsetsLiteral}];
-    var res = [];
-    var i = 0;
-    while (i < offsets.length) {
-      res.push(API.board.getComments({
-        group_id: ${groupId},
-        topic_id: ${topicId},
-        count: 100,
-        offset: offsets[i],
-        extended: 1
-      }));
-      i = i + 1;
-    }
-    return res;
-  `;
-  const url = `https://api.vk.ru/method/execute?access_token=${token}&v=${API_VERSION}&code=${encodeURIComponent(code)}`;
-  const data = await executeRequest<any>(url);
-  if (data.error) {
-    throw new Error(`VK execute error: ${JSON.stringify(data.error)}`);
-  }
-  if (!data.response || !Array.isArray(data.response)) {
-    return [];
-  }
-  return data.response;
 };
 
 // Récupère les premiers commentaires de plusieurs topics en un seul appel execute
@@ -140,17 +105,28 @@ const fetchMultipleTopics = async (
   const code = `return [${calls}];`;
   const url = `https://api.vk.ru/method/execute?access_token=${token}&v=${API_VERSION}&code=${encodeURIComponent(code)}`;
 
-  const data = await executeRequest<any>(url);
-  if (data.error) {
-    throw new Error(`VK execute error: ${JSON.stringify(data.error)}`);
+  try {
+    const data = await executeRequest<any>(url);
+    if (data.error || (Array.isArray(data.execute_errors) && data.execute_errors.length > 0)) {
+      throw new Error(`VK execute error: ${JSON.stringify(data.error || data.execute_errors)}`);
+    }
+    if (!Array.isArray(data.response) || data.response.length !== topics.length) {
+      throw new Error("VK returned an incomplete multi-topic response");
+    }
+    if (data.response.some((response: any) => !response || !Array.isArray(response.items))) {
+      throw new Error("VK returned an invalid multi-topic response");
+    }
+    return data.response;
+  } catch (error) {
+    logWarn("VK execute unavailable; using direct board calls.", error);
+    return Promise.all(topics.map(async (topic) => {
+      const data = await fetchVkTopic(token, topic.groupId, topic.topicId);
+      if (data.error || !data.response || !Array.isArray(data.response.items)) {
+        throw new Error(`VK board error: ${JSON.stringify(data.error || data)}`);
+      }
+      return data.response;
+    }));
   }
-  if (!Array.isArray(data.response) || data.response.length !== topics.length) {
-    throw new Error("VK returned an incomplete multi-topic response");
-  }
-  if (data.response.some((response: any) => !response || !Array.isArray(response.items))) {
-    throw new Error("VK returned an invalid multi-topic response");
-  }
-  return data.response;
 };
 
 /**
@@ -698,32 +674,25 @@ const fetchAllComments = async (
   const allItems: any[] = [];
   let offset = 0;
   const count = 100;
-  const BATCH_SIZE = 10;
-  const MAX_BATCHES = 100;
-  let batchNumber = 0;
+  const MAX_PAGES = 1000;
 
-  while (batchNumber < MAX_BATCHES) {
-    batchNumber++;
-    const offsets: number[] = [];
-    for (let i = 0; i < BATCH_SIZE; i++) {
-      offsets.push(offset + i * count);
-    }
-
-    let responses: any[] = [];
+  for (let page = 0; page < MAX_PAGES; page++) {
+    let response: any = null;
     let retries = 0;
     let lastError: unknown = null;
 
     while (retries < maxRetries) {
       try {
-        responses = await fetchVkTopicBatch(token, groupId, topicId, offsets);
-        if (responses.length !== offsets.length || responses.some((r) => !r || !Array.isArray(r.items))) {
-          throw new Error(`VK returned an incomplete batch for topic ${topicId}`);
+        const data = await fetchVkTopic(token, groupId, topicId, offset);
+        if (data.error || !data.response || !Array.isArray(data.response.items)) {
+          throw new Error(`VK board error: ${JSON.stringify(data.error || data)}`);
         }
+        response = data.response;
         break;
       } catch (error) {
         lastError = error;
         logWarn(
-          `Network/execute error for topic ${topicId} (attempt ${retries + 1}/${maxRetries}):`,
+          `Network/API error for topic ${topicId} (attempt ${retries + 1}/${maxRetries}):`,
           error
         );
         retries++;
@@ -734,27 +703,16 @@ const fetchAllComments = async (
       }
     }
 
-    if (responses.length !== offsets.length || responses.some((r) => !r || !Array.isArray(r.items))) {
+    if (!response) {
       throw lastError instanceof Error
         ? lastError
         : new Error(`Unable to fetch comments for topic ${topicId}`);
     }
 
-    let reachedEnd = false;
-    for (let idx = 0; idx < responses.length; idx++) {
-      const resp = responses[idx];
-      const items = resp.items;
-      allItems.push(...items);
-      if (items.length < count) {
-        reachedEnd = true;
-        break;
-      }
-    }
-
-    offset += count * BATCH_SIZE;
-    if (reachedEnd) return allItems;
-
-    await sleep(200);
+    const items = response.items;
+    allItems.push(...items);
+    offset += items.length;
+    if (items.length < count || offset >= Number(response.count || 0)) return allItems;
   }
 
   throw new Error(`Safety limit reached while fetching topic ${topicId}`);

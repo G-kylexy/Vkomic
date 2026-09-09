@@ -8,10 +8,6 @@ import { VkConnectionStatus } from "../types";
 import { palette } from "../theme";
 import * as FolderService from "../services/FolderService";
 
-// VK OAuth Configuration
-const VK_APP_ID = "2685278"; // VK Android app ID (public)
-const VK_REDIRECT_URI = "https://oauth.vk.ru/blank.html";
-const VK_SCOPE = "docs,groups,wall,offline";
 const VK_TOKEN_STORAGE_KEY = "vk_token";
 
 const readStoredToken = async (): Promise<string | null> => {
@@ -49,6 +45,8 @@ const persistToken = async (value: string): Promise<void> => {
 interface VkContextType {
     token: string;
     setToken: (token: string) => Promise<void>;
+    appId: string;
+    setAppId: (appId: string) => Promise<void>;
     groupId: string;
     setGroupId: (groupId: string) => Promise<void>;
     topicId: string;
@@ -76,6 +74,7 @@ export const VkProvider: React.FC<{ children: React.ReactNode }> = ({
     children,
 }) => {
     const [token, setTokenState] = useState("");
+    const [appId, setAppIdState] = useState("");
     const [groupId, setGroupIdState] = useState("203785966");
     const [topicId, setTopicIdState] = useState("47515406");
     const [language, setLanguageState] = useState<Language>("fr");
@@ -179,6 +178,7 @@ export const VkProvider: React.FC<{ children: React.ReactNode }> = ({
             try {
                 const [
                     savedToken,
+                    savedAppId,
                     savedPath,
                     savedGroupId,
                     savedTopicId,
@@ -186,6 +186,7 @@ export const VkProvider: React.FC<{ children: React.ReactNode }> = ({
                     savedAutoSync,
                 ] = await Promise.all([
                     readStoredToken(),
+                    AsyncStorage.getItem("vk_app_id"),
                     AsyncStorage.getItem("vk_download_path"),
                     AsyncStorage.getItem("vk_group_id"),
                     AsyncStorage.getItem("vk_topic_id"),
@@ -199,6 +200,7 @@ export const VkProvider: React.FC<{ children: React.ReactNode }> = ({
                     setTokenState(savedToken);
                     setStatus((prev) => ({ ...prev, connected: true }));
                 }
+                if (savedAppId) setAppIdState(savedAppId);
                 if (savedPath) {
                     // Check SAF permissions if it's a content:// URI
                     if (Platform.OS === "android" && savedPath.startsWith("content://")) {
@@ -252,6 +254,17 @@ export const VkProvider: React.FC<{ children: React.ReactNode }> = ({
             }
         } catch (e) {
             console.error("Failed to save token", e);
+        }
+    };
+
+    const setAppId = async (newAppId: string) => {
+        const normalized = newAppId.replace(/[^\d]/g, "");
+        setAppIdState(normalized);
+        try {
+            if (normalized) await AsyncStorage.setItem("vk_app_id", normalized);
+            else await AsyncStorage.removeItem("vk_app_id");
+        } catch (e) {
+            console.error("Failed to save VK App ID", e);
         }
     };
 
@@ -318,6 +331,8 @@ export const VkProvider: React.FC<{ children: React.ReactNode }> = ({
     const value = React.useMemo(() => ({
         token,
         setToken,
+        appId,
+        setAppId,
         groupId,
         setGroupId,
         topicId,
@@ -338,7 +353,7 @@ export const VkProvider: React.FC<{ children: React.ReactNode }> = ({
         handleAuthSuccess,
         logout,
     }), [
-        token, groupId, topicId, language, downloadPath, status, isReady,
+        token, appId, groupId, topicId, language, downloadPath, status, isReady,
         autoSync, activePalette, isOffline, showAuthModal, parseTokenFromUrl,
         // Including functions here would trigger re-renders anyway without useCallback, 
         // but removing them from deps might cause stale closures if they weren't generic.
