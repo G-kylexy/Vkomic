@@ -6,6 +6,30 @@ import { formatBytes, formatSpeed } from "../utils/formatters";
 import { idbDel, idbGet, idbGetByPrefix, idbSet, migrateLocalStorageJsonToIdb } from "../utils/storage";
 import { tauriFs, tauriEvents } from "../lib/tauri";
 
+const getDownloadTarget = (download: DownloadItem, downloadPath: string) => {
+    if (!downloadPath || downloadPath === DEFAULT_DOWNLOAD_PATH) return null;
+
+    let fileName = download.title;
+    if (download.extension) {
+        const ext = download.extension.toLowerCase();
+        if (!fileName.toLowerCase().endsWith(`.${ext}`)) {
+            fileName = `${fileName}.${ext}`;
+        }
+    }
+
+    let directory = downloadPath;
+    if (download.subFolder) {
+        const safeSubFolder = download.subFolder.replace(/[<>:"/\\|?*]+/g, "").trim();
+        if (safeSubFolder.length > 0) {
+            const separator = downloadPath.includes("\\") ? "\\" : "/";
+            const cleanPath = downloadPath.endsWith(separator) ? downloadPath.slice(0, -1) : downloadPath;
+            directory = `${cleanPath}${separator}${safeSubFolder}`;
+        }
+    }
+
+    return { directory, fileName };
+};
+
 export const useDownloads = (downloadPath: string, vkToken?: string) => {
     const [downloads, setDownloads] = useState<DownloadItem[]>([]);
     const [downloadsHydrated, setDownloadsHydrated] = useState(false);
@@ -114,6 +138,7 @@ export const useDownloads = (downloadPath: string, vkToken?: string) => {
                 status: "pending", extension: node.extension, speed: "0 MB/s",
                 createdAt: new Date().toISOString(),
                 size: existing && existing.size ? existing.size : formattedSize,
+                totalBytes: node.sizeBytes ?? existing?.totalBytes,
                 path: existing && (existing as any).path ? (existing as any).path : undefined,
                 vkOwnerId: node.vkOwnerId,
                 vkDocId: node.id.replace("doc_", ""),
@@ -152,27 +177,19 @@ export const useDownloads = (downloadPath: string, vkToken?: string) => {
 
             enqueued.add(d.id);
 
-            let fileName = d.title;
-            if (d.extension) {
-                const ext = d.extension.toLowerCase();
-                if (!fileName.toLowerCase().endsWith(`.${ext}`)) {
-                    fileName = `${fileName}.${ext}`;
-                }
-            }
-
-            let targetPath = downloadPath;
-            if (d.subFolder) {
-                const safeSubFolder = d.subFolder.replace(/[<>:"/\\|?*]+/g, "").trim();
-                if (safeSubFolder.length > 0) {
-                    const separator = downloadPath.includes("\\") ? "\\" : "/";
-                    const cleanPath = downloadPath.endsWith(separator) ? downloadPath.slice(0, -1) : downloadPath;
-                    targetPath = `${cleanPath}${separator}${safeSubFolder}`;
-                }
-            }
+            const target = getDownloadTarget(d, downloadPath);
+            if (!target) continue;
 
             const enqueue = async () => {
                 try {
-                    await tauriFs.queueDownload(d.id, d.url!, targetPath, fileName, vkToken);
+                    await tauriFs.queueDownload(
+                        d.id,
+                        d.url!,
+                        target.directory,
+                        target.fileName,
+                        d.totalBytes,
+                        vkToken,
+                    );
                 } catch {
                     enqueued.delete(d.id);
                     setDownloads((prev) =>
@@ -324,6 +341,29 @@ export const useDownloads = (downloadPath: string, vkToken?: string) => {
         );
     }, []);
 
+    const resetDownload = useCallback((id: string) => {
+        const download = downloadsRef.current.find((d) => d.id === id);
+        const target = download && getDownloadTarget(download, downloadPath);
+        if (!download || !target) return;
+
+        enqueuedPendingDownloadsRef.current.delete(id);
+        void tauriFs.resetDownload(id, target.directory, target.fileName)
+            .then(() => {
+                setDownloads((prev) =>
+                    prev.map((d) =>
+                        d.id === id
+                            ? { ...d, status: "pending", progress: 0, speed: "0 MB/s", createdAt: new Date().toISOString() }
+                            : d
+                    )
+                );
+            })
+            .catch(() => {
+                setDownloads((prev) =>
+                    prev.map((d) => d.id === id ? { ...d, status: "error", speed: "Erreur de réinitialisation" } : d)
+                );
+            });
+    }, [downloadPath]);
+
     const clearDownloads = useCallback(() => {
         tauriFs.clearDownloadQueue().catch(console.error);
         enqueuedPendingDownloadsRef.current.clear();
@@ -337,6 +377,7 @@ export const useDownloads = (downloadPath: string, vkToken?: string) => {
         resumeDownload,
         cancelDownload,
         retryDownload,
+        resetDownload,
         clearDownloads,
     };
 };

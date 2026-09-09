@@ -35,14 +35,15 @@ lazy_static! {
 
     static ref RE_BBCODE: Regex = Regex::new(r"\[topic-(\d+)_(\d+)\|([^\]]+)\]").unwrap();
     static ref RE_MENTION: Regex = Regex::new(r"@topic-(\d+)_(\d+)(?:\?post=(\d+))?(?:\s*\(([^)]+)\))?").unwrap();
-    // Support m.vk.com, w.vk.com, new.vk.com, etc. - Also capture post_id for mentions
-    static ref RE_URL: Regex = Regex::new(r"https?://(?:[a-z0-9]+\.)?vk\.com/topic-(\d+)_(\d+)(?:\?post=(\d+))?").unwrap();
+    // Support VK's .com and .ru domains plus mobile subdomains. VK now exposes
+    // the default Vkomic board through vk.ru, while older indexes use vk.com.
+    static ref RE_URL: Regex = Regex::new(r"https?://(?:[a-z0-9]+\.)?vk\.(?:com|ru)/topic-(\d+)_(\d+)(?:\?post=(\d+))?").unwrap();
     // Newer VK board links can point to topics through /boardGROUP?...topic...
-    static ref RE_BOARD_URL: Regex = Regex::new(r"https?://(?:[a-z0-9]+\.)?vk\.com/board(\d+)\?[^\s\]]*(?:topic-|topic_id=|tid=)(?:-?\d+_)?(\d+)").unwrap();
-    // Inverted format: https://vk.com/topic-XXX|Titre] - BBCode malformed
-    static ref RE_URL_INVERTED: Regex = Regex::new(r"https?://(?:[a-z0-9]+\.)?vk\.com/topic-(\d+)_(\d+)\|([^\]]+)\]").unwrap();
-    // Support documents in text: https://vk.com/doc-123_456
-    static ref RE_DOC_URL: Regex = Regex::new(r"https?://(?:[a-z0-9]+\.)?vk\.com/doc(-?\d+)_(\d+)").unwrap();
+    static ref RE_BOARD_URL: Regex = Regex::new(r"https?://(?:[a-z0-9]+\.)?vk\.(?:com|ru)/board(\d+)\?[^\s\]]*(?:topic-|topic_id=|tid=)(?:-?\d+_)?(\d+)").unwrap();
+    // Inverted format: https://vk.ru/topic-XXX|Titre] - BBCode malformed
+    static ref RE_URL_INVERTED: Regex = Regex::new(r"https?://(?:[a-z0-9]+\.)?vk\.(?:com|ru)/topic-(\d+)_(\d+)\|([^\]]+)\]").unwrap();
+    // Support documents in text: https://vk.ru/doc-123_456
+    static ref RE_DOC_URL: Regex = Regex::new(r"https?://(?:[a-z0-9]+\.)?vk\.(?:com|ru)/doc(-?\d+)_(\d+)").unwrap();
 }
 
 pub fn clean_title(text: &str) -> String {
@@ -98,7 +99,7 @@ pub fn parse_topic_body(text: &str, exclude_topic_id: Option<&str>) -> Vec<VkNod
                     id: unique_id,
                     title,
                     node_type: "genre".to_string(),
-                    url: Some(format!("https://vk.com/topic-{}_{}", group_id, topic_id)),
+                    url: Some(format!("https://vk.ru/topic-{}_{}", group_id, topic_id)),
                     vk_group_id: Some(group_id.to_string()),
                     vk_topic_id: Some(topic_id.to_string()),
                     children: Some(Vec::new()),
@@ -149,7 +150,7 @@ pub fn parse_topic_body(text: &str, exclude_topic_id: Option<&str>) -> Vec<VkNod
                     id: unique_id,
                     title,
                     node_type: "genre".to_string(),
-                    url: Some(format!("https://vk.com/topic-{}_{}", group_id, topic_id)),
+                    url: Some(format!("https://vk.ru/topic-{}_{}", group_id, topic_id)),
                     vk_group_id: Some(group_id.to_string()),
                     vk_topic_id: Some(topic_id.to_string()),
                     children: Some(Vec::new()),
@@ -201,7 +202,7 @@ pub fn parse_topic_body(text: &str, exclude_topic_id: Option<&str>) -> Vec<VkNod
                         id: unique_id,
                         title,
                         node_type: "genre".to_string(),
-                        url: Some(format!("https://vk.com/topic-{}_{}", group_id, topic_id)),
+                        url: Some(format!("https://vk.ru/topic-{}_{}", group_id, topic_id)),
                         vk_group_id: Some(group_id.to_string()),
                         vk_topic_id: Some(topic_id.to_string()),
                         children: Some(Vec::new()),
@@ -273,7 +274,10 @@ pub fn parse_topic_body(text: &str, exclude_topic_id: Option<&str>) -> Vec<VkNod
             // Try previous line if no title found
             if (title.is_empty() || title.len() < 2) && i > 0 {
                 let prev_line = lines[i - 1].trim();
-                if !prev_line.contains("vk.com") && prev_line.len() > 2 {
+                if !prev_line.contains("vk.com")
+                    && !prev_line.contains("vk.ru")
+                    && prev_line.len() > 2
+                {
                     title = clean_title(prev_line);
                 }
             }
@@ -281,7 +285,10 @@ pub fn parse_topic_body(text: &str, exclude_topic_id: Option<&str>) -> Vec<VkNod
             // Try text after URL as fallback (mobile behavior)
             if (title.is_empty() || title.len() < 2) && url_end < line.len() {
                 let after_text = &line[url_end..].trim();
-                if !after_text.is_empty() && after_text.len() > 2 && !after_text.contains("vk.com")
+                if !after_text.is_empty()
+                    && after_text.len() > 2
+                    && !after_text.contains("vk.com")
+                    && !after_text.contains("vk.ru")
                 {
                     title = clean_title(after_text);
                 }
@@ -302,7 +309,7 @@ pub fn parse_topic_body(text: &str, exclude_topic_id: Option<&str>) -> Vec<VkNod
                         id: unique_id,
                         title,
                         node_type: "genre".to_string(),
-                        url: Some(format!("https://vk.com/topic-{}_{}", group_id, topic_id)),
+                        url: Some(format!("https://vk.ru/topic-{}_{}", group_id, topic_id)),
                         vk_group_id: Some(group_id.to_string()),
                         vk_topic_id: Some(topic_id.to_string()),
                         children: Some(Vec::new()),
@@ -346,7 +353,10 @@ pub fn parse_topic_body(text: &str, exclude_topic_id: Option<&str>) -> Vec<VkNod
             // Previous line if needed
             if (title.is_empty() || title.len() < 2) && i > 0 {
                 let prev_line = lines[i - 1].trim();
-                if !prev_line.contains("vk.com") && prev_line.len() > 2 {
+                if !prev_line.contains("vk.com")
+                    && !prev_line.contains("vk.ru")
+                    && prev_line.len() > 2
+                {
                     title = clean_title(prev_line);
                 }
             }
@@ -357,7 +367,10 @@ pub fn parse_topic_body(text: &str, exclude_topic_id: Option<&str>) -> Vec<VkNod
             {
                 if i > 0 {
                     let prev_line = lines[i - 1].trim();
-                    if !prev_line.contains("vk.com") && prev_line.len() > 2 {
+                    if !prev_line.contains("vk.com")
+                        && !prev_line.contains("vk.ru")
+                        && prev_line.len() > 2
+                    {
                         title = clean_title(prev_line);
                     }
                 }
@@ -372,7 +385,7 @@ pub fn parse_topic_body(text: &str, exclude_topic_id: Option<&str>) -> Vec<VkNod
                 id: unique_id,
                 title,
                 node_type: "file".to_string(),
-                url: Some(format!("https://vk.com/doc{}_{}", owner_id, doc_id)),
+                url: Some(format!("https://vk.ru/doc{}_{}", owner_id, doc_id)),
                 extension: Some("FILE".to_string()),
                 vk_owner_id: Some(owner_id.to_string()),
                 vk_doc_id: Some(doc_id.to_string()),
@@ -446,4 +459,24 @@ pub fn extract_documents(items: &[serde_json::Value]) -> Vec<VkNode> {
     }
 
     nodes
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_topic_body;
+
+    #[test]
+    fn parses_vk_ru_topic_links_from_the_default_index() {
+        let text = "BDs en français / French comics books\nhttps://vk.ru/topic-203785966_47386771\n\nMangas en français / Mangas in french\nhttps://vk.ru/topic-203785966_47423270\n\nComics en français / Comics in french\nhttps://vk.ru/topic-203785966_47543940";
+
+        let nodes = parse_topic_body(text, None);
+
+        assert_eq!(nodes.len(), 3);
+        assert_eq!(nodes[0].title, "BDs en français / French comics books");
+        assert_eq!(nodes[0].vk_topic_id.as_deref(), Some("47386771"));
+        assert_eq!(
+            nodes[0].url.as_deref(),
+            Some("https://vk.ru/topic-203785966_47386771")
+        );
+    }
 }

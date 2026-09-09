@@ -1,5 +1,7 @@
 use anyhow::Result;
 use futures_util::StreamExt;
+use reqwest::header::{ACCEPT_ENCODING, CONTENT_RANGE, RANGE};
+use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
@@ -8,7 +10,11 @@ use tokio::io::AsyncWriteExt;
 use tokio::sync::Mutex;
 
 const MAX_ACTIVE_DOWNLOADS: usize = 2;
-const VKOMIC_USER_AGENT: &str = "KateMobileAndroid/110.1 lite-x86_64 (Android 11; SDK 30; x86_64; en)";
+const MAX_DOWNLOAD_ATTEMPTS: usize = 5;
+const FALLBACK_AFTER_FAILURES: usize = 2;
+const FALLBACK_CHUNK_SIZE: u64 = 32 * 1024 * 1024;
+const VKOMIC_USER_AGENT: &str =
+    "KateMobileAndroid/110.1 lite-x86_64 (Android 11; SDK 30; x86_64; en)";
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DownloadTask {
@@ -16,6 +22,7 @@ pub struct DownloadTask {
     pub url: String,
     pub directory: String,
     pub file_name: String,
+    pub expected_size: Option<u64>,
     pub token: Option<String>,
 }
 
@@ -34,6 +41,11 @@ pub struct DownloadManager {
     queue: Arc<Mutex<VecDeque<DownloadTask>>>,
     active: Arc<Mutex<HashMap<String, tokio::task::JoinHandle<()>>>>,
     cancel_tokens: Arc<Mutex<HashMap<String, tokio::sync::watch::Sender<bool>>>>,
+}
+
+enum DownloadAttemptOutcome {
+    Complete,
+    MoreData,
 }
 
 impl DownloadManager {
@@ -83,6 +95,31 @@ impl DownloadManager {
         }
 
         false
+    }
+
+    pub async fn reset_task(&self, app: AppHandle, task_id: String) -> bool {
+        let mut queue = self.queue.lock().await;
+        let queued_before = queue.len();
+        queue.retain(|task| task.id != task_id);
+        let was_queued = queue.len() != queued_before;
+        drop(queue);
+
+        let mut cancel_tokens = self.cancel_tokens.lock().await;
+        let mut active = self.active.lock().await;
+        let was_active = if let Some(sender) = cancel_tokens.remove(&task_id) {
+            let _ = sender.send(true);
+            if let Some(handle) = active.remove(&task_id) {
+                handle.abort();
+            }
+            true
+        } else {
+            false
+        };
+        drop(active);
+        drop(cancel_tokens);
+
+        self.schedule_next(app).await;
+        was_queued || was_active
     }
 
     pub async fn clear_queue(&self, app: AppHandle) -> usize {
@@ -215,10 +252,59 @@ async fn download_file_worker(
     task: DownloadTask,
     cancel_rx: tokio::sync::watch::Receiver<bool>,
 ) -> Result<()> {
-    println!("DEBUG: Worker processing URL: {}", task.url);
     let client = reqwest::Client::builder()
         .user_agent(VKOMIC_USER_AGENT)
         .build()?;
+    let mut failed_attempts = 0usize;
+    loop {
+        let chunk_size =
+            (failed_attempts >= FALLBACK_AFTER_FAILURES).then_some(FALLBACK_CHUNK_SIZE);
+        match download_file_attempt(
+            app.clone(),
+            task.clone(),
+            cancel_rx.clone(),
+            &client,
+            chunk_size,
+        )
+        .await
+        {
+            Ok(DownloadAttemptOutcome::Complete) => return Ok(()),
+            Ok(DownloadAttemptOutcome::MoreData) => continue,
+            Err(error) if *cancel_rx.borrow() => return Err(error),
+            Err(error) => {
+                failed_attempts += 1;
+                if failed_attempts == MAX_DOWNLOAD_ATTEMPTS {
+                    return Err(error);
+                }
+                // VK sometimes closes a ranged response before its declared end.
+                // The partial bytes are safely retained; retrying with a new Range
+                // request resumes from the current file size.
+                println!(
+                    "DEBUG: Download attempt {}/{} failed for {}: {:#}. Retrying{}...",
+                    failed_attempts,
+                    MAX_DOWNLOAD_ATTEMPTS,
+                    task.id,
+                    error,
+                    if failed_attempts == FALLBACK_AFTER_FAILURES {
+                        " with 32 MiB chunks"
+                    } else {
+                        ""
+                    }
+                );
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            }
+        }
+    }
+}
+
+async fn download_file_attempt(
+    app: AppHandle,
+    task: DownloadTask,
+    cancel_rx: tokio::sync::watch::Receiver<bool>,
+    client: &reqwest::Client,
+    chunk_size: Option<u64>,
+) -> Result<DownloadAttemptOutcome> {
+    println!("DEBUG: Worker processing task {}", task.id);
 
     // Sanitization du nom de fichier pour Windows (remplace les caractères interdits par _)
     let safe_file_name: String = task
@@ -243,18 +329,72 @@ async fn download_file_worker(
         start_byte = std::fs::metadata(&path)?.len();
     }
 
-    let mut request = client.get(&task.url);
-    if start_byte > 0 {
-        request = request.header("Range", format!("bytes={}-", start_byte));
-    }
+    // Keep the UI in sync with the worker even if VK resets the stream before
+    // the first chunk reaches the throttled progress reporter.
+    let _ = app.emit(
+        "download-progress",
+        ProgressPayload {
+            id: task.id.clone(),
+            progress: task
+                .expected_size
+                .map(|total| (start_byte as f64 / total as f64) * 100.0)
+                .unwrap_or(0.0),
+            received_bytes: start_byte,
+            total_bytes: task.expected_size,
+            speed_bytes: 0.0,
+        },
+    );
 
+    // Normal downloads keep the original single response. After two failed
+    // attempts, request bounded ranges with identity encoding so one unstable
+    // CDN response cannot discard the already-written prefix.
+    let mut request = client.get(&task.url);
+    if let Some(chunk_size) = chunk_size {
+        let range_end = start_byte.saturating_add(chunk_size - 1);
+        println!(
+            "DEBUG: Fallback request bytes {}-{} for {}",
+            start_byte, range_end, task.id
+        );
+        request = request
+            .header(ACCEPT_ENCODING, "identity")
+            .header(RANGE, format!("bytes={start_byte}-{range_end}"));
+    } else if start_byte > 0 {
+        request = request.header(RANGE, format!("bytes={start_byte}-"));
+    }
     let response = request.send().await?;
 
     if *cancel_rx.borrow() {
         return Err(anyhow::anyhow!("Download cancelled"));
     }
 
-    let total_size = response.content_length().map(|l| l + start_byte);
+    let content_range_total = response
+        .headers()
+        .get(CONTENT_RANGE)
+        .and_then(|value| value.to_str().ok())
+        .and_then(parse_content_range_total);
+
+    if response.status() == StatusCode::RANGE_NOT_SATISFIABLE
+        && content_range_total.is_some_and(|total| start_byte >= total)
+    {
+        app.emit(
+            "download-result",
+            serde_json::json!({
+                "id": task.id,
+                "ok": true,
+                "path": path.to_string_lossy()
+            }),
+        )?;
+        return Ok(DownloadAttemptOutcome::Complete);
+    }
+
+    if !response.status().is_success() {
+        return Err(anyhow::anyhow!(
+            "VK returned HTTP {} for the requested byte range",
+            response.status()
+        ));
+    }
+
+    let response_content_length = response.content_length();
 
     // Détermine le mode d'ouverture selon le code HTTP
     let mut file = if response.status() == 206 {
@@ -281,6 +421,10 @@ async fn download_file_worker(
             .await?
     };
 
+    let total_size = content_range_total
+        .or(task.expected_size)
+        .or_else(|| response_content_length.map(|l| l + start_byte));
+
     // Plus besoin de seek/set_len manuel car géré par les flags OpenOptions
 
     let mut stream = response.bytes_stream();
@@ -301,7 +445,22 @@ async fn download_file_worker(
             return Err(anyhow::anyhow!("Download cancelled"));
         }
 
-        let chunk = item?;
+        let chunk = match item {
+            Ok(chunk) => chunk,
+            Err(error) => {
+                println!(
+                    "DEBUG: Stream interrupted after {} new bytes (resume offset {}).",
+                    downloaded, start_byte
+                );
+                // Only fallback chunks resume immediately after a partial
+                // response. A normal stream failure counts toward the two
+                // failures required before enabling bounded ranges.
+                if chunk_size.is_some() && downloaded > 0 {
+                    return Ok(DownloadAttemptOutcome::MoreData);
+                }
+                return Err(error.into());
+            }
+        };
         file.write_all(&chunk).await?;
         downloaded += chunk.len() as u64;
 
@@ -333,6 +492,29 @@ async fn download_file_worker(
         }
     }
 
+    let total_downloaded = start_byte + downloaded;
+    let progress = total_size
+        .map(|total| (total_downloaded as f64 / total as f64) * 100.0)
+        .unwrap_or(0.0);
+    app.emit(
+        "download-progress",
+        ProgressPayload {
+            id: task.id.clone(),
+            progress,
+            received_bytes: total_downloaded,
+            total_bytes: total_size,
+            speed_bytes: if start_time.elapsed().is_zero() {
+                0.0
+            } else {
+                downloaded as f64 / start_time.elapsed().as_secs_f64()
+            },
+        },
+    )?;
+
+    if chunk_size.is_some() && total_size.is_some_and(|total| total_downloaded < total) {
+        return Ok(DownloadAttemptOutcome::MoreData);
+    }
+
     app.emit(
         "download-result",
         serde_json::json!({
@@ -342,5 +524,36 @@ async fn download_file_worker(
         }),
     )?;
 
+    Ok(DownloadAttemptOutcome::Complete)
+}
+
+fn parse_content_range_total(value: &str) -> Option<u64> {
+    value.rsplit('/').next()?.parse().ok()
+}
+
+pub async fn reset_partial_download(directory: &str, file_name: &str) -> Result<()> {
+    let safe_file_name: String = file_name
+        .chars()
+        .map(|c| if "<>:\"/\\\\|?*".contains(c) { '_' } else { c })
+        .collect();
+    let path = std::path::Path::new(directory).join(&safe_file_name);
+    if path.exists() {
+        preserve_partial(&path, &safe_file_name, "reset").await?;
+    }
+    Ok(())
+}
+
+async fn preserve_partial(path: &std::path::Path, file_name: &str, reason: &str) -> Result<()> {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let backup_path = path.with_file_name(format!("{file_name}.{reason}-backup-{suffix}"));
+
+    tokio::fs::rename(path, &backup_path).await?;
+    println!(
+        "DEBUG: Preserved partial download at {:?} ({reason} backup)",
+        backup_path,
+    );
     Ok(())
 }
