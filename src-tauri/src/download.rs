@@ -8,7 +8,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::sync::Mutex;
 
 const MAX_ACTIVE_DOWNLOADS: usize = 2;
-const VKOMIC_USER_AGENT: &str = "Vkomic/1.4.2 (+https://github.com/G-kylexy/Vkomic)";
+const VKOMIC_USER_AGENT: &str = "Vkomic/1.4.2 (+https://github.com/G-kylexy/vkomic)";
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DownloadTask {

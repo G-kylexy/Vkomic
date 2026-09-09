@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 const VK_WEB_CLIENT_ID: &str = "54761285";
-const VK_WEB_REDIRECT_URI: &str = "https://g-kylexy.github.io/Vkomic/vk-callback.html";
+const VK_WEB_REDIRECT_URI: &str = "https://g-kylexy.github.io/vkomic/vk-callback.html";
 const VK_TOKEN_ENDPOINT: &str = "https://id.vk.ru/oauth2/auth";
 
 #[derive(Debug, Serialize)]

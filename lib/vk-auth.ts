@@ -1,5 +1,5 @@
 export const VK_WEB_CLIENT_ID = "54761285";
-export const VK_WEB_REDIRECT_URI = "https://g-kylexy.github.io/Vkomic/vk-callback.html";
+export const VK_WEB_REDIRECT_URI = "https://g-kylexy.github.io/vkomic/vk-callback.html";
 export const VK_AUTHORIZATION_ENDPOINT = "https://id.vk.ru/authorize";
 
 const PENDING_STATE_KEY = "vk_oauth_state";
