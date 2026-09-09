@@ -2,14 +2,14 @@ use crate::vk_parser::{extract_documents, parse_topic_body, VkNode};
 use anyhow::Result;
 use log::info;
 use reqwest::Client;
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 
 const VK_API_MIN_INTERVAL: Duration = Duration::from_millis(500);
 const VK_API_RETRY_BACKOFF: Duration = Duration::from_millis(1_500);
-const VKOMIC_USER_AGENT: &str = "KateMobileAndroid/110.1 lite-x86_64 (Android 11; SDK 30; x86_64; en)";
+const VKOMIC_USER_AGENT: &str = "Vkomic/1.4.2 (+https://github.com/G-kylexy/vkomic)";
 
 static VK_API_LAST_REQUEST: OnceLock<Mutex<Option<Instant>>> = OnceLock::new();
 
@@ -116,6 +116,69 @@ impl VkApi {
         }
 
         Ok(start.elapsed().as_millis() as u64)
+    }
+
+    async fn fetch_comments_page(
+        &self,
+        group_id: &str,
+        topic_id: &str,
+        offset: usize,
+    ) -> Result<Value> {
+        let group_id = group_id.replace('-', "");
+        let offset = offset.to_string();
+        let params = [
+            ("access_token", self.token.as_str()),
+            ("v", "5.199"),
+            ("group_id", group_id.as_str()),
+            ("topic_id", topic_id),
+            ("count", "100"),
+            ("offset", offset.as_str()),
+            ("extended", "1"),
+        ];
+
+        let mut attempts = 0;
+        loop {
+            wait_for_vk_api_slot().await;
+            let result = self
+                .client
+                .post("https://api.vk.ru/method/board.getComments")
+                .form(&params)
+                .send()
+                .await;
+
+            if let Ok(response) = result {
+                if let Ok(response) = response.error_for_status() {
+                    if let Ok(json) = response.json::<Value>().await {
+                        if let Some(err) = json.get("error") {
+                            let retryable = err
+                                .get("error_code")
+                                .and_then(Value::as_i64)
+                                .is_some_and(|code| code == 6 || code == 10);
+                            if !retryable || attempts >= 3 {
+                                return Err(anyhow::anyhow!(
+                                    "VK API error: {}",
+                                    format_vk_error(err)
+                                ));
+                            }
+                        } else {
+                            return json
+                                .get("response")
+                                .cloned()
+                                .ok_or_else(|| anyhow::anyhow!("VK API response is missing"));
+                        }
+                    } else if attempts >= 3 {
+                        return Err(anyhow::anyhow!("VK API returned invalid JSON"));
+                    }
+                } else if attempts >= 3 {
+                    return Err(anyhow::anyhow!("VK API HTTP request failed"));
+                }
+            } else if attempts >= 3 {
+                return Err(anyhow::anyhow!("VK API request failed"));
+            }
+
+            attempts += 1;
+            tokio::time::sleep(VK_API_RETRY_BACKOFF).await;
+        }
     }
 
     pub async fn fetch_root_index(&self, group_id: &str, topic_id: &str) -> Result<Vec<VkNode>> {
@@ -386,7 +449,23 @@ impl VkApi {
 
         let mut results = Vec::new();
         for (chunk_indices, code, topic_ids) in batch_requests {
-            let res = self.execute_with_retry(&code).await?;
+            let res = match self.execute_with_retry(&code).await {
+                Ok(value) => value,
+                Err(error) => {
+                    info!(
+                        "VK execute unavailable ({}); falling back to direct board calls",
+                        error
+                    );
+                    let mut responses = Vec::with_capacity(chunk_indices.len());
+                    for &idx in &chunk_indices {
+                        let node = &nodes[idx];
+                        let group_id = node.vk_group_id.as_deref().unwrap_or_default();
+                        let topic_id = node.vk_topic_id.as_deref().unwrap_or_default();
+                        responses.push(self.fetch_comments_page(group_id, topic_id, 0).await?);
+                    }
+                    json!({ "response": responses })
+                }
+            };
             results.push((chunk_indices, res, topic_ids));
         }
 
@@ -488,102 +567,30 @@ impl VkApi {
     }
 
     async fn fetch_all_comments(&self, group_id: &str, topic_id: &str) -> Result<Vec<Value>> {
-        let batch_size = 10; // 10 API calls per execute = 1000 items per batch
-        let gid = group_id.replace('-', "");
-
         info!("Starting fetch_all_comments for topic {}", topic_id);
 
-        // --- Step 1: First call to get total count + first 1000 items ---
-        let first_code = format!(
-            r#"
-            var g = {};
-            var t = {};
-            var off = 0;
-            var i = 0;
-            var items = [];
-            while (i < {}) {{
-                var r = API.board.getComments({{"group_id":g, "topic_id":t, "count":100, "offset":off, "extended":1}});
-                if (r.items) {{
-                    items = items + r.items;
-                }}
-                off = off + 100;
-                if (!r.items || r.items.length < 100) {{ i = 30; }}
-                i = i + 1;
-            }}
-            return {{ "items": items, "next_offset": off, "total": {}.count }};
-        "#,
-            gid,
-            topic_id,
-            batch_size,
-            board_get_comments_call(&gid, topic_id, 1, None)
-        );
+        // A direct method call works with ordinary user tokens. Depending on
+        // `execute` here made a valid token look successful during ping while
+        // the nested board call failed and produced an empty library.
+        let mut all_items = Vec::new();
+        let mut offset = 0;
 
-        let first_res = self.execute_with_retry(&first_code).await?;
-        let response = first_res
-            .get("response")
-            .ok_or_else(|| anyhow::anyhow!("No response body"))?;
+        loop {
+            let response = self.fetch_comments_page(group_id, topic_id, offset).await?;
+            let items = response
+                .get("items")
+                .and_then(Value::as_array)
+                .ok_or_else(|| anyhow::anyhow!("VK API response contains no items"))?;
+            let total_count = response
+                .get("count")
+                .and_then(Value::as_u64)
+                .unwrap_or(items.len() as u64) as usize;
 
-        let first_items = response
-            .get("items")
-            .and_then(|i| i.as_array())
-            .ok_or_else(|| anyhow::anyhow!("No items in first response"))?;
+            all_items.extend(items.iter().cloned());
+            offset += items.len();
 
-        let mut all_items: Vec<Value> = first_items.iter().cloned().collect();
-        let total_count = response
-            .get("total")
-            .and_then(|t| t.as_u64())
-            .unwrap_or(all_items.len() as u64) as usize;
-
-        info!(
-            "First batch: {} items. Total: {}",
-            all_items.len(),
-            total_count
-        );
-
-        // --- Step 2: If more items remain, fetch remaining batches sequentially ---
-        if all_items.len() < total_count {
-            let items_per_batch = batch_size * 100; // 1000
-            let mut remaining_offsets: Vec<usize> = Vec::new();
-            let mut off = all_items.len();
-            while off < total_count {
-                remaining_offsets.push(off);
-                off += items_per_batch;
-            }
-
-            info!(
-                "Fetching {} remaining batches for {} items",
-                remaining_offsets.len(),
-                total_count - all_items.len()
-            );
-
-            for batch_offset in remaining_offsets {
-                let code = format!(
-                    r#"
-                    var g = {};
-                    var t = {};
-                    var off = {};
-                    var i = 0;
-                    var items = [];
-                    while (i < {}) {{
-                        var r = API.board.getComments({{"group_id":g, "topic_id":t, "count":100, "offset":off, "extended":1}});
-                        if (r.items) {{
-                            items = items + r.items;
-                        }}
-                        off = off + 100;
-                        if (!r.items || r.items.length < 100) {{ i = 30; }}
-                        i = i + 1;
-                    }}
-                    return {{ "items": items, "next_offset": off, "count": items.length }};
-                "#,
-                    gid, topic_id, batch_offset, batch_size
-                );
-
-                let val = self.execute_with_retry(&code).await?;
-                if let Some(resp) = val.get("response") {
-                    if let Some(items) = resp.get("items").and_then(|i| i.as_array()) {
-                        all_items.extend(items.iter().cloned());
-                    }
-                }
+            if items.is_empty() || items.len() < 100 || offset >= total_count {
+                break;
             }
         }
 
@@ -607,6 +614,14 @@ impl VkApi {
                     Ok(json) => {
                         if let Some(err) = json.get("error") {
                             return Err(anyhow::anyhow!("VK API error: {}", format_vk_error(err)));
+                        }
+                        if let Some(errors) = json.get("execute_errors").and_then(Value::as_array) {
+                            if !errors.is_empty() {
+                                return Err(anyhow::anyhow!(
+                                    "VK execute error: {}",
+                                    format_vk_error(&Value::Array(errors.clone()))
+                                ));
+                            }
                         }
                         return Ok(json);
                     }
@@ -650,7 +665,21 @@ impl VkApi {
         }).collect();
 
         for (chunk, code) in batch_requests {
-            let res_val = self.execute_with_retry(&code).await?;
+            let res_val = match self.execute_with_retry(&code).await {
+                Ok(value) => value,
+                Err(error) => {
+                    info!(
+                        "VK execute unavailable during count refresh ({}); using direct calls",
+                        error
+                    );
+                    let mut counts = Vec::with_capacity(chunk.len());
+                    for topic_id in &chunk {
+                        let response = self.fetch_comments_page(&gid, topic_id, 0).await?;
+                        counts.push(response.get("count").cloned().unwrap_or(Value::Null));
+                    }
+                    json!({ "response": counts })
+                }
+            };
             if let Some(responses) = res_val.get("response").and_then(|r| r.as_array()) {
                 for (i, tid) in chunk.iter().enumerate() {
                     if let Some(count_val) = responses.get(i).and_then(|v| v.as_i64()) {

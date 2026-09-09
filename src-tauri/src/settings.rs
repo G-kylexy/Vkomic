@@ -7,11 +7,15 @@ pub struct AppSettings {
     #[serde(default)]
     pub vk_token: String,
     #[serde(default)]
+    pub vk_refresh_token: String,
+    #[serde(default)]
+    pub vk_device_id: String,
+    #[serde(default)]
+    pub vk_token_expires_at: u64,
+    #[serde(default)]
     pub vk_group_id: String,
     #[serde(default)]
     pub vk_topic_id: String,
-    #[serde(default)]
-    pub vk_app_id: String,
     #[serde(default)]
     pub vk_download_path: String,
 }

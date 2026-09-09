@@ -1,11 +1,15 @@
 import React, { useEffect, useState } from "react";
 import { Save, Folder, ChevronDown, Trash2, AlertCircle } from "./Icons";
 import { useTranslation, Language } from "../i18n";
-import { tauriDialog, tauriShell } from "../lib/tauri";
+import { tauriDialog } from "../lib/tauri";
 
 interface SettingsViewProps {
   vkToken: string;
-  setVkToken: (token: string) => void;
+  onConnectVk: () => Promise<void>;
+  onDisconnectVk: () => void;
+  isVkAuthPending: boolean;
+  isVkAuthExchanging: boolean;
+  vkAuthError: string;
   downloadPath: string;
   setDownloadPath: (path: string) => void;
 }
@@ -16,36 +20,30 @@ const SettingsView: React.FC<
     setVkGroupId: (groupId: string) => void;
     vkTopicId: string;
     setVkTopicId: (topicId: string) => void;
-    vkAppId: string;
-    setVkAppId: (appId: string) => void;
     onResetDatabase: () => void;
   }
 > = ({
   vkToken,
-  setVkToken,
+  onConnectVk,
+  onDisconnectVk,
+  isVkAuthPending,
+  isVkAuthExchanging,
+  vkAuthError,
   downloadPath,
   setDownloadPath,
   vkGroupId,
   setVkGroupId,
   vkTopicId,
   setVkTopicId,
-  vkAppId,
-  setVkAppId,
   onResetDatabase,
 }) => {
     const { t, language, setLanguage } = useTranslation();
 
-    const [localToken, setLocalToken] = useState(vkToken);
     const [localGroupId, setLocalGroupId] = useState(vkGroupId);
     const [localTopicId, setLocalTopicId] = useState(vkTopicId);
-    const [localAppId, setLocalAppId] = useState(vkAppId);
     const [localDownloadPath, setLocalDownloadPath] = useState(downloadPath);
     const [isSaved, setIsSaved] = useState(false);
     const [showResetConfirm, setShowResetConfirm] = useState(false);
-
-    useEffect(() => {
-      setLocalToken(vkToken);
-    }, [vkToken]);
 
     useEffect(() => {
       setLocalDownloadPath(downloadPath);
@@ -59,23 +57,12 @@ const SettingsView: React.FC<
       setLocalTopicId(vkTopicId);
     }, [vkTopicId]);
 
-    useEffect(() => {
-      setLocalAppId(vkAppId);
-    }, [vkAppId]);
-
     const handleSave = () => {
-      setVkToken(localToken);
       setVkGroupId(localGroupId.trim());
       setVkTopicId(localTopicId.trim());
-      setVkAppId(localAppId.trim());
       setDownloadPath(localDownloadPath);
       setIsSaved(true);
       setTimeout(() => setIsSaved(false), 2000);
-    };
-
-    const handleTokenChange = (value: string) => {
-      setLocalToken(value);
-      setIsSaved(false);
     };
 
     const handleGroupIdChange = (value: string) => {
@@ -85,11 +72,6 @@ const SettingsView: React.FC<
 
     const handleTopicIdChange = (value: string) => {
       setLocalTopicId(value);
-      setIsSaved(false);
-    };
-
-    const handleAppIdChange = (value: string) => {
-      setLocalAppId(value.replace(/[^\d]/g, ""));
       setIsSaved(false);
     };
 
@@ -123,28 +105,6 @@ const SettingsView: React.FC<
       setLanguage(value);
     };
 
-    const openAuthLink = () => {
-      const appId = localAppId.trim();
-      if (!appId) {
-        window.alert(t.settings.missingAppIdWarning);
-        return;
-      }
-
-      const params = new URLSearchParams({
-        client_id: appId,
-        scope: "docs",
-        redirect_uri: "https://oauth.vk.com/blank.html",
-        display: "page",
-        response_type: "token",
-        revoke: "1",
-        v: "5.199",
-      });
-      const url = `https://oauth.vk.com/authorize?${params.toString()}`;
-      tauriShell.openExternal(url).catch(() => {
-        window.open(url, "_blank");
-      });
-    };
-
     return (
       <div className="relative flex flex-col w-full h-full overflow-hidden bg-[#050B14]">
         {/* Flous ambiants pour donner du relief au Liquid Glass */}
@@ -168,45 +128,48 @@ const SettingsView: React.FC<
               </h2>
 
               <div className="space-y-8">
-                {/* Champ Token */}
+                {/* Connexion officielle VK ID */}
                 <div>
-                  <label className="block text-sm font-medium text-slate-400 mb-2.5">
-                    {t.settings.appId}
-                  </label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={localAppId}
-                    onChange={(e) => handleAppIdChange(e.target.value)}
-                    placeholder={t.settings.appIdPlaceholder}
-                    className="w-full bg-[#161f32] text-slate-200 text-sm rounded-lg px-4 py-3 focus:outline-none focus:ring-1 focus:ring-blue-500 border border-slate-700/50 placeholder-slate-600 font-mono transition-all mb-5"
-                  />
-
-                  <label className="block text-sm font-medium text-slate-400 mb-2.5">
-                    {t.settings.accessToken}
-                  </label>
-                  <input
-                    type="password"
-                    value={localToken}
-                    onChange={(e) => handleTokenChange(e.target.value)}
-                    className="w-full bg-[#161f32] text-slate-200 text-sm rounded-lg px-4 py-3 focus:outline-none focus:ring-1 focus:ring-blue-500 border border-slate-700/50 placeholder-slate-600 font-mono tracking-widest transition-all"
-                  />
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-lg border border-slate-700/50 bg-[#161f32] p-4">
+                    <div>
+                      <p className={`text-sm font-semibold ${vkToken ? "text-emerald-400" : "text-slate-300"}`}>
+                        {vkToken ? t.settings.vkIdConnected : t.settings.vkIdDisconnected}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500 leading-relaxed">
+                        {isVkAuthPending ? t.settings.vkIdPending : t.settings.vkIdHelp}
+                      </p>
+                    </div>
+                    <div className="flex gap-2 shrink-0">
+                      {vkToken && (
+                        <button
+                          type="button"
+                          onClick={onDisconnectVk}
+                          className="bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-2.5 rounded-lg border border-slate-700/50 transition-colors text-sm font-medium"
+                        >
+                          {t.settings.disconnectVk}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => void onConnectVk()}
+                        disabled={isVkAuthExchanging}
+                        className="bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white px-4 py-2.5 rounded-lg transition-colors text-sm font-semibold"
+                      >
+                        {isVkAuthExchanging
+                          ? t.settings.vkIdFinishing
+                          : vkToken
+                            ? t.settings.reconnectVk
+                            : t.settings.connectVk}
+                      </button>
+                    </div>
+                  </div>
+                  {vkAuthError && (
+                    <p className="mt-3 text-xs text-rose-400 leading-relaxed">
+                      {t.settings.vkAuthError}: {vkAuthError}
+                    </p>
+                  )}
                   <p className="mt-3 text-xs text-slate-500 leading-relaxed">
-                    {t.settings.tokenHelper}{" "}
-                    <button
-                      onClick={openAuthLink}
-                      className="text-blue-500 hover:text-blue-400 font-medium hover:underline transition-colors"
-                    >
-                      {t.settings.clickHere}
-                    </button>
-                    {t.settings.tokenInstructions}
-                    <span className="mx-1.5 inline-block bg-slate-800 border border-slate-700 text-emerald-400 px-2 py-0.5 rounded font-mono font-bold shadow-sm">
-                      access_token=
-                    </span>
-                    {t.settings.and}
-                    <span className="mx-1.5 inline-block bg-slate-800 border border-slate-700 text-emerald-400 px-2 py-0.5 rounded font-mono font-bold shadow-sm">
-                      &expires
-                    </span>
+                    {t.settings.vkIdPrivacy}
                   </p>
                 </div>
 
