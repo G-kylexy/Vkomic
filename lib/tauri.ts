@@ -3,10 +3,16 @@ import { listen } from "@tauri-apps/api/event";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { open as selectFolder } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { VkNode } from "../types";
+import { VkAuthSession } from "./vk-auth";
 
 // --- VK API Commands ---
 export const tauriVk = {
+    exchangeAuthCode: (code: string, deviceId: string, state: string, codeVerifier: string) =>
+        invoke<VkAuthSession>("vk_exchange_auth_code", { code, deviceId, state, codeVerifier }),
+    refreshAuthToken: (refreshToken: string, deviceId: string, state: string) =>
+        invoke<VkAuthSession>("vk_refresh_auth_token", { refreshToken, deviceId, state }),
     ping: (token: string) => invoke<number>("vk_ping", { token }),
     fetchRootIndex: (token: string, groupId: string, topicId: string) =>
         invoke<VkNode[]>("vk_fetch_root_index", { token, groupId, topicId }),
@@ -32,9 +38,11 @@ export const tauriFs = {
 // --- Settings Commands ---
 export interface AppSettings {
     vk_token: string;
+    vk_refresh_token: string;
+    vk_device_id: string;
+    vk_token_expires_at: number;
     vk_group_id: string;
     vk_topic_id: string;
-    vk_app_id: string;
     vk_download_path: string;
 }
 
@@ -46,6 +54,11 @@ export const tauriSettings = {
 // --- Shell Commands ---
 export const tauriShell = {
     openExternal: (url: string) => openExternal(url),
+};
+
+export const tauriDeepLink = {
+    getCurrent,
+    onOpenUrl,
 };
 
 // --- Dialog Commands ---

@@ -72,5 +72,13 @@
       }
     }
   },
-  "plugins": {}
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": [
+          "vkomic"
+        ]
+      }
+    }
+  }
 }

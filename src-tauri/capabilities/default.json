@@ -15,6 +15,7 @@
     "core:window:allow-close",
     "core:window:allow-start-dragging",
     "dialog:default",
+    "deep-link:default",
     "shell:default",
     "log:default",
     "http:default",

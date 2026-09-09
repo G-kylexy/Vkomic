@@ -12,13 +12,15 @@ interface MainViewProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
   vkToken: string;
-  setVkToken: (t: string) => void;
+  onConnectVk: () => Promise<void>;
+  onDisconnectVk: () => void;
+  isVkAuthPending: boolean;
+  isVkAuthExchanging: boolean;
+  vkAuthError: string;
   vkGroupId: string;
   setVkGroupId: (groupId: string) => void;
   vkTopicId: string;
   setVkTopicId: (topicId: string) => void;
-  vkAppId: string;
-  setVkAppId: (appId: string) => void;
   syncedData: VkNode[] | null;
   setSyncedData: (data: VkNode[] | null) => void;
   hasFullSynced: boolean;
@@ -43,13 +45,15 @@ const MainView: React.FC<MainViewProps> = ({
   activeTab,
   setActiveTab,
   vkToken,
-  setVkToken,
+  onConnectVk,
+  onDisconnectVk,
+  isVkAuthPending,
+  isVkAuthExchanging,
+  vkAuthError,
   vkGroupId,
   setVkGroupId,
   vkTopicId,
   setVkTopicId,
-  vkAppId,
-  setVkAppId,
   syncedData,
   setSyncedData,
   hasFullSynced,
@@ -86,13 +90,15 @@ const MainView: React.FC<MainViewProps> = ({
               return (
                 <SettingsView
                   vkToken={vkToken}
-                  setVkToken={setVkToken}
+                  onConnectVk={onConnectVk}
+                  onDisconnectVk={onDisconnectVk}
+                  isVkAuthPending={isVkAuthPending}
+                  isVkAuthExchanging={isVkAuthExchanging}
+                  vkAuthError={vkAuthError}
                   vkGroupId={vkGroupId}
                   setVkGroupId={setVkGroupId}
                   vkTopicId={vkTopicId}
                   setVkTopicId={setVkTopicId}
-                  vkAppId={vkAppId}
-                  setVkAppId={setVkAppId}
                   downloadPath={downloadPath}
                   setDownloadPath={setDownloadPath}
                   onResetDatabase={() => {

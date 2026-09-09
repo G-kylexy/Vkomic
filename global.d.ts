@@ -1,14 +1,6 @@
 export { };
 
 declare global {
-  interface ImportMetaEnv {
-    readonly VITE_VK_APP_ID?: string;
-  }
-
-  interface ImportMeta {
-    readonly env: ImportMetaEnv;
-  }
-
   interface Window {
     win?: {
       minimize: () => void;

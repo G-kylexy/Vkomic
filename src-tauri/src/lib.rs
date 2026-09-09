@@ -1,17 +1,38 @@
 mod download;
 mod fs_ops;
 mod vk_api;
+mod vk_auth;
 mod vk_parser;
 mod settings;
 
 use crate::download::{DownloadManager, DownloadTask};
 use crate::fs_ops::{list_directory, open_path, reveal_path, DirList};
 use crate::vk_api::VkApi;
+use crate::vk_auth::VkAuthSession;
 use crate::vk_parser::VkNode;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 
 struct AppState {
     download_manager: DownloadManager,
+}
+
+#[tauri::command]
+async fn vk_exchange_auth_code(
+    code: String,
+    device_id: String,
+    state: String,
+    code_verifier: String,
+) -> Result<VkAuthSession, String> {
+    vk_auth::exchange_code(code, device_id, state, code_verifier).await
+}
+
+#[tauri::command]
+async fn vk_refresh_auth_token(
+    refresh_token: String,
+    device_id: String,
+    state: String,
+) -> Result<VkAuthSession, String> {
+    vk_auth::refresh_token(refresh_token, device_id, state).await
 }
 
 #[tauri::command]
@@ -143,13 +164,30 @@ pub fn run() {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
     }
 
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default();
+
+    // Windows and Linux deliver deep links to a new process. Keeping a single
+    // instance lets the already-open Vkomic window receive the VK callback.
+    #[cfg(desktop)]
+    {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+        }));
+    }
+
+    builder
+        .plugin(tauri_plugin_deep_link::init())
         .manage(AppState {
             download_manager: DownloadManager::new(),
         })
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
+            vk_exchange_auth_code,
+            vk_refresh_auth_token,
             vk_ping,
             vk_fetch_root_index,
             vk_fetch_full_index,
@@ -165,6 +203,13 @@ pub fn run() {
             settings_save
         ])
         .setup(|app| {
+            // Register the scheme in development and for portable AppImages.
+            #[cfg(any(target_os = "linux", all(debug_assertions, target_os = "windows")))]
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                app.deep_link().register_all()?;
+            }
+
             // Plugin HTTP pour les requêtes sans CORS
             app.handle().plugin(tauri_plugin_http::init())?;
 
