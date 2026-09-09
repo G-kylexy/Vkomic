@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import Constants from "expo-constants";
-import * as WebBrowser from "expo-web-browser";
 import {
   ScrollView,
   StyleSheet,
@@ -27,7 +26,6 @@ import { requestFolderPermission, getFolderDisplayName } from "../services/Folde
 export const SettingsScreen: React.FC = () => {
   const {
     token,
-    setToken,
     groupId,
     setGroupId,
     topicId,
@@ -51,7 +49,6 @@ export const SettingsScreen: React.FC = () => {
   const accent = tabAccents.settings;
 
   // États locaux pour tous les paramètres modifiables
-  const [localToken, setLocalToken] = useState(token);
   const [localGroupId, setLocalGroupId] = useState(groupId);
   const [localTopicId, setLocalTopicId] = useState(topicId);
   const [saved, setSaved] = useState(false);
@@ -65,31 +62,9 @@ export const SettingsScreen: React.FC = () => {
   const [resetDialog, setResetDialog] = useState(false);
 
   // Vérifier si quelque chose a changé
-  const hasChanges = localToken !== token || localGroupId !== groupId || localTopicId !== topicId;
-
-  // Sync localToken when context token changes (e.g. via deep link or auth modal)
-  React.useEffect(() => {
-    setLocalToken(token);
-  }, [token]);
-
-  const handleTokenChange = (text: string) => {
-    // Check if pasted text is a VK OAuth URL
-    if (text.includes("access_token=")) {
-      try {
-        const match = text.match(/access_token=([^&]+)/);
-        if (match && match[1]) {
-          setLocalToken(match[1]);
-          return;
-        }
-      } catch (e) {
-        // Fallback to normal text
-      }
-    }
-    setLocalToken(text);
-  };
+  const hasChanges = localGroupId !== groupId || localTopicId !== topicId;
 
   const handleSaveAll = async () => {
-    if (localToken !== token) void setToken(localToken);
     if (localGroupId !== groupId) {
       void setGroupId(localGroupId);
       void clearCache();
@@ -108,9 +83,8 @@ export const SettingsScreen: React.FC = () => {
     setLocalTopicId("47515406");
   };
 
-  const openAuth = async () => {
-    const url = "https://oauth.vk.ru/authorize?client_id=2685278&scope=offline,docs,groups,wall&redirect_uri=https://oauth.vk.ru/blank.html&display=page&response_type=token&revoke=1";
-    await WebBrowser.openBrowserAsync(url);
+  const openAuth = () => {
+    setShowAuthModal(true);
   };
 
 
@@ -181,7 +155,7 @@ export const SettingsScreen: React.FC = () => {
           {!token ? (
             <Pressable
               style={[styles.vkLoginBtn, { backgroundColor: "#4C75A3" }]}
-              onPress={() => setShowAuthModal(true)}
+              onPress={openAuth}
             >
               <Ionicons name="logo-vk" size={24} color="#fff" />
               <Text style={styles.vkLoginText}>Se connecter avec VK</Text>
@@ -199,21 +173,6 @@ export const SettingsScreen: React.FC = () => {
               </Pressable>
             </View>
           )}
-
-          {/* Manual token input (advanced) */}
-          <View style={[styles.cardItem, { marginTop: spacing.md }]}>
-            <Text style={[styles.label, { color: palette.muted }]}>Token manuel (avancé)</Text>
-            <TextInput
-              value={localToken}
-              onChangeText={handleTokenChange}
-              placeholder="vk1.a..."
-              placeholderTextColor={palette.subtle}
-              style={[styles.input, { backgroundColor: palette.surface, borderColor: `${palette.border}80`, color: palette.text, marginTop: spacing.xs }]}
-              secureTextEntry
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </View>
 
           <View style={styles.rowInputs}>
             <View style={styles.half}>

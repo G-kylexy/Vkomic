@@ -2,7 +2,10 @@
   "expo": {
     "name": "vkomic",
     "slug": "vkomic-mobile",
-    "scheme": "vkomic",
+    "scheme": [
+      "vkomic",
+      "vk54761286"
+    ],
     "version": "1.4.2",
     "orientation": "default",
     "icon": "./assets/icon.png",
@@ -39,9 +42,8 @@
           "autoVerify": false,
           "data": [
             {
-              "scheme": "https",
-              "host": "oauth.vk.ru",
-              "pathPrefix": "/blank.html"
+              "scheme": "vk54761286",
+              "host": "vk.ru"
             }
           ],
           "category": [

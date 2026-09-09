@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
-import { Platform, Linking } from "react-native";
+import { Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Network from "expo-network";
 import * as SecureStore from "expo-secure-store";
@@ -7,12 +7,12 @@ import { Language } from "../i18n";
 import { VkConnectionStatus } from "../types";
 import { palette } from "../theme";
 import * as FolderService from "../services/FolderService";
+import { refreshVkAccessToken, VkAuthSession } from "../services/vk-auth";
 
-// VK OAuth Configuration
-const VK_APP_ID = "2685278"; // VK Android app ID (public)
-const VK_REDIRECT_URI = "https://oauth.vk.ru/blank.html";
-const VK_SCOPE = "docs,groups,wall,offline";
 const VK_TOKEN_STORAGE_KEY = "vk_token";
+const VK_REFRESH_TOKEN_STORAGE_KEY = "vk_refresh_token";
+const VK_DEVICE_ID_STORAGE_KEY = "vk_device_id";
+const VK_EXPIRES_AT_STORAGE_KEY = "vk_token_expires_at";
 
 const readStoredToken = async (): Promise<string | null> => {
     if (Platform.OS === "web") {
@@ -44,11 +44,26 @@ const persistToken = async (value: string): Promise<void> => {
     await AsyncStorage.removeItem(VK_TOKEN_STORAGE_KEY);
 };
 
+const readSecret = async (key: string): Promise<string | null> => {
+    if (Platform.OS === "web") return AsyncStorage.getItem(key);
+    return SecureStore.getItemAsync(key);
+};
+
+const persistSecret = async (key: string, value: string): Promise<void> => {
+    if (Platform.OS === "web") {
+        if (value) await AsyncStorage.setItem(key, value);
+        else await AsyncStorage.removeItem(key);
+        return;
+    }
+    if (value) await SecureStore.setItemAsync(key, value);
+    else await SecureStore.deleteItemAsync(key);
+    await AsyncStorage.removeItem(key);
+};
+
 // Contexte global des réglages VK côté mobile.
 // Objectif: reproduire la persistance du desktop (localStorage/IDB) avec AsyncStorage (mobile).
 interface VkContextType {
     token: string;
-    setToken: (token: string) => Promise<void>;
     groupId: string;
     setGroupId: (groupId: string) => Promise<void>;
     topicId: string;
@@ -66,7 +81,7 @@ interface VkContextType {
     isOffline: boolean;
     showAuthModal: boolean;
     setShowAuthModal: (show: boolean) => void;
-    handleAuthSuccess: (token: string) => Promise<void>;
+    handleAuthSuccess: (session: VkAuthSession) => Promise<void>;
     logout: () => Promise<void>;
 }
 
@@ -76,6 +91,9 @@ export const VkProvider: React.FC<{ children: React.ReactNode }> = ({
     children,
 }) => {
     const [token, setTokenState] = useState("");
+    const [refreshToken, setRefreshToken] = useState("");
+    const [deviceId, setDeviceId] = useState("");
+    const [tokenExpiresAt, setTokenExpiresAt] = useState(0);
     const [groupId, setGroupIdState] = useState("203785966");
     const [topicId, setTopicIdState] = useState("47515406");
     const [language, setLanguageState] = useState<Language>("fr");
@@ -108,63 +126,6 @@ export const VkProvider: React.FC<{ children: React.ReactNode }> = ({
         return () => clearInterval(interval);
     }, [checkNetworkStatus]);
 
-    // Parse token from VK OAuth URL
-    const parseTokenFromUrl = useCallback((url: string): string | null => {
-        try {
-            // URL format: https://oauth.vk.ru/blank.html#access_token=...&expires_in=...&user_id=...
-            const hashIndex = url.indexOf('#');
-            if (hashIndex === -1) return null;
-
-            const fragment = url.substring(hashIndex + 1);
-            const params = new URLSearchParams(fragment);
-            const accessToken = params.get('access_token');
-
-            if (accessToken && accessToken.length > 10) {
-                return accessToken;
-            }
-            return null;
-        } catch {
-            return null;
-        }
-    }, []);
-
-    // Handle incoming deep links (shared URLs from browser)
-    useEffect(() => {
-        const handleUrl = async (event: { url: string }) => {
-            const extractedToken = parseTokenFromUrl(event.url);
-            if (extractedToken) {
-                // Save token directly (same logic as setToken)
-                setTokenState(extractedToken);
-                setStatus((prev) => ({ ...prev, connected: true }));
-                try {
-                    await persistToken(extractedToken);
-                } catch (e) {
-                    console.error("Failed to save token from URL", e);
-                }
-            }
-        };
-
-        // Check if app was opened with a URL
-        const checkInitialUrl = async () => {
-            const initialUrl = await Linking.getInitialURL();
-            if (initialUrl) {
-                await handleUrl({ url: initialUrl });
-            }
-        };
-
-        // Listen for URL events while app is running
-        const subscription = Linking.addEventListener('url', handleUrl);
-
-        // Check initial URL after settings are loaded
-        if (isReady) {
-            void checkInitialUrl();
-        }
-
-        return () => {
-            subscription.remove();
-        };
-    }, [isReady, parseTokenFromUrl]);
-
     // Hydrate les réglages sauvegardés (au démarrage).
     useEffect(() => {
         let isMounted = true;
@@ -179,6 +140,9 @@ export const VkProvider: React.FC<{ children: React.ReactNode }> = ({
             try {
                 const [
                     savedToken,
+                    savedRefreshToken,
+                    savedDeviceId,
+                    savedExpiresAt,
                     savedPath,
                     savedGroupId,
                     savedTopicId,
@@ -186,6 +150,9 @@ export const VkProvider: React.FC<{ children: React.ReactNode }> = ({
                     savedAutoSync,
                 ] = await Promise.all([
                     readStoredToken(),
+                    readSecret(VK_REFRESH_TOKEN_STORAGE_KEY),
+                    readSecret(VK_DEVICE_ID_STORAGE_KEY),
+                    readSecret(VK_EXPIRES_AT_STORAGE_KEY),
                     AsyncStorage.getItem("vk_download_path"),
                     AsyncStorage.getItem("vk_group_id"),
                     AsyncStorage.getItem("vk_topic_id"),
@@ -195,10 +162,24 @@ export const VkProvider: React.FC<{ children: React.ReactNode }> = ({
 
                 if (!isMounted) return;
 
-                if (savedToken) {
+                const savedExpiry = Number(savedExpiresAt) || 0;
+                if (savedToken && savedRefreshToken && savedDeviceId && savedExpiry) {
                     setTokenState(savedToken);
+                    setRefreshToken(savedRefreshToken);
+                    setDeviceId(savedDeviceId);
+                    setTokenExpiresAt(savedExpiry);
                     setStatus((prev) => ({ ...prev, connected: true }));
+                } else if (savedToken || savedRefreshToken || savedDeviceId || savedExpiresAt) {
+                    // Tokens from the legacy Kate Mobile flow have no valid VK ID
+                    // refresh session and must never be reused by Vkomic.
+                    await Promise.all([
+                        persistToken(""),
+                        persistSecret(VK_REFRESH_TOKEN_STORAGE_KEY, ""),
+                        persistSecret(VK_DEVICE_ID_STORAGE_KEY, ""),
+                        persistSecret(VK_EXPIRES_AT_STORAGE_KEY, ""),
+                    ]);
                 }
+                await AsyncStorage.removeItem("vk_app_id");
                 if (savedPath) {
                     // Check SAF permissions if it's a content:// URI
                     if (Platform.OS === "android" && savedPath.startsWith("content://")) {
@@ -239,21 +220,24 @@ export const VkProvider: React.FC<{ children: React.ReactNode }> = ({
         return () => { isMounted = false; clearTimeout(safetyTimeout); };
     }, []);
 
-    // Sauvegarde native chiffrée (Keychain iOS / Keystore Android).
-    const setToken = async (newToken: string) => {
-        setTokenState(newToken);
+    // Efface toute la session VK ID des stockages natifs chiffrés.
+    const clearAuthSession = useCallback(async () => {
+        setTokenState("");
         try {
-            if (newToken) {
-                await persistToken(newToken);
-                setStatus((prev) => ({ ...prev, connected: true }));
-            } else {
-                await persistToken("");
-                setStatus((prev) => ({ ...prev, connected: false }));
-            }
+            await Promise.all([
+                persistToken(""),
+                persistSecret(VK_REFRESH_TOKEN_STORAGE_KEY, ""),
+                persistSecret(VK_DEVICE_ID_STORAGE_KEY, ""),
+                persistSecret(VK_EXPIRES_AT_STORAGE_KEY, ""),
+            ]);
         } catch (e) {
-            console.error("Failed to save token", e);
+            console.error("Failed to clear VK ID session", e);
         }
-    };
+        setRefreshToken("");
+        setDeviceId("");
+        setTokenExpiresAt(0);
+        setStatus((prev) => ({ ...prev, connected: false }));
+    }, []);
 
     // Group/Topic: permet de pointer vers une autre board si besoin (mêmes valeurs par défaut que le desktop).
     const setGroupId = async (newGroupId: string) => {
@@ -304,20 +288,50 @@ export const VkProvider: React.FC<{ children: React.ReactNode }> = ({
 
     const activePalette = palette;
 
-    // Handle successful auth from modal
-    const handleAuthSuccess = async (accessToken: string) => {
-        await setToken(accessToken);
-    };
+    const persistAuthSession = useCallback(async (session: VkAuthSession) => {
+        setTokenState(session.accessToken);
+        setRefreshToken(session.refreshToken);
+        setDeviceId(session.deviceId);
+        setTokenExpiresAt(session.expiresAt);
+        await Promise.all([
+            persistToken(session.accessToken),
+            persistSecret(VK_REFRESH_TOKEN_STORAGE_KEY, session.refreshToken),
+            persistSecret(VK_DEVICE_ID_STORAGE_KEY, session.deviceId),
+            persistSecret(VK_EXPIRES_AT_STORAGE_KEY, String(session.expiresAt)),
+        ]);
+        setStatus((prev) => ({ ...prev, connected: true, errorCode: null }));
+    }, []);
+
+    // Handle successful OAuth 2.1 + PKCE authentication from the modal.
+    const handleAuthSuccess = useCallback(async (session: VkAuthSession) => {
+        await persistAuthSession(session);
+    }, [persistAuthSession]);
+
+    // VK ID access tokens expire quickly. Refresh one minute before expiration.
+    useEffect(() => {
+        if (!isReady || !refreshToken || !deviceId || !tokenExpiresAt) return;
+        const delay = Math.max(tokenExpiresAt - Date.now() - 60_000, 1_000);
+        const timer = setTimeout(() => {
+            void refreshVkAccessToken(refreshToken, deviceId)
+                .then(persistAuthSession)
+                .catch((error) => {
+                    console.error("VK ID token refresh failed", error);
+                    void clearAuthSession().then(() => {
+                        setStatus((prev) => ({ ...prev, errorCode: 5 }));
+                    });
+                });
+        }, delay);
+        return () => clearTimeout(timer);
+    }, [isReady, refreshToken, deviceId, tokenExpiresAt, persistAuthSession, clearAuthSession]);
 
     // Logout - clear token
     const logout = async () => {
-        await setToken("");
+        await clearAuthSession();
         setStatus(prev => ({ ...prev, connected: false, latencyMs: null, errorCode: null }));
     };
 
     const value = React.useMemo(() => ({
         token,
-        setToken,
         groupId,
         setGroupId,
         topicId,
@@ -339,7 +353,7 @@ export const VkProvider: React.FC<{ children: React.ReactNode }> = ({
         logout,
     }), [
         token, groupId, topicId, language, downloadPath, status, isReady,
-        autoSync, activePalette, isOffline, showAuthModal, parseTokenFromUrl,
+        autoSync, activePalette, isOffline, showAuthModal,
         // Including functions here would trigger re-renders anyway without useCallback, 
         // but removing them from deps might cause stale closures if they weren't generic.
         // For now, this restores functionality.
