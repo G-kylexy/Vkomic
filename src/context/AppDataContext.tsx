@@ -75,7 +75,7 @@ const STORAGE_KEYS = {
 
 const DOWNLOAD_DIR_NAME = "vkomic-downloads";
 const VK_DOWNLOAD_HEADERS = {
-  "User-Agent": "KateMobileAndroid/110.1 lite-x86_64 (Android 11; SDK 30; x86_64; en)",
+  "User-Agent": "Vkomic/1.4.2 (+https://github.com/G-kylexy/vkomic)",
   Accept: "*/*",
   "Accept-Encoding": "identity",
 };

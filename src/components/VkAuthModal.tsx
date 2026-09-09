@@ -1,68 +1,66 @@
 import React, { useState } from "react";
-import { Modal, View, StyleSheet, Pressable, Text, TextInput, Alert } from "react-native";
+import { Modal, View, StyleSheet, Pressable, Text, Alert, ActivityIndicator } from "react-native";
 import * as WebBrowser from "expo-web-browser";
-import * as Clipboard from "expo-clipboard";
 import { Ionicons } from "@expo/vector-icons";
 import { palette, radius, spacing } from "../theme";
+import {
+    createVkAuthorizationRequest,
+    exchangeVkAuthorizationCode,
+    VK_ANDROID_REDIRECT_URI,
+    VkAuthSession,
+} from "../services/vk-auth";
 
-const VK_REDIRECT_URI = "https://oauth.vk.ru/blank.html";
-const VK_SCOPE = "docs";
+WebBrowser.maybeCompleteAuthSession();
 
 interface VkAuthModalProps {
-    appId: string;
     visible: boolean;
     onClose: () => void;
-    onSuccess: (token: string) => void;
+    onSuccess: (session: VkAuthSession) => Promise<void>;
 }
 
-export const VkAuthModal: React.FC<VkAuthModalProps> = ({ appId, visible, onClose, onSuccess }) => {
-    const [pastedUrl, setPastedUrl] = useState("");
-    const [step, setStep] = useState<"intro" | "paste">("intro");
-
-    const authUrl = `https://oauth.vk.ru/authorize?client_id=${encodeURIComponent(appId)}&scope=${VK_SCOPE}&redirect_uri=${encodeURIComponent(VK_REDIRECT_URI)}&display=page&response_type=token&v=5.199&revoke=1`;
+export const VkAuthModal: React.FC<VkAuthModalProps> = ({ visible, onClose, onSuccess }) => {
+    const [isConnecting, setIsConnecting] = useState(false);
 
     const openBrowser = async () => {
-        await WebBrowser.openBrowserAsync(authUrl);
-        setStep("paste");
-    };
+        setIsConnecting(true);
+        try {
+            const request = await createVkAuthorizationRequest();
+            const result = await WebBrowser.openAuthSessionAsync(request.url, VK_ANDROID_REDIRECT_URI);
+            if (result.type !== "success") return;
 
-    const handlePasteFromClipboard = async () => {
-        const text = await Clipboard.getStringAsync();
-        if (text) {
-            setPastedUrl(text);
-            tryExtractToken(text);
-        }
-    };
-
-    const tryExtractToken = (url: string) => {
-        if (url.includes("access_token=")) {
-            const fragment = url.split("#")[1] || url.split("access_token=")[1];
-            if (fragment) {
-                let tokenPart = fragment;
-                if (fragment.includes("access_token=")) {
-                    tokenPart = fragment.split("access_token=")[1];
-                }
-                const token = tokenPart.split("&")[0];
-                if (token && token.length > 10) {
-                    onSuccess(token);
-                    handleClose();
-                    return;
-                }
+            const callback = new URL(result.url);
+            const error = callback.searchParams.get("error");
+            if (error) {
+                throw new Error(callback.searchParams.get("error_description") || error);
             }
+            const returnedState = callback.searchParams.get("state");
+            const code = callback.searchParams.get("code");
+            const deviceId = callback.searchParams.get("device_id");
+            if (returnedState !== request.state || !code || !deviceId) {
+                throw new Error("La réponse de VK ID est incomplète ou ne correspond pas à la demande.");
+            }
+
+            const session = await exchangeVkAuthorizationCode(
+                code,
+                deviceId,
+                request.state,
+                request.codeVerifier,
+            );
+            await onSuccess(session);
+            onClose();
+        } catch (error) {
+            Alert.alert(
+                "Connexion VK impossible",
+                error instanceof Error ? error.message : "Une erreur inconnue est survenue.",
+            );
+        } finally {
+            setIsConnecting(false);
         }
-        Alert.alert("Erreur", "Impossible d'extraire le token. Vérifiez que vous avez copié l'URL complète.");
     };
 
     const handleClose = () => {
-        setStep("intro");
-        setPastedUrl("");
+        if (isConnecting) return;
         onClose();
-    };
-
-    const handleSubmit = () => {
-        if (pastedUrl.trim()) {
-            tryExtractToken(pastedUrl.trim());
-        }
     };
 
     return (
@@ -82,59 +80,27 @@ export const VkAuthModal: React.FC<VkAuthModalProps> = ({ appId, visible, onClos
                 </View>
 
                 <View style={styles.content}>
-                    {step === "intro" ? (
-                        <>
-                            <View style={styles.iconCircle}>
-                                <Ionicons name="logo-vk" size={48} color="#4C75A3" />
-                            </View>
-                            <Text style={styles.title}>Se connecter avec VK</Text>
-                            <Text style={styles.desc}>
-                                Vous allez être redirigé vers VK pour vous connecter. Après connexion, copiez l'URL de la page blanche.
-                            </Text>
-                            <Pressable style={styles.primaryBtn} onPress={openBrowser}>
-                                <Ionicons name="open-outline" size={20} color="#fff" />
-                                <Text style={styles.primaryBtnText}>Ouvrir VK</Text>
-                            </Pressable>
-                        </>
-                    ) : (
-                        <>
-                            <View style={styles.iconCircle}>
-                                <Ionicons name="clipboard" size={48} color={palette.primary} />
-                            </View>
-                            <Text style={styles.title}>Coller l'URL</Text>
-                            <Text style={styles.desc}>
-                                Après vous être connecté, vous avez été redirigé vers une page blanche.{"\n\n"}
-                                <Text style={{ fontWeight: "900" }}>Copiez l'URL complète</Text> de cette page et collez-la ci-dessous :
-                            </Text>
-                            <TextInput
-                                style={styles.input}
-                                placeholder="https://oauth.vk.ru/blank.html#access_token=..."
-                                placeholderTextColor={palette.muted}
-                                value={pastedUrl}
-                                onChangeText={setPastedUrl}
-                                autoCapitalize="none"
-                                autoCorrect={false}
-                                multiline
-                            />
-                            <View style={styles.btnRow}>
-                                <Pressable style={styles.secondaryBtn} onPress={handlePasteFromClipboard}>
-                                    <Ionicons name="clipboard-outline" size={18} color={palette.primary} />
-                                    <Text style={styles.secondaryBtnText}>Coller</Text>
-                                </Pressable>
-                                <Pressable
-                                    style={[styles.primaryBtn, { flex: 1 }]}
-                                    onPress={handleSubmit}
-                                    disabled={!pastedUrl.trim()}
-                                >
-                                    <Ionicons name="checkmark" size={20} color="#fff" />
-                                    <Text style={styles.primaryBtnText}>Valider</Text>
-                                </Pressable>
-                            </View>
-                            <Pressable style={styles.linkBtn} onPress={openBrowser}>
-                                <Text style={styles.linkBtnText}>Réessayer la connexion</Text>
-                            </Pressable>
-                        </>
-                    )}
+                    <View style={styles.iconCircle}>
+                        <Ionicons name="logo-vk" size={48} color="#4C75A3" />
+                    </View>
+                    <Text style={styles.title}>Se connecter avec VK ID</Text>
+                    <Text style={styles.desc}>
+                        VK ID va ouvrir une fenêtre sécurisée puis revenir automatiquement dans Vkomic. Aucun mot de passe ni token ne sera copié manuellement.
+                    </Text>
+                    <Pressable
+                        style={[styles.primaryBtn, isConnecting && { opacity: 0.65 }]}
+                        onPress={openBrowser}
+                        disabled={isConnecting}
+                    >
+                        {isConnecting ? (
+                            <ActivityIndicator color="#fff" />
+                        ) : (
+                            <Ionicons name="open-outline" size={20} color="#fff" />
+                        )}
+                        <Text style={styles.primaryBtnText}>
+                            {isConnecting ? "Connexion…" : "Continuer avec VK ID"}
+                        </Text>
+                    </Pressable>
                 </View>
             </View>
         </Modal>
@@ -215,48 +181,5 @@ const styles = StyleSheet.create({
         color: "#fff",
         fontSize: 16,
         fontWeight: "900",
-    },
-    secondaryBtn: {
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: spacing.xs,
-        backgroundColor: `${palette.primary}15`,
-        paddingVertical: spacing.md,
-        paddingHorizontal: spacing.lg,
-        borderRadius: radius.lg,
-        borderWidth: 1,
-        borderColor: `${palette.primary}30`,
-    },
-    secondaryBtnText: {
-        color: palette.primary,
-        fontSize: 14,
-        fontWeight: "800",
-    },
-    input: {
-        width: "100%",
-        backgroundColor: palette.surface,
-        borderRadius: radius.md,
-        borderWidth: 1,
-        borderColor: palette.border,
-        padding: spacing.md,
-        color: palette.text,
-        fontSize: 13,
-        minHeight: 80,
-        marginBottom: spacing.md,
-    },
-    btnRow: {
-        flexDirection: "row",
-        gap: spacing.sm,
-        width: "100%",
-    },
-    linkBtn: {
-        marginTop: spacing.lg,
-        padding: spacing.sm,
-    },
-    linkBtnText: {
-        color: palette.muted,
-        fontSize: 13,
-        textDecorationLine: "underline",
     },
 });

@@ -26,9 +26,6 @@ import { requestFolderPermission, getFolderDisplayName } from "../services/Folde
 export const SettingsScreen: React.FC = () => {
   const {
     token,
-    setToken,
-    appId,
-    setAppId,
     groupId,
     setGroupId,
     topicId,
@@ -52,8 +49,6 @@ export const SettingsScreen: React.FC = () => {
   const accent = tabAccents.settings;
 
   // États locaux pour tous les paramètres modifiables
-  const [localToken, setLocalToken] = useState(token);
-  const [localAppId, setLocalAppId] = useState(appId);
   const [localGroupId, setLocalGroupId] = useState(groupId);
   const [localTopicId, setLocalTopicId] = useState(topicId);
   const [saved, setSaved] = useState(false);
@@ -67,36 +62,9 @@ export const SettingsScreen: React.FC = () => {
   const [resetDialog, setResetDialog] = useState(false);
 
   // Vérifier si quelque chose a changé
-  const hasChanges = localToken !== token || localAppId !== appId || localGroupId !== groupId || localTopicId !== topicId;
-
-  // Sync localToken when context token changes (e.g. via deep link or auth modal)
-  React.useEffect(() => {
-    setLocalToken(token);
-  }, [token]);
-
-  React.useEffect(() => {
-    setLocalAppId(appId);
-  }, [appId]);
-
-  const handleTokenChange = (text: string) => {
-    // Check if pasted text is a VK OAuth URL
-    if (text.includes("access_token=")) {
-      try {
-        const match = text.match(/access_token=([^&]+)/);
-        if (match && match[1]) {
-          setLocalToken(match[1]);
-          return;
-        }
-      } catch (e) {
-        // Fallback to normal text
-      }
-    }
-    setLocalToken(text);
-  };
+  const hasChanges = localGroupId !== groupId || localTopicId !== topicId;
 
   const handleSaveAll = async () => {
-    if (localToken !== token) void setToken(localToken);
-    if (localAppId !== appId) void setAppId(localAppId);
     if (localGroupId !== groupId) {
       void setGroupId(localGroupId);
       void clearCache();
@@ -116,14 +84,6 @@ export const SettingsScreen: React.FC = () => {
   };
 
   const openAuth = () => {
-    if (!localAppId.trim()) {
-      Alert.alert(
-        "VK App ID requis",
-        "Créez votre propre application VK, puis saisissez son identifiant ici. Vkomic n'utilise plus l'identité d'une application tierce."
-      );
-      return;
-    }
-    void setAppId(localAppId);
     setShowAuthModal(true);
   };
 
@@ -213,34 +173,6 @@ export const SettingsScreen: React.FC = () => {
               </Pressable>
             </View>
           )}
-
-          <View style={[styles.cardItem, { marginTop: spacing.md }]}>
-            <Text style={[styles.label, { color: palette.muted }]}>VK App ID (votre application)</Text>
-            <TextInput
-              value={localAppId}
-              onChangeText={(value: string) => setLocalAppId(value.replace(/[^\d]/g, ""))}
-              placeholder="ID de votre application VK"
-              placeholderTextColor={palette.subtle}
-              style={[styles.input, { backgroundColor: palette.surface, borderColor: `${palette.border}80`, color: palette.text, marginTop: spacing.xs }]}
-              keyboardType="number-pad"
-            />
-            <Text style={{ color: palette.muted, fontSize: 12, marginTop: spacing.xs }}>N'utilisez pas l'App ID de Kate Mobile ou d'une autre application tierce.</Text>
-          </View>
-
-          {/* Manual token input (advanced) */}
-          <View style={[styles.cardItem, { marginTop: spacing.md }]}>
-            <Text style={[styles.label, { color: palette.muted }]}>Token manuel (avancé)</Text>
-            <TextInput
-              value={localToken}
-              onChangeText={handleTokenChange}
-              placeholder="vk1.a..."
-              placeholderTextColor={palette.subtle}
-              style={[styles.input, { backgroundColor: palette.surface, borderColor: `${palette.border}80`, color: palette.text, marginTop: spacing.xs }]}
-              secureTextEntry
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </View>
 
           <View style={styles.rowInputs}>
             <View style={styles.half}>
@@ -418,7 +350,6 @@ export const SettingsScreen: React.FC = () => {
 
       {/* Login VK Modal */}
       <VkAuthModal
-        appId={localAppId}
         visible={showAuthModal}
         onClose={() => setShowAuthModal(false)}
         onSuccess={handleAuthSuccess}
