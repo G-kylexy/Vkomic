@@ -133,13 +133,13 @@ const SettingsView: React.FC<
       const params = new URLSearchParams({
         client_id: appId,
         scope: "docs",
-        redirect_uri: "https://oauth.vk.com/blank.html",
+        redirect_uri: "https://oauth.vk.ru/blank.html",
         display: "page",
         response_type: "token",
         revoke: "1",
         v: "5.199",
       });
-      const url = `https://oauth.vk.com/authorize?${params.toString()}`;
+      const url = `https://oauth.vk.ru/authorize?${params.toString()}`;
       tauriShell.openExternal(url).catch(() => {
         window.open(url, "_blank");
       });

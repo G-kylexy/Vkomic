@@ -31,10 +31,10 @@ export const en: Translations = {
 
     // VK Connection
     vkConnection: "VK Connection",
-    appId: "VK App ID",
+    appId: "VK App ID (your application)",
     appIdPlaceholder: "Your VK application ID",
     accessToken: "Access Token",
-    tokenHelper: "To get a VK token with your own VK application,",
+    tokenHelper: "Use the ID of a VK application you control. To get a token,",
     clickHere: "click here",
     tokenInstructions: ", you must copy the text between",
     and: "and",

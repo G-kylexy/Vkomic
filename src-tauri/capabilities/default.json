@@ -22,7 +22,7 @@
       "identifier": "http:default",
       "allow": [
         {
-          "url": "https://api.vk.com/*"
+          "url": "https://api.vk.ru/*"
         }
       ]
     }

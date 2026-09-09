@@ -29,10 +29,10 @@ export const fr = {
 
     // VK Connection
     vkConnection: "Connexion VK",
-    appId: "VK App ID",
+    appId: "VK App ID (votre application)",
     appIdPlaceholder: "ID de votre application VK",
     accessToken: "Access Token",
-    tokenHelper: "Pour obtenir un token VK avec votre application VK,",
+    tokenHelper: "L'App ID est celui d'une application VK que vous contrôlez. Pour obtenir un token,",
     clickHere: "cliquez ici",
     tokenInstructions: ", vous devez copier le texte entre",
     and: "et",
