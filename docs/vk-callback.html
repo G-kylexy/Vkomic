@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <title>Connexion VK ID — Vkomic</title>
+    <style>
+      :root { color-scheme: dark; font-family: system-ui, sans-serif; }
+      body { min-height: 100vh; margin: 0; display: grid; place-items: center; background: #050b14; color: #e2e8f0; }
+      main { width: min(30rem, calc(100% - 3rem)); padding: 2rem; border: 1px solid #263247; border-radius: 1rem; background: #0f1726; text-align: center; }
+      h1 { margin: 0 0 .75rem; font-size: 1.4rem; }
+      p { margin: 0 0 1.5rem; color: #94a3b8; line-height: 1.5; }
+      button { border: 0; border-radius: .65rem; padding: .8rem 1.1rem; background: #2688eb; color: white; font: inherit; font-weight: 700; cursor: pointer; }
+      button:hover { background: #3695f4; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1 id="title">Connexion terminée</h1>
+      <p id="message">Vkomic va se rouvrir automatiquement.</p>
+      <button id="open" type="button">Rouvrir Vkomic</button>
+    </main>
+    <script>
+      (() => {
+        const source = new URLSearchParams(location.search);
+        const target = new URL("vkomic://vk-auth");
+        for (const key of ["code", "device_id", "state", "error", "error_description"]) {
+          const value = source.get(key);
+          if (value) target.searchParams.set(key, value);
+        }
+        history.replaceState({}, "", "vk-callback.html");
+
+        const hasResult = target.searchParams.has("code") || target.searchParams.has("error");
+        if (!hasResult) {
+          document.querySelector("#title").textContent = "Réponse VK ID invalide";
+          document.querySelector("#message").textContent = "Relance la connexion depuis Vkomic.";
+          document.querySelector("#open").hidden = true;
+          return;
+        }
+
+        const openApp = () => location.assign(target.toString());
+        document.querySelector("#open").addEventListener("click", openApp);
+        openApp();
+      })();
+    </script>
+  </body>
+</html>
